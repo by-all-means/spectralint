@@ -1,0 +1,16 @@
+# spectralint configuration
+
+# Directories to ignore when scanning
+ignore = ["node_modules", ".git", "target", "tests/fixtures"]
+
+[checkers.dead_reference]
+enabled = true
+
+[checkers.vague_directive]
+enabled = true
+
+[checkers.naming_inconsistency]
+enabled = true
+
+[checkers.enum_drift]
+enabled = true

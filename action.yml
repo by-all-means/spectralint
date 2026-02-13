@@ -1,0 +1,30 @@
+name: "spectralint"
+description: "Static analysis for AI agent instruction files"
+branding:
+  icon: "search"
+  color: "purple"
+
+inputs:
+  path:
+    description: "Project root to scan"
+    required: false
+    default: "."
+  version:
+    description: "spectralint version to install"
+    required: false
+    default: "latest"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install spectralint
+      shell: bash
+      run: |
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          cargo install spectralint
+        else
+          cargo install spectralint@${{ inputs.version }}
+        fi
+    - name: Run spectralint
+      shell: bash
+      run: spectralint check ${{ inputs.path }} --format github
