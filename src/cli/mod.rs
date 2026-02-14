@@ -1,3 +1,4 @@
+pub mod explain;
 pub mod output;
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -38,6 +39,11 @@ pub enum Commands {
     },
     /// Create a default .spectralintrc.toml
     Init,
+    /// Explain what a checker does and why it matters (omit rule to list all)
+    Explain {
+        /// Checker name (e.g., dead-reference, naming-inconsistency, agent-guidelines)
+        rule: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum, Deserialize, Default)]

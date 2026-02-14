@@ -155,6 +155,7 @@ fn check_drift(
                     src.table.line,
                     Severity::Warning,
                     Category::EnumDrift,
+                    suggest: "Align the value sets across files or document why they differ",
                     "{msg}"
                 );
             }

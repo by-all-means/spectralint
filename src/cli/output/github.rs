@@ -12,11 +12,16 @@ pub fn render(result: &CheckResult, project_root: &Path) {
             Severity::Info => "notice",
         };
 
-        println!(
-            "::{level} file={rel},line={line},title={category}::{message}",
+        print!(
+            "::{level} file={rel},line={line},title={category}::{msg}",
             line = d.line,
             category = d.category,
-            message = d.message,
+            msg = d.message,
         );
+        if let Some(suggestion) = &d.suggestion {
+            println!("%0Ahelp: {suggestion}");
+        } else {
+            println!();
+        }
     }
 }

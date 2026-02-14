@@ -96,6 +96,11 @@ impl Checker for NamingInconsistencyChecker {
                 "Inconsistent naming: {} refer to the same concept",
                 variants.join(" vs ")
             );
+            let originals: Vec<&str> = unique_originals.iter().copied().collect();
+            let suggestion = format!(
+                "Standardize to one form: use either \"{}\" or \"{}\" consistently",
+                originals[0], originals[1]
+            );
 
             for occ in group {
                 emit!(
@@ -104,6 +109,7 @@ impl Checker for NamingInconsistencyChecker {
                     occ.line,
                     Severity::Warning,
                     Category::NamingInconsistency,
+                    suggest: &suggestion,
                     "{msg}"
                 );
             }
@@ -136,6 +142,10 @@ impl Checker for NamingInconsistencyChecker {
                     "Similar names: \"{}\" and \"{}\" might refer to the same concept (similarity: {:.0}%)",
                     group_a[0].original, group_b[0].original, similarity * 100.0
                 );
+                let suggestion = format!(
+                    "Standardize to one form: use either \"{}\" or \"{}\" consistently",
+                    group_a[0].original, group_b[0].original
+                );
 
                 for occ in group_a.iter().chain(group_b.iter()) {
                     emit!(
@@ -144,6 +154,7 @@ impl Checker for NamingInconsistencyChecker {
                         occ.line,
                         Severity::Info,
                         Category::NamingInconsistency,
+                        suggest: &suggestion,
                         "{msg}"
                     );
                 }

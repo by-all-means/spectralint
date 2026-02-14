@@ -109,6 +109,9 @@ pub fn render(result: &CheckResult, project_root: &Path) {
                     break;
                 }
                 println!("      L{:<4} {}", d.line, d.message);
+                if let Some(suggestion) = &d.suggestion {
+                    println!("      {}", format!("help: {suggestion}").dimmed());
+                }
                 shown += 1;
             }
         }

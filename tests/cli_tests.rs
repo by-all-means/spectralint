@@ -1206,7 +1206,11 @@ fn invalid_fail_on_value_errors() {
 fn empty_results_json_output() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
-    fs::write(root.join("CLAUDE.md"), "# Instructions\n\nAll good here.\n").unwrap();
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Instructions\n\n## Output Format\n\nRespond in JSON format.\n\nAll good here.\n",
+    )
+    .unwrap();
 
     let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
     let diagnostics = parsed["diagnostics"].as_array().unwrap();
@@ -1223,7 +1227,11 @@ fn empty_results_json_output() {
 fn empty_results_github_output() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
-    fs::write(root.join("CLAUDE.md"), "# Instructions\n\nAll good here.\n").unwrap();
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Instructions\n\n## Output Format\n\nRespond in JSON format.\n\nAll good here.\n",
+    )
+    .unwrap();
 
     let output = cmd()
         .args(["check", &root.display().to_string(), "--format", "github"])
@@ -1271,4 +1279,239 @@ fn symlinked_instruction_file_is_scanned() {
         !dead_refs.is_empty(),
         "Symlinked CLAUDE.md should be scanned and produce dead-reference diagnostics"
     );
+}
+
+// ── Agent guidelines checker ─────────────────────────────────────────
+
+#[test]
+fn agent_guidelines_detected_via_fixture() {
+    let parsed = json_output(&[
+        "check",
+        "tests/fixtures/agent_guidelines",
+        "--format",
+        "json",
+    ]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+
+    let ag: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("agent-guidelines"))
+        .collect();
+
+    // Should have at least: missing negatives, multi-responsibility,
+    // 2x unconstrained delegation, missing output format
+    assert!(
+        ag.len() >= 4,
+        "Expected at least 4 agent-guidelines diagnostics, got {}",
+        ag.len()
+    );
+
+    // All should be info severity
+    for d in &ag {
+        assert_eq!(
+            d["severity"].as_str().unwrap(),
+            "info",
+            "agent-guidelines should be info severity"
+        );
+    }
+
+    // Check specific sub-checks are present
+    let messages: Vec<&str> = ag.iter().map(|d| d["message"].as_str().unwrap()).collect();
+    assert!(
+        messages.iter().any(|m| m.contains("negative constraints")),
+        "Should detect missing negative constraints"
+    );
+    assert!(
+        messages.iter().any(|m| m.contains("responsibility")),
+        "Should detect multi-responsibility"
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("Unconstrained delegation")),
+        "Should detect unconstrained delegation"
+    );
+    assert!(
+        messages.iter().any(|m| m.contains("output format")),
+        "Should detect missing output format"
+    );
+}
+
+#[test]
+fn agent_guidelines_disabled_via_config() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Build\n\nAlways run tests.\n\n# Testing\n\n# Deploy\n\n# Security\n\nDo whatever.\n",
+    )
+    .unwrap();
+
+    fs::write(
+        root.join(".spectralintrc.toml"),
+        "[checkers.agent_guidelines]\nenabled = false\n",
+    )
+    .unwrap();
+
+    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+
+    let ag: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("agent-guidelines"))
+        .collect();
+
+    assert!(
+        ag.is_empty(),
+        "Disabling agent_guidelines via config should suppress all agent-guidelines findings"
+    );
+}
+
+#[test]
+fn agent_guidelines_suppressed_inline() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Instructions\n\n<!-- spectralint-disable agent-guidelines -->\nAlways run tests.\nDo whatever you want.\n<!-- spectralint-enable agent-guidelines -->\n",
+    )
+    .unwrap();
+
+    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+
+    let ag: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("agent-guidelines"))
+        .collect();
+
+    // Line-specific diagnostics (delegation on line 5) should be suppressed.
+    // File-level diagnostics at line 1 are outside the disable block, so they may still appear.
+    let delegation: Vec<_> = ag
+        .iter()
+        .filter(|d| {
+            d["message"]
+                .as_str()
+                .unwrap()
+                .contains("Unconstrained delegation")
+        })
+        .collect();
+
+    assert!(
+        delegation.is_empty(),
+        "Inline suppression should suppress unconstrained delegation within the block"
+    );
+}
+
+// ── Explain subcommand ───────────────────────────────────────────────
+
+#[test]
+fn json_output_includes_suggestion_field() {
+    let parsed = json_output(&["check", "tests/fixtures/dead_refs", "--format", "json"]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+
+    for d in diagnostics {
+        assert_eq!(d["category"].as_str().unwrap(), "dead-reference");
+        assert!(
+            d["suggestion"].is_string(),
+            "dead-reference diagnostics should include a suggestion field"
+        );
+        assert!(
+            d["suggestion"]
+                .as_str()
+                .unwrap()
+                .contains("Remove this reference"),
+            "suggestion should contain actionable hint"
+        );
+    }
+}
+
+#[test]
+fn text_output_includes_help_line() {
+    let output = cmd()
+        .args(["check", "tests/fixtures/dead_refs"])
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("help:"),
+        "Text output should include 'help:' suggestion lines, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn json_output_omits_suggestion_when_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::write(root.join("CLAUDE.md"), "# Test\n\nTODO: fix this.\n").unwrap();
+    fs::write(
+        root.join(".spectralintrc.toml"),
+        "[[checkers.custom_patterns]]\nname = \"todo\"\npattern = \"(?i)\\\\bTODO\\\\b\"\nseverity = \"warning\"\nmessage = \"TODO found\"\n",
+    )
+    .unwrap();
+
+    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+
+    let custom: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("custom:todo"))
+        .collect();
+
+    assert!(!custom.is_empty(), "Should have custom pattern match");
+    for d in &custom {
+        assert!(
+            d.get("suggestion").is_none() || d["suggestion"].is_null(),
+            "Custom pattern diagnostics should not have a suggestion field in JSON"
+        );
+    }
+}
+
+#[test]
+fn explain_known_rule() {
+    cmd()
+        .args(["explain", "dead-reference"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("dead-reference"))
+        .stdout(predicate::str::contains("Severity:"));
+}
+
+#[test]
+fn explain_agent_guidelines() {
+    cmd()
+        .args(["explain", "agent-guidelines"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Missing negative constraints"))
+        .stdout(predicate::str::contains("Multi-responsibility"))
+        .stdout(predicate::str::contains("Unconstrained delegation"))
+        .stdout(predicate::str::contains("Missing output format"));
+}
+
+#[test]
+fn explain_no_args_lists_rules() {
+    cmd()
+        .args(["explain"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Available rules:"))
+        .stdout(predicate::str::contains("dead-reference"))
+        .stdout(predicate::str::contains("agent-guidelines"))
+        .stdout(predicate::str::contains("spectralint explain <rule>"));
+}
+
+#[test]
+fn explain_unknown_rule_fails() {
+    cmd()
+        .args(["explain", "nonexistent-rule"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("Unknown rule"))
+        .stderr(predicate::str::contains("Available rules:"));
 }

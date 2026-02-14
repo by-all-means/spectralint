@@ -32,6 +32,7 @@ impl Checker for DeadReferenceChecker {
                         file_ref.line,
                         Severity::Error,
                         Category::DeadReference,
+                        suggest: "Remove this reference or create the missing file",
                         "\"{}\" does not exist",
                         file_ref.path
                     );

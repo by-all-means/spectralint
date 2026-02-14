@@ -1,3 +1,4 @@
+pub mod agent_guidelines;
 pub mod custom_pattern;
 pub mod dead_reference;
 pub mod enum_drift;
@@ -36,6 +37,11 @@ pub fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
     if config.checkers.enum_drift.enabled {
         checkers.push(Box::new(enum_drift::EnumDriftChecker::new(
             &config.checkers.enum_drift.scope,
+        )));
+    }
+    if config.checkers.agent_guidelines.enabled {
+        checkers.push(Box::new(agent_guidelines::AgentGuidelinesChecker::new(
+            &config.checkers.agent_guidelines.scope,
         )));
     }
     if !config.checkers.custom_patterns.is_empty() {

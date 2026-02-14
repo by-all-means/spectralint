@@ -26,6 +26,7 @@ pub enum Category {
     VagueDirective,
     NamingInconsistency,
     EnumDrift,
+    AgentGuidelines,
     CustomPattern(String),
 }
 
@@ -42,6 +43,7 @@ impl std::fmt::Display for Category {
             Category::VagueDirective => f.write_str("vague-directive"),
             Category::NamingInconsistency => f.write_str("naming-inconsistency"),
             Category::EnumDrift => f.write_str("enum-drift"),
+            Category::AgentGuidelines => f.write_str("agent-guidelines"),
             Category::CustomPattern(name) => write!(f, "custom:{name}"),
         }
     }
@@ -54,6 +56,8 @@ pub struct Diagnostic {
     pub severity: Severity,
     pub category: Category,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suggestion: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -62,25 +66,23 @@ pub struct CheckResult {
 }
 
 impl CheckResult {
-    pub fn error_count(&self) -> usize {
+    fn count_severity(&self, severity: Severity) -> usize {
         self.diagnostics
             .iter()
-            .filter(|d| d.severity == Severity::Error)
+            .filter(|d| d.severity == severity)
             .count()
+    }
+
+    pub fn error_count(&self) -> usize {
+        self.count_severity(Severity::Error)
     }
 
     pub fn warning_count(&self) -> usize {
-        self.diagnostics
-            .iter()
-            .filter(|d| d.severity == Severity::Warning)
-            .count()
+        self.count_severity(Severity::Warning)
     }
 
     pub fn info_count(&self) -> usize {
-        self.diagnostics
-            .iter()
-            .filter(|d| d.severity == Severity::Info)
-            .count()
+        self.count_severity(Severity::Info)
     }
 
     pub fn has_severity_at_least(&self, threshold: Severity) -> bool {
@@ -100,6 +102,7 @@ mod tests {
             severity,
             category: Category::DeadReference,
             message: "test".to_string(),
+            suggestion: None,
         }
     }
 
@@ -172,6 +175,7 @@ mod tests {
             "naming-inconsistency"
         );
         assert_eq!(Category::EnumDrift.to_string(), "enum-drift");
+        assert_eq!(Category::AgentGuidelines.to_string(), "agent-guidelines");
         assert_eq!(
             Category::CustomPattern("todo".to_string()).to_string(),
             "custom:todo"
@@ -224,6 +228,7 @@ mod tests {
                 severity: Severity::Error,
                 category: Category::DeadReference,
                 message: "msg1".to_string(),
+                suggestion: None,
             },
             Diagnostic {
                 file: PathBuf::from("a.md"),
@@ -231,6 +236,7 @@ mod tests {
                 severity: Severity::Warning,
                 category: Category::VagueDirective,
                 message: "msg2".to_string(),
+                suggestion: None,
             },
             Diagnostic {
                 file: PathBuf::from("a.md"),
@@ -238,6 +244,7 @@ mod tests {
                 severity: Severity::Info,
                 category: Category::EnumDrift,
                 message: "msg3".to_string(),
+                suggestion: None,
             },
         ];
 

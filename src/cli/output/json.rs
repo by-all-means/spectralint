@@ -16,6 +16,8 @@ struct JsonDiagnostic<'a> {
     severity: &'a Severity,
     category: &'a Category,
     message: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suggestion: Option<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -35,6 +37,7 @@ fn build_output<'a>(result: &'a CheckResult, project_root: &Path) -> JsonOutput<
             severity: &d.severity,
             category: &d.category,
             message: &d.message,
+            suggestion: d.suggestion.as_deref(),
         })
         .collect();
 
@@ -68,6 +71,7 @@ mod tests {
                 severity: Severity::Error,
                 category: Category::DeadReference,
                 message: "file not found".to_string(),
+                suggestion: None,
             }],
         };
 

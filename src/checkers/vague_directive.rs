@@ -48,6 +48,7 @@ impl Checker for VagueDirectiveChecker {
                     directive.line,
                     Severity::Info,
                     Category::VagueDirective,
+                    suggest: "Replace with a specific, deterministic instruction",
                     "Non-deterministic directive found: \"{}\"",
                     directive.pattern_matched.trim()
                 );
@@ -68,6 +69,7 @@ impl Checker for VagueDirectiveChecker {
                                 i + 1,
                                 Severity::Info,
                                 Category::VagueDirective,
+                                suggest: "Replace with a specific, deterministic instruction",
                                 "Non-deterministic directive found: \"{}\"",
                                 m.as_str().trim()
                             );

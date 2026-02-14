@@ -24,6 +24,7 @@ pub struct CheckersConfig {
     pub vague_directive: VagueDirectiveConfig,
     pub naming_inconsistency: ScopedCheckerConfig,
     pub enum_drift: ScopedCheckerConfig,
+    pub agent_guidelines: ScopedCheckerConfig,
     pub custom_patterns: Vec<CustomPattern>,
 }
 
@@ -145,6 +146,10 @@ enabled = true
 # scope = ["CLAUDE.md", "AGENTS.md", ".claude/**"]
 
 [checkers.enum_drift]
+enabled = true
+# scope = ["CLAUDE.md", "AGENTS.md", ".claude/**"]
+
+[checkers.agent_guidelines]
 enabled = true
 # scope = ["CLAUDE.md", "AGENTS.md", ".claude/**"]
 

@@ -21,6 +21,12 @@ AI agent setups (CLAUDE.md, AGENTS.md, .cursorrules, Copilot instructions) tend 
 
 These are silent bugs — the agent won't tell you it's confused. spectralint catches them deterministically, with no AI/LLM dependency, in milliseconds.
 
+## Security
+
+**No tokens. No API keys. No data leakage. 100% local.**
+
+spectralint is a standalone Rust binary that runs entirely on your machine. Your instruction files — which often contain project architecture, internal tooling names, and operational secrets — never leave your environment. There is no network access, no telemetry, no cloud dependency. Safe for air-gapped environments and enterprise security policies.
+
 ## Features
 
 - **Dead reference detection** — flags `.md` references to files that don't exist
@@ -28,6 +34,7 @@ These are silent bugs — the agent won't tell you it's confused. spectralint ca
 - **Vague directive detection** — finds non-deterministic language ("try to", "when possible")
 - **Naming inconsistency** — detects `api_key` in one file vs `apiKey` in another
 - **Enum drift** — finds tables with matching columns but divergent value sets across files
+- **Agent guidelines** — flags missing negative constraints, multi-responsibility files, unconstrained delegation, and missing output format specs
 - **Custom regex patterns** — define your own lint rules in config
 - **Inline suppression** — disable rules with `<!-- spectralint-disable -->` comments
 - **Multiple output formats** — text (colored), JSON, and GitHub Actions annotations
@@ -53,6 +60,12 @@ spectralint check . --format json
 
 # GitHub Actions annotations
 spectralint check . --format github
+
+# List all available rules
+spectralint explain
+
+# Learn why a rule matters
+spectralint explain naming-inconsistency
 ```
 
 ## Example Output
@@ -113,6 +126,10 @@ enabled = true
 # scope = ["CLAUDE.md", "AGENTS.md", ".claude/**"]
 
 [checkers.enum_drift]
+enabled = true
+# scope = ["CLAUDE.md", "AGENTS.md", ".claude/**"]
+
+[checkers.agent_guidelines]
 enabled = true
 # scope = ["CLAUDE.md", "AGENTS.md", ".claude/**"]
 

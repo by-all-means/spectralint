@@ -35,6 +35,20 @@ fn main() -> Result<()> {
             std::fs::write(&path, Config::default_toml())?;
             println!("Created .spectralintrc.toml");
         }
+        Commands::Explain { rule: None } => {
+            println!("{}", spectralint::cli::explain::list_rules());
+        }
+        Commands::Explain { rule: Some(rule) } => {
+            use spectralint::cli::explain::{explain, list_rules};
+            match explain(&rule) {
+                Some(text) => println!("{text}"),
+                None => {
+                    eprintln!("Unknown rule: {rule}\n");
+                    eprintln!("{}", list_rules());
+                    std::process::exit(1);
+                }
+            }
+        }
     }
 
     Ok(())
