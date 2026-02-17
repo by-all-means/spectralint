@@ -36,6 +36,10 @@ pub enum Commands {
         /// Minimum severity that causes a non-zero exit code
         #[arg(long, default_value = "error")]
         fail_on: Severity,
+
+        /// Enable strict mode (activates opinionated checkers)
+        #[arg(long)]
+        strict: bool,
     },
     /// Create a default .spectralintrc.toml
     Init,

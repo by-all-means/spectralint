@@ -20,13 +20,25 @@ impl std::fmt::Display for Severity {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Category {
     DeadReference,
     VagueDirective,
     NamingInconsistency,
     EnumDrift,
     AgentGuidelines,
+    PlaceholderText,
+    FileSize,
+    CredentialExposure,
+    HeadingHierarchy,
+    DangerousCommand,
+    StaleReference,
+    EmojiDensity,
+    SessionJournal,
+    MissingEssentialSections,
+    PromptInjectionVector,
+    MissingVerification,
+    NegativeOnlyFraming,
     CustomPattern(String),
 }
 
@@ -44,6 +56,18 @@ impl std::fmt::Display for Category {
             Category::NamingInconsistency => f.write_str("naming-inconsistency"),
             Category::EnumDrift => f.write_str("enum-drift"),
             Category::AgentGuidelines => f.write_str("agent-guidelines"),
+            Category::PlaceholderText => f.write_str("placeholder-text"),
+            Category::FileSize => f.write_str("file-size"),
+            Category::CredentialExposure => f.write_str("credential-exposure"),
+            Category::HeadingHierarchy => f.write_str("heading-hierarchy"),
+            Category::DangerousCommand => f.write_str("dangerous-command"),
+            Category::StaleReference => f.write_str("stale-reference"),
+            Category::EmojiDensity => f.write_str("emoji-density"),
+            Category::SessionJournal => f.write_str("session-journal"),
+            Category::MissingEssentialSections => f.write_str("missing-essential-sections"),
+            Category::PromptInjectionVector => f.write_str("prompt-injection-vector"),
+            Category::MissingVerification => f.write_str("missing-verification"),
+            Category::NegativeOnlyFraming => f.write_str("negative-only-framing"),
             Category::CustomPattern(name) => write!(f, "custom:{name}"),
         }
     }
@@ -176,6 +200,33 @@ mod tests {
         );
         assert_eq!(Category::EnumDrift.to_string(), "enum-drift");
         assert_eq!(Category::AgentGuidelines.to_string(), "agent-guidelines");
+        assert_eq!(Category::PlaceholderText.to_string(), "placeholder-text");
+        assert_eq!(Category::FileSize.to_string(), "file-size");
+        assert_eq!(
+            Category::CredentialExposure.to_string(),
+            "credential-exposure"
+        );
+        assert_eq!(Category::HeadingHierarchy.to_string(), "heading-hierarchy");
+        assert_eq!(Category::DangerousCommand.to_string(), "dangerous-command");
+        assert_eq!(Category::StaleReference.to_string(), "stale-reference");
+        assert_eq!(Category::EmojiDensity.to_string(), "emoji-density");
+        assert_eq!(Category::SessionJournal.to_string(), "session-journal");
+        assert_eq!(
+            Category::MissingEssentialSections.to_string(),
+            "missing-essential-sections"
+        );
+        assert_eq!(
+            Category::PromptInjectionVector.to_string(),
+            "prompt-injection-vector"
+        );
+        assert_eq!(
+            Category::MissingVerification.to_string(),
+            "missing-verification"
+        );
+        assert_eq!(
+            Category::NegativeOnlyFraming.to_string(),
+            "negative-only-framing"
+        );
         assert_eq!(
             Category::CustomPattern("todo".to_string()).to_string(),
             "custom:todo"
@@ -221,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_diagnostic_sort_by_file_then_line() {
-        let mut diagnostics = vec![
+        let mut diagnostics = [
             Diagnostic {
                 file: PathBuf::from("b.md"),
                 line: 10,
@@ -256,5 +307,67 @@ mod tests {
         assert_eq!(diagnostics[1].line, 5);
         assert_eq!(diagnostics[2].file, PathBuf::from("b.md"));
         assert_eq!(diagnostics[2].line, 10);
+    }
+
+    #[test]
+    fn test_structural_dedup() {
+        let mut diagnostics = vec![
+            Diagnostic {
+                file: PathBuf::from("a.md"),
+                line: 5,
+                severity: Severity::Warning,
+                category: Category::DeadReference,
+                message: "first".to_string(),
+                suggestion: None,
+            },
+            Diagnostic {
+                file: PathBuf::from("a.md"),
+                line: 5,
+                severity: Severity::Warning,
+                category: Category::DeadReference,
+                message: "first".to_string(),
+                suggestion: None,
+            },
+            Diagnostic {
+                file: PathBuf::from("a.md"),
+                line: 5,
+                severity: Severity::Info,
+                category: Category::VagueDirective,
+                message: "different rule same line".to_string(),
+                suggestion: None,
+            },
+            Diagnostic {
+                file: PathBuf::from("a.md"),
+                line: 10,
+                severity: Severity::Warning,
+                category: Category::DeadReference,
+                message: "different line".to_string(),
+                suggestion: None,
+            },
+        ];
+
+        diagnostics.sort_by(|a, b| {
+            (&a.file, a.line, &a.category, &a.message).cmp(&(
+                &b.file,
+                b.line,
+                &b.category,
+                &b.message,
+            ))
+        });
+        diagnostics.dedup_by(|a, b| {
+            a.file == b.file
+                && a.line == b.line
+                && a.category == b.category
+                && a.message == b.message
+        });
+
+        assert_eq!(
+            diagnostics.len(),
+            3,
+            "Duplicate (same category+file+line) should be removed, different category kept"
+        );
+        assert_eq!(diagnostics[0].message, "first");
+        assert_eq!(diagnostics[1].message, "different rule same line");
+        assert_eq!(diagnostics[2].message, "different line");
     }
 }

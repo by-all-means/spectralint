@@ -1,5 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::sync::LazyLock;
 
+use regex::Regex;
 use strsim::jaro_winkler;
 
 use crate::emit;
@@ -8,6 +10,28 @@ use crate::types::{Category, CheckResult, Severity};
 
 use super::utils::{normalize, ScopeFilter};
 use super::Checker;
+
+/// Patterns to skip: dates, timestamps, and YAML-like frontmatter lines.
+static DATE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^(?:\d{4}[-/]\d{2}[-/]\d{2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2},?\s*\d{4}|\d{1,2}:\d{2}\s*(?:am|pm))$").unwrap()
+});
+
+/// Leading numbered prefix like "1. ", "Step 3: ", "Phase 2: "
+static NUMBERED_PREFIX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(?:\d+\.\s*|(?:step|phase)\s+\d+[:\s]\s*)").unwrap());
+
+/// YAML-like frontmatter lines (key: value, allowed-tools:, description:)
+static YAML_FRONTMATTER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-z][-a-z_]*:").unwrap());
+
+/// Strip a leading numbered prefix from a name for comparison.
+fn strip_numbered_prefix(name: &str) -> &str {
+    if let Some(m) = NUMBERED_PREFIX.find(name) {
+        &name[m.end()..]
+    } else {
+        name
+    }
+}
 
 pub struct NamingInconsistencyChecker {
     scope: ScopeFilter,
@@ -125,12 +149,51 @@ impl Checker for NamingInconsistencyChecker {
                 let key_b = group_keys[j];
 
                 let similarity = jaro_winkler(key_a, key_b);
-                if similarity < 0.92 {
+                if similarity < 0.95 {
                     continue;
                 }
 
                 let group_a = &groups[key_a];
                 let group_b = &groups[key_b];
+
+                // Skip dates/timestamps (e.g. "Dec 5, 2025" vs "Dec 4, 2025")
+                if DATE_PATTERN.is_match(&group_a[0].original)
+                    || DATE_PATTERN.is_match(&group_b[0].original)
+                {
+                    continue;
+                }
+
+                // Skip YAML frontmatter lines (e.g. "allowed-tools: ...")
+                if YAML_FRONTMATTER.is_match(&group_a[0].original)
+                    || YAML_FRONTMATTER.is_match(&group_b[0].original)
+                {
+                    continue;
+                }
+
+                // Skip if names only differ by numbered prefix
+                // (e.g. "3. Validation Checklist" vs "4. Validation Checklist")
+                let stripped_a = strip_numbered_prefix(&group_a[0].original);
+                let stripped_b = strip_numbered_prefix(&group_b[0].original);
+                if !stripped_a.is_empty() && stripped_a.eq_ignore_ascii_case(stripped_b) {
+                    continue;
+                }
+
+                // Skip if names differ only in digits/version numbers
+                // (e.g. "Output 1: Gate YAML" vs "Output 2: Gate YAML",
+                //  "Algorithm v6" vs "Algorithm v7")
+                let no_digits_a: String = group_a[0]
+                    .original
+                    .chars()
+                    .filter(|c| !c.is_ascii_digit())
+                    .collect();
+                let no_digits_b: String = group_b[0]
+                    .original
+                    .chars()
+                    .filter(|c| !c.is_ascii_digit())
+                    .collect();
+                if !no_digits_a.is_empty() && no_digits_a.eq_ignore_ascii_case(&no_digits_b) {
+                    continue;
+                }
 
                 let files_a: HashSet<_> = group_a.iter().map(|o| o.file_idx).collect();
                 let files_b: HashSet<_> = group_b.iter().map(|o| o.file_idx).collect();
@@ -395,12 +458,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
-        // "error_handler" vs "error_handling" → high Jaro-Winkler similarity
+        // "api_configs" vs "api_config" → very high Jaro-Winkler similarity (>0.95)
         let file1 = ParsedFile {
             path: root.join("CLAUDE.md"),
             sections: vec![],
             tables: vec![Table {
-                headers: vec!["error_handler".to_string()],
+                headers: vec!["api_configs".to_string()],
                 rows: vec![],
                 line: 5,
                 parent_section: None,
@@ -415,7 +478,7 @@ mod tests {
             path: root.join("AGENTS.md"),
             sections: vec![],
             tables: vec![Table {
-                headers: vec!["error_handling".to_string()],
+                headers: vec!["api_config".to_string()],
                 rows: vec![],
                 line: 3,
                 parent_section: None,
@@ -493,6 +556,280 @@ mod tests {
         assert!(
             result.diagnostics.is_empty(),
             "Dissimilar names should not produce any diagnostics"
+        );
+    }
+
+    #[test]
+    fn test_dates_not_flagged() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        use crate::parser::types::Section;
+        let file1 = ParsedFile {
+            path: root.join("CLAUDE.md"),
+            sections: vec![Section {
+                title: "Dec 5, 2025".to_string(),
+                level: 2,
+                line: 5,
+                end_line: 5,
+            }],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: vec![],
+        };
+
+        let file2 = ParsedFile {
+            path: root.join("AGENTS.md"),
+            sections: vec![Section {
+                title: "Dec 4, 2025".to_string(),
+                level: 2,
+                line: 3,
+                end_line: 3,
+            }],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: vec![],
+        };
+
+        let ctx = CheckerContext {
+            files: vec![file1, file2],
+            project_root: root.to_path_buf(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = NamingInconsistencyChecker::new(&[]);
+        let result = checker.check(&ctx);
+        let infos: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Info)
+            .collect();
+        assert!(
+            infos.is_empty(),
+            "Dates should not be flagged as similar names"
+        );
+    }
+
+    #[test]
+    fn test_iso_dates_not_flagged() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        use crate::parser::types::Section;
+        let file1 = ParsedFile {
+            path: root.join("CLAUDE.md"),
+            sections: vec![Section {
+                title: "2025-10-27".to_string(),
+                level: 2,
+                line: 5,
+                end_line: 5,
+            }],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: vec![],
+        };
+
+        let file2 = ParsedFile {
+            path: root.join("AGENTS.md"),
+            sections: vec![Section {
+                title: "2025-08-20".to_string(),
+                level: 2,
+                line: 3,
+                end_line: 3,
+            }],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: vec![],
+        };
+
+        let ctx = CheckerContext {
+            files: vec![file1, file2],
+            project_root: root.to_path_buf(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = NamingInconsistencyChecker::new(&[]);
+        let result = checker.check(&ctx);
+        let infos: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Info)
+            .collect();
+        assert!(
+            infos.is_empty(),
+            "ISO dates should not be flagged as similar names"
+        );
+    }
+
+    #[test]
+    fn test_numbered_prefixes_not_flagged() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        use crate::parser::types::Section;
+        let file1 = ParsedFile {
+            path: root.join("CLAUDE.md"),
+            sections: vec![Section {
+                title: "3. Validation Checklist".to_string(),
+                level: 2,
+                line: 5,
+                end_line: 5,
+            }],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: vec![],
+        };
+
+        let file2 = ParsedFile {
+            path: root.join("AGENTS.md"),
+            sections: vec![Section {
+                title: "4. Validation Checklist".to_string(),
+                level: 2,
+                line: 3,
+                end_line: 3,
+            }],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: vec![],
+        };
+
+        let ctx = CheckerContext {
+            files: vec![file1, file2],
+            project_root: root.to_path_buf(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = NamingInconsistencyChecker::new(&[]);
+        let result = checker.check(&ctx);
+        let infos: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Info)
+            .collect();
+        assert!(
+            infos.is_empty(),
+            "Numbered prefixes with same body should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_step_prefixes_not_flagged() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        use crate::parser::types::Section;
+        let file1 = ParsedFile {
+            path: root.join("CLAUDE.md"),
+            sections: vec![Section {
+                title: "Step 3: Check for shared content".to_string(),
+                level: 2,
+                line: 5,
+                end_line: 5,
+            }],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: vec![],
+        };
+
+        let file2 = ParsedFile {
+            path: root.join("AGENTS.md"),
+            sections: vec![Section {
+                title: "Step 4: Check for shared content".to_string(),
+                level: 2,
+                line: 3,
+                end_line: 3,
+            }],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: vec![],
+        };
+
+        let ctx = CheckerContext {
+            files: vec![file1, file2],
+            project_root: root.to_path_buf(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = NamingInconsistencyChecker::new(&[]);
+        let result = checker.check(&ctx);
+        let infos: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Info)
+            .collect();
+        assert!(
+            infos.is_empty(),
+            "Step N: prefixes with same body should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_yaml_frontmatter_not_flagged() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let file1 = ParsedFile {
+            path: root.join("CLAUDE.md"),
+            sections: vec![],
+            tables: vec![Table {
+                headers: vec!["allowed-tools: Bash(gh pr comment:)".to_string()],
+                rows: vec![],
+                line: 1,
+                parent_section: None,
+            }],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: vec![],
+        };
+
+        let file2 = ParsedFile {
+            path: root.join("AGENTS.md"),
+            sections: vec![],
+            tables: vec![Table {
+                headers: vec!["allowed-tools: Bash(gh pr diff:)".to_string()],
+                rows: vec![],
+                line: 1,
+                parent_section: None,
+            }],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: vec![],
+        };
+
+        let ctx = CheckerContext {
+            files: vec![file1, file2],
+            project_root: root.to_path_buf(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = NamingInconsistencyChecker::new(&[]);
+        let result = checker.check(&ctx);
+        let infos: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Info)
+            .collect();
+        assert!(
+            infos.is_empty(),
+            "YAML frontmatter lines should not be flagged as similar names"
         );
     }
 }

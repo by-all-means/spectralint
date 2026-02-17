@@ -3,6 +3,9 @@
 # Directories to ignore when scanning
 ignore = ["node_modules", ".git", "target", "tests/fixtures"]
 
+# Files to skip (skill templates aren't real agent instructions)
+ignore_files = [".claude/skills/*/SKILL.md"]
+
 [checkers.dead_reference]
 enabled = true
 

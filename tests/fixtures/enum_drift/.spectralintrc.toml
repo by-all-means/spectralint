@@ -1,4 +1,2 @@
-include = ["**/*.md"]
-
 [checkers.enum_drift]
 enabled = true

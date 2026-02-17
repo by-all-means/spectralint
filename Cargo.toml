@@ -2,12 +2,16 @@
 name = "spectralint"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.80"
 description = "Static analysis for AI agent instruction files"
 license = "MIT"
+authors = ["Lukas Novak <lukas@byallmeans.co>"]
 repository = "https://github.com/by-all-means/spectralint"
+homepage = "https://github.com/by-all-means/spectralint"
 keywords = ["lint", "markdown", "ai", "agents", "static-analysis"]
 categories = ["command-line-utilities", "development-tools"]
 readme = "README.md"
+exclude = ["benchmarks/", ".github/", ".claude/"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -26,3 +30,8 @@ globset = "0.4"
 tempfile = "3.25.0"
 assert_cmd = "2"
 predicates = "3"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

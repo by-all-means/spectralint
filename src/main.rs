@@ -14,9 +14,13 @@ fn main() -> Result<()> {
             format,
             config,
             fail_on,
+            strict,
         } => {
             let project_root = path.canonicalize().unwrap_or(path);
-            let cfg = Config::load(config.as_deref(), &project_root)?;
+            let mut cfg = Config::load(config.as_deref(), &project_root)?;
+            if strict {
+                cfg.strict = true;
+            }
             let result = engine::run(&project_root, &cfg)?;
 
             let output_format = format.unwrap_or(cfg.format);

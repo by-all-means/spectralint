@@ -1,1 +1,23 @@
 /target
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.iml
+
+# Internal docs (not for public repo)
+ROADMAP.md
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key

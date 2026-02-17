@@ -4,13 +4,15 @@ use std::path::{Path, PathBuf};
 use crate::parser::types::{InlineSuppress, ParsedFile, SuppressKind};
 
 #[derive(Debug)]
-pub struct SuppressedRange {
+pub(super) struct SuppressedRange {
     rule: Option<String>,
     start_line: usize,
     end_line: usize,
 }
 
-pub fn build_suppression_set(files: &[ParsedFile]) -> HashMap<PathBuf, Vec<SuppressedRange>> {
+pub(super) fn build_suppression_set(
+    files: &[ParsedFile],
+) -> HashMap<PathBuf, Vec<SuppressedRange>> {
     files
         .iter()
         .filter_map(|file| {
@@ -63,7 +65,7 @@ fn build_ranges(comments: &[InlineSuppress], total_lines: usize) -> Vec<Suppress
     ranges
 }
 
-pub fn is_suppressed(
+pub(super) fn is_suppressed(
     suppressions: &HashMap<PathBuf, Vec<SuppressedRange>>,
     file: &Path,
     line: usize,
@@ -73,7 +75,7 @@ pub fn is_suppressed(
         ranges.iter().any(|range| {
             line >= range.start_line
                 && line <= range.end_line
-                && range.rule.as_ref().is_none_or(|rule| rule == category)
+                && range.rule.as_ref().map_or(true, |rule| rule == category)
         })
     })
 }

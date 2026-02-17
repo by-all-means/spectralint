@@ -1,4 +1,4 @@
-pub mod types;
+pub(crate) mod types;
 
 use comrak::nodes::NodeValue;
 use comrak::{parse_document, Arena, Options};
@@ -10,7 +10,7 @@ use types::{Directive, FileRef, InlineSuppress, ParsedFile, Section, SuppressKin
 
 /// Iterate over non-code-block lines, yielding `(zero_based_index, line)` pairs.
 /// Fenced code blocks (lines starting with ```) are skipped entirely.
-pub fn non_code_lines(lines: &[String]) -> impl Iterator<Item = (usize, &str)> {
+pub(crate) fn non_code_lines(lines: &[String]) -> impl Iterator<Item = (usize, &str)> {
     let mut in_code_block = false;
     lines.iter().enumerate().filter_map(move |(i, line)| {
         if line.trim().starts_with("```") {
@@ -24,10 +24,26 @@ pub fn non_code_lines(lines: &[String]) -> impl Iterator<Item = (usize, &str)> {
     })
 }
 
+/// Iterate over lines inside fenced code blocks, yielding `(zero_based_index, line)` pairs.
+/// Only lines within ``` fences are yielded (fence markers themselves are excluded).
+pub(crate) fn code_block_lines(lines: &[String]) -> impl Iterator<Item = (usize, &str)> {
+    let mut in_code_block = false;
+    lines.iter().enumerate().filter_map(move |(i, line)| {
+        if line.trim().starts_with("```") {
+            in_code_block = !in_code_block;
+            return None;
+        }
+        if in_code_block {
+            return Some((i, line.as_str()));
+        }
+        None
+    })
+}
+
 /// Returns true if a line (already outside fenced code blocks) should be
 /// scanned for directives. Skips indented code blocks, blockquotes, and
 /// table rows, which are content rather than instructions.
-pub fn is_directive_line(line: &str) -> bool {
+pub(crate) fn is_directive_line(line: &str) -> bool {
     let trimmed = line.trim();
     // Skip indented code blocks (but not list items)
     if line.starts_with("    ") && !trimmed.starts_with('-') && !trimmed.starts_with('*') {
@@ -51,23 +67,35 @@ static SUPPRESS_COMMENT: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
+/// Lines matching these patterns are descriptive or first-person discussion,
+/// not directives to the agent. Skip vague-directive detection on them.
+pub(crate) static NON_DIRECTIVE_CONTEXTS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    [
+        r"(?i)\bcan\s+be\b",                         // capability: "Can be helpful"
+        r"(?i)\bmay\s+be\b",                         // possibility: "May be useful"
+        r"(?i)\bwe\s+(?:need|should|could|might)\b", // first person: "we need to consider"
+    ]
+    .iter()
+    .map(|p| Regex::new(p).unwrap())
+    .collect()
+});
+
 static VAGUE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    // Only flag patterns that are genuinely non-deterministic for agents.
+    // Removed: "when possible", "when needed", "as needed", "when necessary",
+    // "consider" — these are normal conditionals and suggestions that agents
+    // handle fine. No prompt engineering guide specifically calls these out.
     let patterns = [
         r"(?i)\btry to\b",
-        r"(?i)\bconsider\b",
         r"(?i)\buse your judgm?ent\b",
         r"(?i)\bif appropriate\b",
         r"(?i)\bbe helpful\b",
-        r"(?i)\bwhen possible\b",
-        r"(?i)\bwhen needed\b",
-        r"(?i)\bwhen necessary\b",
-        r"(?i)\bas needed\b",
         r"(?i)\bas appropriate\b",
     ];
     patterns.iter().map(|p| Regex::new(p).unwrap()).collect()
 });
 
-pub fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
+pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
     let content = std::fs::read_to_string(path)?;
     let raw_lines: Vec<String> = content.lines().map(String::from).collect();
 
@@ -195,15 +223,30 @@ fn extract_file_refs(lines: &[String], source_path: &Path, refs: &mut Vec<FileRe
         let line_num = i + 1;
 
         for cap in FILE_REF_BACKTICK.captures_iter(line) {
-            push_unique(refs, cap[1].to_string(), line_num);
+            let path = &cap[1];
+            // Skip backtick captures containing whitespace (commands like `wc -c CLAUDE.md`)
+            if path.contains(' ') {
+                continue;
+            }
+            push_unique(refs, path.to_string(), line_num);
         }
 
         for cap in FILE_REF_LINK.captures_iter(line) {
-            push_unique(refs, cap[2].to_string(), line_num);
+            let path = &cap[2];
+            // Skip URLs — they're not local file references
+            if path.starts_with("http://") || path.starts_with("https://") {
+                continue;
+            }
+            push_unique(refs, path.to_string(), line_num);
         }
 
         for cap in FILE_REF_BARE.captures_iter(line) {
-            push_unique(refs, cap[1].to_string(), line_num);
+            let path = &cap[1];
+            // Skip URLs in bare references too
+            if path.starts_with("http://") || path.starts_with("https://") {
+                continue;
+            }
+            push_unique(refs, path.to_string(), line_num);
         }
     }
 }
@@ -211,6 +254,11 @@ fn extract_file_refs(lines: &[String], source_path: &Path, refs: &mut Vec<FileRe
 fn extract_directives(lines: &[String], directives: &mut Vec<Directive>) {
     for (i, line) in non_code_lines(lines) {
         if !is_directive_line(line) {
+            continue;
+        }
+
+        // Skip lines that are descriptive/discussion rather than directives
+        if NON_DIRECTIVE_CONTEXTS.iter().any(|p| p.is_match(line)) {
             continue;
         }
 
@@ -357,6 +405,44 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_vague_in_capability_description_skipped() {
+        let parsed = parse_str("Can be helpful for system design questions.\n");
+        assert!(
+            parsed.directives.is_empty(),
+            "\"can be\" context should suppress vague directive detection"
+        );
+    }
+
+    #[test]
+    fn test_vague_in_first_person_discussion_skipped() {
+        let parsed = parse_str("We need to consider the best approach.\n");
+        assert!(
+            parsed.directives.is_empty(),
+            "\"we need to\" context should suppress vague directive detection"
+        );
+    }
+
+    #[test]
+    fn test_vague_in_possibility_description_skipped() {
+        let parsed = parse_str("This may be helpful when troubleshooting.\n");
+        assert!(
+            parsed.directives.is_empty(),
+            "\"may be\" context should suppress vague directive detection"
+        );
+    }
+
+    #[test]
+    fn test_vague_in_directive_still_detected() {
+        // Plain directive without non-directive context should still flag
+        let parsed = parse_str("Try to follow the coding standards.\n");
+        assert_eq!(
+            parsed.directives.len(),
+            1,
+            "Plain vague directives should still be detected"
+        );
+    }
+
     // ── Item 6: File reference regex edge cases ──────────────────────────
 
     #[test]
@@ -388,6 +474,31 @@ mod tests {
     #[test]
     fn test_link_ref_detected() {
         let parsed = parse_str("See [guide](docs/guide.md) for details.\n");
+        assert_eq!(parsed.file_refs.len(), 1);
+        assert_eq!(parsed.file_refs[0].path, "docs/guide.md");
+    }
+
+    #[test]
+    fn test_url_link_ref_skipped() {
+        let parsed = parse_str("See [standard](https://code.claude.com/docs/en/skills.md) here.\n");
+        assert!(
+            parsed.file_refs.is_empty(),
+            "URLs in markdown links should not be extracted as file refs"
+        );
+    }
+
+    #[test]
+    fn test_backtick_command_with_space_skipped() {
+        let parsed = parse_str("Check size: `wc -c CLAUDE.md`\n");
+        assert!(
+            parsed.file_refs.is_empty(),
+            "Backtick commands containing spaces should not be extracted as file refs"
+        );
+    }
+
+    #[test]
+    fn test_backtick_file_ref_without_space_still_works() {
+        let parsed = parse_str("Load `docs/guide.md` for details.\n");
         assert_eq!(parsed.file_refs.len(), 1);
         assert_eq!(parsed.file_refs[0].path, "docs/guide.md");
     }

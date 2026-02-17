@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use super::cross_ref::build_glob_set;
 use crate::config::Config;
 
-pub fn scan(root: &Path, config: &Config) -> Vec<PathBuf> {
+pub(crate) fn scan(root: &Path, config: &Config) -> Vec<PathBuf> {
     let ignore_set = build_glob_set(&config.ignore);
     let ignore_files_set = build_glob_set(&config.ignore_files);
     let include_set = build_glob_set(&config.include);
@@ -64,9 +64,10 @@ mod tests {
     use std::fs;
 
     fn all_md_config() -> Config {
-        let mut config = Config::default();
-        config.include = vec!["**/*.md".to_string()];
-        config
+        Config {
+            include: vec!["**/*.md".to_string()],
+            ..Config::default()
+        }
     }
 
     #[test]
@@ -177,8 +178,10 @@ mod tests {
         fs::write(dir.path().join("CLAUDE.md"), "# Instructions").unwrap();
         fs::write(dir.path().join("readme.md"), "# Readme").unwrap();
 
-        let mut config = Config::default();
-        config.include = vec![];
+        let config = Config {
+            include: vec![],
+            ..Config::default()
+        };
         let files = scan(dir.path(), &config);
         assert!(files.is_empty());
     }

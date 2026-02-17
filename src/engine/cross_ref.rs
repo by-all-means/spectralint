@@ -14,7 +14,7 @@ pub struct CheckerContext {
 }
 
 impl CheckerContext {
-    pub fn build(
+    pub(crate) fn build(
         files: Vec<ParsedFile>,
         project_root: &Path,
         historical_patterns: &[String],

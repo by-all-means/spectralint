@@ -5,10 +5,10 @@ use globset::GlobSet;
 use crate::engine::cross_ref::build_glob_set;
 use crate::engine::scanner::matches_glob;
 
-pub struct ScopeFilter(Option<GlobSet>);
+pub(crate) struct ScopeFilter(Option<GlobSet>);
 
 impl ScopeFilter {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self(if scope_patterns.is_empty() {
             None
         } else {
@@ -16,10 +16,10 @@ impl ScopeFilter {
         })
     }
 
-    pub fn includes(&self, path: &Path, root: &Path) -> bool {
+    pub(crate) fn includes(&self, path: &Path, root: &Path) -> bool {
         self.0
             .as_ref()
-            .is_none_or(|set| matches_glob(path, root, set))
+            .map_or(true, |set| matches_glob(path, root, set))
     }
 }
 
@@ -27,7 +27,7 @@ impl ScopeFilter {
 /// lowercasing all parts, and joining with `_`.
 ///
 /// Handles all-caps acronyms: `HTTPRequest` -> `http_request`, `APIKey` -> `api_key`.
-pub fn normalize(name: &str) -> String {
+pub(crate) fn normalize(name: &str) -> String {
     let mut parts = Vec::new();
     let mut current = String::new();
 
@@ -85,6 +85,54 @@ pub fn normalize(name: &str) -> String {
     }
 
     parts.join("_")
+}
+
+#[cfg(test)]
+pub mod test_helpers {
+    use crate::engine::cross_ref::CheckerContext;
+    use crate::parser::types::ParsedFile;
+    use crate::types::CheckResult;
+    use std::collections::HashSet;
+
+    /// Build a `CheckerContext` containing a single file with the given raw lines,
+    /// located at `<tempdir>/CLAUDE.md`. Returns `(tempdir, context)` — the caller
+    /// must keep `tempdir` alive for the duration of the test.
+    pub fn single_file_ctx(lines: &[&str]) -> (tempfile::TempDir, CheckerContext) {
+        single_file_ctx_with_sections(lines, vec![])
+    }
+
+    /// Like [`single_file_ctx`] but also attaches parsed sections.
+    pub fn single_file_ctx_with_sections(
+        lines: &[&str],
+        sections: Vec<crate::parser::types::Section>,
+    ) -> (tempfile::TempDir, CheckerContext) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let file = ParsedFile {
+            path: root.join("CLAUDE.md"),
+            sections,
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: lines.iter().map(|s| s.to_string()).collect(),
+        };
+        let ctx = CheckerContext {
+            files: vec![file],
+            project_root: root.to_path_buf(),
+            historical_indices: HashSet::new(),
+        };
+        (dir, ctx)
+    }
+
+    /// Count diagnostics whose message contains the given substring.
+    pub fn count_matching(result: &CheckResult, substring: &str) -> usize {
+        result
+            .diagnostics
+            .iter()
+            .filter(|d| d.message.contains(substring))
+            .count()
+    }
 }
 
 #[cfg(test)]

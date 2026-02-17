@@ -1,6 +1,6 @@
-pub mod cross_ref;
-pub mod scanner;
-pub mod suppress;
+pub(crate) mod cross_ref;
+pub(crate) mod scanner;
+mod suppress;
 
 use anyhow::Result;
 use rayon::prelude::*;
@@ -42,9 +42,12 @@ pub fn run(project_root: &Path, config: &Config) -> Result<CheckResult> {
         !suppress::is_suppressed(&suppressions, &d.file, d.line, &d.category.to_string())
     });
 
-    result
-        .diagnostics
-        .sort_by(|a, b| (&a.file, a.line).cmp(&(&b.file, b.line)));
+    result.diagnostics.sort_by(|a, b| {
+        (&a.file, a.line, &a.category, &a.message).cmp(&(&b.file, b.line, &b.category, &b.message))
+    });
+    result.diagnostics.dedup_by(|a, b| {
+        a.file == b.file && a.line == b.line && a.category == b.category && a.message == b.message
+    });
 
     Ok(result)
 }

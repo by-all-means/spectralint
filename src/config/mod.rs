@@ -10,6 +10,7 @@ use crate::types::Severity;
 pub struct Config {
     #[serde(skip)]
     pub format: OutputFormat,
+    pub strict: bool,
     pub include: Vec<String>,
     pub ignore: Vec<String>,
     pub ignore_files: Vec<String>,
@@ -17,7 +18,7 @@ pub struct Config {
     pub checkers: CheckersConfig,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct CheckersConfig {
     pub dead_reference: ScopedCheckerConfig,
@@ -25,13 +26,151 @@ pub struct CheckersConfig {
     pub naming_inconsistency: ScopedCheckerConfig,
     pub enum_drift: ScopedCheckerConfig,
     pub agent_guidelines: ScopedCheckerConfig,
+    pub placeholder_text: ScopedCheckerConfig,
+    pub file_size: FileSizeConfig,
+    pub credential_exposure: ScopedCheckerConfig,
+    pub heading_hierarchy: ScopedCheckerConfig,
+    pub dangerous_command: ScopedCheckerConfig,
+    pub stale_reference: ScopedCheckerConfig,
+    pub emoji_density: EmojiDensityConfig,
+    pub session_journal: ScopedCheckerConfig,
+    pub missing_essential_sections: MissingEssentialSectionsConfig,
+    pub prompt_injection_vector: ScopedCheckerConfig,
+    pub missing_verification: MissingVerificationConfig,
+    pub negative_only_framing: NegativeOnlyFramingConfig,
     pub custom_patterns: Vec<CustomPattern>,
+}
+
+impl Default for CheckersConfig {
+    fn default() -> Self {
+        Self {
+            dead_reference: ScopedCheckerConfig::default(),
+            vague_directive: VagueDirectiveConfig::default(),
+            naming_inconsistency: ScopedCheckerConfig::default(),
+            // Strict-only checkers: disabled by default, enabled by strict = true
+            enum_drift: ScopedCheckerConfig {
+                enabled: false,
+                ..Default::default()
+            },
+            agent_guidelines: ScopedCheckerConfig {
+                enabled: false,
+                ..Default::default()
+            },
+            placeholder_text: ScopedCheckerConfig::default(),
+            file_size: FileSizeConfig::default(),
+            credential_exposure: ScopedCheckerConfig::default(),
+            heading_hierarchy: ScopedCheckerConfig {
+                enabled: false,
+                ..Default::default()
+            },
+            dangerous_command: ScopedCheckerConfig::default(),
+            stale_reference: ScopedCheckerConfig::default(),
+            emoji_density: EmojiDensityConfig::default(),
+            session_journal: ScopedCheckerConfig::default(),
+            missing_essential_sections: MissingEssentialSectionsConfig::default(),
+            prompt_injection_vector: ScopedCheckerConfig::default(),
+            missing_verification: MissingVerificationConfig::default(),
+            negative_only_framing: NegativeOnlyFramingConfig::default(),
+            custom_patterns: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct EmojiDensityConfig {
+    pub enabled: bool,
+    pub max_emoji: usize,
+}
+
+impl Default for EmojiDensityConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_emoji: 10,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct MissingEssentialSectionsConfig {
+    pub enabled: bool,
+    pub min_lines: usize,
+    pub scope: Vec<String>,
+}
+
+impl Default for MissingEssentialSectionsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            min_lines: 10,
+            scope: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct MissingVerificationConfig {
+    pub enabled: bool,
+    pub min_action_verbs: usize,
+    pub scope: Vec<String>,
+}
+
+impl Default for MissingVerificationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            min_action_verbs: 2,
+            scope: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct NegativeOnlyFramingConfig {
+    pub enabled: bool,
+    pub threshold: f64,
+    pub min_negative_count: usize,
+    pub scope: Vec<String>,
+}
+
+impl Default for NegativeOnlyFramingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            threshold: 0.75,
+            min_negative_count: 5,
+            scope: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct FileSizeConfig {
+    pub enabled: bool,
+    pub max_lines: usize,
+    pub warn_lines: usize,
+}
+
+impl Default for FileSizeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_lines: 500,
+            warn_lines: 300,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct VagueDirectiveConfig {
     pub enabled: bool,
+    pub strict: bool,
     pub extra_patterns: Vec<String>,
     pub scope: Vec<String>,
 }
@@ -60,6 +199,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             format: OutputFormat::Text,
+            strict: false,
             include: vec![
                 "CLAUDE.md".into(),
                 "AGENTS.md".into(),
@@ -84,6 +224,7 @@ impl Default for VagueDirectiveConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            strict: false,
             extra_patterns: Vec::new(),
             scope: Vec::new(),
         }
@@ -133,11 +274,16 @@ ignore = ["node_modules", ".git", "target"]
 # Patterns are matched case-insensitively.
 # historical_files = ["changelog*", "retro*", "history*", "archive*", "restart*"]
 
+# Strict mode enables opinionated checks that go beyond documented best practices.
+# These checks are off by default because they enforce opinions rather than catch bugs.
+# strict = true
+
 [checkers.dead_reference]
 enabled = true
 
 [checkers.vague_directive]
 enabled = true
+# strict = true  # also flag "when possible", "when needed", "as needed", "consider"
 # extra_patterns = ["(?i)\\bmaybe\\b", "(?i)\\bprobably\\b"]
 # scope = ["CLAUDE.md", "AGENTS.md", ".claude/**"]
 
@@ -145,13 +291,59 @@ enabled = true
 enabled = true
 # scope = ["CLAUDE.md", "AGENTS.md", ".claude/**"]
 
-[checkers.enum_drift]
+[checkers.placeholder_text]
 enabled = true
+
+[checkers.file_size]
+enabled = true
+max_lines = 500
+warn_lines = 300
+
+[checkers.credential_exposure]
+enabled = true
+
+[checkers.dangerous_command]
+enabled = true
+
+[checkers.stale_reference]
+enabled = true
+
+[checkers.session_journal]
+enabled = true
+
+[checkers.missing_essential_sections]
+enabled = true
+min_lines = 10
+
+[checkers.prompt_injection_vector]
+enabled = true
+
+# ── Strict-only checks (disabled by default, enabled by strict = true) ──
+# These are opinionated or noisy checks disabled by default.
+
+# [checkers.enum_drift]
+# enabled = true
 # scope = ["CLAUDE.md", "AGENTS.md", ".claude/**"]
 
-[checkers.agent_guidelines]
-enabled = true
+# [checkers.agent_guidelines]
+# enabled = true
 # scope = ["CLAUDE.md", "AGENTS.md", ".claude/**"]
+
+# [checkers.heading_hierarchy]
+# enabled = true
+
+# [checkers.emoji_density]
+# enabled = true
+# max_emoji = 10
+
+# [checkers.missing_verification]
+# enabled = true
+# min_action_verbs = 2
+
+# [checkers.negative_only_framing]
+# enabled = true
+# threshold = 0.75
+# min_negative_count = 5
 
 # Custom regex patterns:
 # [[checkers.custom_patterns]]
@@ -176,7 +368,10 @@ mod tests {
         assert!(config.checkers.vague_directive.scope.is_empty());
         assert!(config.checkers.naming_inconsistency.enabled);
         assert!(config.checkers.naming_inconsistency.scope.is_empty());
-        assert!(config.checkers.enum_drift.enabled);
+        assert!(
+            !config.checkers.enum_drift.enabled,
+            "enum_drift should be disabled by default (strict-only)"
+        );
         assert!(config.checkers.enum_drift.scope.is_empty());
         assert_eq!(config.ignore.len(), 3);
         assert_eq!(config.include.len(), 4);
@@ -255,6 +450,23 @@ scope = [".claude/**"]
             config.checkers.naming_inconsistency.scope,
             vec![".claude/**"]
         );
+    }
+
+    #[test]
+    fn test_parse_strict_vague_directive() {
+        let toml_str = r#"
+[checkers.vague_directive]
+enabled = true
+strict = true
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.checkers.vague_directive.strict);
+    }
+
+    #[test]
+    fn test_default_strict_is_false() {
+        let config = Config::default();
+        assert!(!config.checkers.vague_directive.strict);
     }
 
     #[test]
