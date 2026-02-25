@@ -7,7 +7,7 @@ use crate::engine::cross_ref::CheckerContext;
 use crate::parser::types::Table;
 use crate::types::{Category, CheckResult, Severity};
 
-use super::utils::{normalize, ScopeFilter};
+use super::utils::{is_instruction_file, normalize, ScopeFilter};
 use super::Checker;
 
 pub struct EnumDriftChecker {
@@ -40,6 +40,7 @@ impl Checker for EnumDriftChecker {
             .filter(|(file_idx, f)| {
                 !ctx.historical_indices.contains(file_idx)
                     && self.scope.includes(&f.path, &ctx.project_root)
+                    && is_instruction_file(&f.raw_lines)
             })
             .flat_map(|(file_idx, file)| {
                 file.tables.iter().map(move |table| TableRef {
@@ -173,6 +174,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
+        let imperative_lines = vec![
+            "Always follow the rules.".to_string(),
+            "Never skip validation.".to_string(),
+            "Ensure correctness.".to_string(),
+        ];
+
         let file1 = ParsedFile {
             path: root.join("CLAUDE.md"),
             sections: vec![],
@@ -189,7 +196,7 @@ mod tests {
             file_refs: vec![],
             directives: vec![],
             suppress_comments: vec![],
-            raw_lines: vec![],
+            raw_lines: imperative_lines.clone(),
         };
 
         let file2 = ParsedFile {
@@ -208,7 +215,7 @@ mod tests {
             file_refs: vec![],
             directives: vec![],
             suppress_comments: vec![],
-            raw_lines: vec![],
+            raw_lines: imperative_lines,
         };
 
         let ctx = CheckerContext {
@@ -599,6 +606,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
+        let imperative_lines = vec![
+            "Always follow the rules.".to_string(),
+            "Never skip validation.".to_string(),
+            "Ensure correctness.".to_string(),
+        ];
+
         let file1 = ParsedFile {
             path: root.join("CLAUDE.md"),
             sections: vec![],
@@ -614,7 +627,7 @@ mod tests {
             file_refs: vec![],
             directives: vec![],
             suppress_comments: vec![],
-            raw_lines: vec![],
+            raw_lines: imperative_lines.clone(),
         };
 
         let file2 = ParsedFile {
@@ -632,7 +645,7 @@ mod tests {
             file_refs: vec![],
             directives: vec![],
             suppress_comments: vec![],
-            raw_lines: vec![],
+            raw_lines: imperative_lines,
         };
 
         let ctx = CheckerContext {
@@ -662,6 +675,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
+        let imperative_lines = vec![
+            "Always follow the rules.".to_string(),
+            "Never skip validation.".to_string(),
+            "Ensure correctness.".to_string(),
+        ];
+
         let long_value = "a".repeat(60);
         let file1 = ParsedFile {
             path: root.join("CLAUDE.md"),
@@ -675,7 +694,7 @@ mod tests {
             file_refs: vec![],
             directives: vec![],
             suppress_comments: vec![],
-            raw_lines: vec![],
+            raw_lines: imperative_lines.clone(),
         };
 
         let file2 = ParsedFile {
@@ -690,7 +709,7 @@ mod tests {
             file_refs: vec![],
             directives: vec![],
             suppress_comments: vec![],
-            raw_lines: vec![],
+            raw_lines: imperative_lines,
         };
 
         let ctx = CheckerContext {

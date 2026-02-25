@@ -43,6 +43,16 @@ static STALE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     .collect()
 });
 
+/// Time markers in descriptive/project-context prose are often legitimate
+/// snapshots ("runway until...", "as of ..."), not stale instructions.
+/// Require at least one directive/action signal before flagging.
+static ACTION_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)\b(?:use|switch|migrate|move|replace|run|execute|update|enable|disable|must|should|need(?:s)?\s+to|deprecated)\b",
+    )
+    .unwrap()
+});
+
 impl Checker for StaleReferenceChecker {
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
@@ -55,6 +65,11 @@ impl Checker for StaleReferenceChecker {
             for (i, line) in non_code_lines(&file.raw_lines) {
                 // Skip "deprecated in favor/lieu/preference" — permanent statements
                 if DEPRECATED_PERMANENT.is_match(line) {
+                    continue;
+                }
+
+                // Focus on actionable instructions; skip descriptive status prose.
+                if !ACTION_CONTEXT.is_match(line) {
                     continue;
                 }
 
@@ -103,7 +118,7 @@ mod tests {
 
     #[test]
     fn test_before_year_detected() {
-        let result = run_check(&["Before 2024 this was different"]);
+        let result = run_check(&["Before 2024, use the legacy endpoint"]);
         assert_eq!(result.diagnostics.len(), 1);
     }
 
@@ -148,8 +163,17 @@ mod tests {
 
     #[test]
     fn test_as_of_detected() {
-        let result = run_check(&["As of January 2026, the old endpoint is gone"]);
+        let result = run_check(&["As of January 2026, use the v2 endpoint"]);
         assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_descriptive_snapshot_skipped() {
+        let result = run_check(&["Current runway: 20 months (until September 2025)"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Descriptive status snapshots should not trigger stale-reference"
+        );
     }
 
     #[test]

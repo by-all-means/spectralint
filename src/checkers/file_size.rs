@@ -8,13 +8,15 @@ use super::Checker;
 pub struct FileSizeChecker {
     warn_lines: usize,
     max_lines: usize,
+    strict: bool,
 }
 
 impl FileSizeChecker {
-    pub fn new(config: &FileSizeConfig) -> Self {
+    pub fn new(config: &FileSizeConfig, strict: bool) -> Self {
         Self {
             warn_lines: config.warn_lines,
             max_lines: config.max_lines,
+            strict,
         }
     }
 }
@@ -27,11 +29,16 @@ impl Checker for FileSizeChecker {
             let line_count = file.raw_lines.len();
 
             if line_count >= self.max_lines {
+                let severity = if self.strict {
+                    Severity::Warning
+                } else {
+                    Severity::Info
+                };
                 emit!(
                     result,
                     file.path,
                     1,
-                    Severity::Warning,
+                    severity,
                     Category::FileSize,
                     suggest: "Split into focused sub-files and use file references for progressive disclosure",
                     "File has {} lines (exceeds {} line limit). Large instruction files cause \
@@ -66,6 +73,10 @@ mod tests {
     use std::collections::HashSet;
 
     fn run_check_with_lines(line_count: usize) -> CheckResult {
+        run_check_with_lines_strict(line_count, false)
+    }
+
+    fn run_check_with_lines_strict(line_count: usize, strict: bool) -> CheckResult {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         let lines: Vec<String> = (0..line_count).map(|i| format!("Line {i}")).collect();
@@ -84,7 +95,7 @@ mod tests {
             historical_indices: HashSet::new(),
         };
         let config = FileSizeConfig::default();
-        FileSizeChecker::new(&config).check(&ctx)
+        FileSizeChecker::new(&config, strict).check(&ctx)
     }
 
     #[test]
@@ -95,28 +106,35 @@ mod tests {
 
     #[test]
     fn test_warn_threshold_info() {
-        let result = run_check_with_lines(300);
+        let result = run_check_with_lines(400);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].severity, Severity::Info);
     }
 
     #[test]
-    fn test_max_threshold_warning() {
+    fn test_below_warn_threshold_no_diagnostic() {
+        let result = run_check_with_lines(399);
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_max_threshold_info_in_default_mode() {
         let result = run_check_with_lines(500);
         assert_eq!(result.diagnostics.len(), 1);
-        assert_eq!(result.diagnostics[0].severity, Severity::Warning);
+        assert_eq!(result.diagnostics[0].severity, Severity::Info);
     }
 
     #[test]
-    fn test_above_max_warning() {
+    fn test_above_max_info_in_default_mode() {
         let result = run_check_with_lines(600);
         assert_eq!(result.diagnostics.len(), 1);
-        assert_eq!(result.diagnostics[0].severity, Severity::Warning);
+        assert_eq!(result.diagnostics[0].severity, Severity::Info);
     }
 
     #[test]
-    fn test_just_below_warn_no_diagnostic() {
-        let result = run_check_with_lines(299);
-        assert!(result.diagnostics.is_empty());
+    fn test_max_threshold_warning_in_strict_mode() {
+        let result = run_check_with_lines_strict(500, true);
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(result.diagnostics[0].severity, Severity::Warning);
     }
 }

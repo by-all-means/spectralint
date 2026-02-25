@@ -39,6 +39,14 @@ pub enum Category {
     PromptInjectionVector,
     MissingVerification,
     NegativeOnlyFraming,
+    ConflictingDirectives,
+    MissingRoleDefinition,
+    RedundantDirective,
+    InstructionDensity,
+    MissingExamples,
+    UnboundedScope,
+    CircularReference,
+    LargeCodeBlock,
     CustomPattern(String),
 }
 
@@ -68,6 +76,14 @@ impl std::fmt::Display for Category {
             Category::PromptInjectionVector => f.write_str("prompt-injection-vector"),
             Category::MissingVerification => f.write_str("missing-verification"),
             Category::NegativeOnlyFraming => f.write_str("negative-only-framing"),
+            Category::ConflictingDirectives => f.write_str("conflicting-directives"),
+            Category::MissingRoleDefinition => f.write_str("missing-role-definition"),
+            Category::RedundantDirective => f.write_str("redundant-directive"),
+            Category::InstructionDensity => f.write_str("instruction-density"),
+            Category::MissingExamples => f.write_str("missing-examples"),
+            Category::UnboundedScope => f.write_str("unbounded-scope"),
+            Category::CircularReference => f.write_str("circular-reference"),
+            Category::LargeCodeBlock => f.write_str("large-code-block"),
             Category::CustomPattern(name) => write!(f, "custom:{name}"),
         }
     }
@@ -117,7 +133,6 @@ impl CheckResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     fn make_diagnostic(severity: Severity) -> Diagnostic {
         Diagnostic {
@@ -227,6 +242,29 @@ mod tests {
             Category::NegativeOnlyFraming.to_string(),
             "negative-only-framing"
         );
+        assert_eq!(
+            Category::ConflictingDirectives.to_string(),
+            "conflicting-directives"
+        );
+        assert_eq!(
+            Category::MissingRoleDefinition.to_string(),
+            "missing-role-definition"
+        );
+        assert_eq!(
+            Category::RedundantDirective.to_string(),
+            "redundant-directive"
+        );
+        assert_eq!(
+            Category::InstructionDensity.to_string(),
+            "instruction-density"
+        );
+        assert_eq!(Category::MissingExamples.to_string(), "missing-examples");
+        assert_eq!(Category::UnboundedScope.to_string(), "unbounded-scope");
+        assert_eq!(
+            Category::CircularReference.to_string(),
+            "circular-reference"
+        );
+        assert_eq!(Category::LargeCodeBlock.to_string(), "large-code-block");
         assert_eq!(
             Category::CustomPattern("todo".to_string()).to_string(),
             "custom:todo"

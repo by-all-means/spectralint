@@ -1,19 +1,62 @@
 use std::path::Path;
+use std::sync::LazyLock;
 
 use globset::GlobSet;
+use regex::Regex;
 
 use crate::engine::cross_ref::build_glob_set;
 use crate::engine::scanner::matches_glob;
+use crate::parser::{is_directive_line, non_code_lines};
+
+/// Returns `true` if the file-ref path looks like a template, glob, shell
+/// variable, or placeholder path that should not be resolved against disk.
+///
+/// Shared by `dead_reference` and `circular_reference` so the skip logic
+/// stays in sync.
+pub(crate) fn is_template_ref(path: &str) -> bool {
+    path.contains(['*', '[', '{', '<', '>'])
+        || path.starts_with('~')
+        || path.starts_with('/')
+        || path.contains('$')
+        || path.starts_with("path/to/")
+        || path.starts_with('@')
+        || path.starts_with("example/")
+}
+
+/// Minimum number of non-empty directive lines for a file to be considered
+/// a substantive instruction file (used by multiple checkers).
+pub(crate) const MIN_DIRECTIVE_LINES: usize = 5;
+
+/// Count non-empty directive lines outside code blocks.
+pub(crate) fn count_directive_lines(raw_lines: &[String]) -> usize {
+    non_code_lines(raw_lines)
+        .filter(|(_, line)| is_directive_line(line) && !line.trim().is_empty())
+        .count()
+}
+
+/// Imperative verbs that signal a file is giving instructions, not just describing context.
+static IMPERATIVE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(?:must|always|never|do\s+not|don't|ensure|avoid|use|run|follow|make\s+sure|shall|need\s+to|check|verify)\b").unwrap()
+});
+
+/// Minimum imperative lines for a file to be considered an instruction file.
+const MIN_IMPERATIVE_LINES: usize = 3;
+
+/// Returns `true` if the file has enough imperative content to be considered
+/// an instruction file (as opposed to a context dump, activity log, or curated list).
+pub(crate) fn is_instruction_file(raw_lines: &[String]) -> bool {
+    let count = non_code_lines(raw_lines)
+        .filter(|(_, line)| is_directive_line(line) && IMPERATIVE_PATTERN.is_match(line))
+        .count();
+    count >= MIN_IMPERATIVE_LINES
+}
 
 pub(crate) struct ScopeFilter(Option<GlobSet>);
 
 impl ScopeFilter {
     pub(crate) fn new(scope_patterns: &[String]) -> Self {
-        Self(if scope_patterns.is_empty() {
-            None
-        } else {
-            Some(build_glob_set(scope_patterns))
-        })
+        let glob_set = (!scope_patterns.is_empty()).then(|| build_glob_set(scope_patterns));
+        Self(glob_set)
     }
 
     pub(crate) fn includes(&self, path: &Path, root: &Path) -> bool {

@@ -28,7 +28,7 @@ impl MissingVerificationChecker {
 /// These sections use action verbs in explanatory context ("the migration updated X")
 /// rather than instructing the reader to perform actions.
 static INFORMATIONAL_TITLE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:overview|architecture|design|pattern|migration|history|background|how\s+it\s+works|data\s+flow|key\s+(?:concepts|differences|components|classes|technologies)|compatibility|important\s+(?:patterns|notes))\b").unwrap()
+    Regex::new(r"(?i)\b(?:overview|architecture|design|pattern|migration|history|background|how\s+it\s+works|data\s+flow|key\s+(?:concepts|differences|components|classes|technologies)|compatibility|important\s+(?:patterns|notes)|endpoint|api|command|convention|standard|style|permission|pitfall|troubleshoot|faq|reference|structure|schema|model|summary|table\s+of\s+contents|contents|next\s+steps|auto[- ]?approved|authorized|capabilities|features|tools|getting\s+started|quick\s+start)\b").unwrap()
 });
 
 /// Action verbs that indicate procedural steps (not style guidance).
@@ -72,6 +72,39 @@ impl Checker for MissingVerificationChecker {
     }
 }
 
+/// List markers to strip before checking for backtick-leading content.
+static CMD_REF_LIST_MARKER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*(?:[-*+]|\d+\.)\s*").unwrap());
+
+/// Returns true if >60% of content lines in a section start with a backtick
+/// after stripping list markers. Indicates a command-reference section.
+fn is_command_reference(section_lines: &[String]) -> bool {
+    let mut content_lines = 0;
+    let mut backtick_lines = 0;
+    let mut in_code_block = false;
+
+    for line in section_lines {
+        if line.trim().starts_with("```") {
+            in_code_block = !in_code_block;
+            continue;
+        }
+        if in_code_block {
+            continue;
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        content_lines += 1;
+        let stripped = CMD_REF_LIST_MARKER.replace(trimmed, "");
+        if stripped.starts_with('`') {
+            backtick_lines += 1;
+        }
+    }
+
+    content_lines >= 3 && backtick_lines as f64 / content_lines as f64 > 0.6
+}
+
 fn check_sections(file: &ParsedFile, min_action_verbs: usize, result: &mut CheckResult) {
     for section in &file.sections {
         // Get lines for this section
@@ -92,6 +125,13 @@ fn check_sections(file: &ParsedFile, min_action_verbs: usize, result: &mut Check
         // Skip informational/descriptive sections — they use action verbs in
         // explanatory context, not as procedural instructions.
         if INFORMATIONAL_TITLE.is_match(&section.title) {
+            continue;
+        }
+
+        // Skip command-reference sections: if >60% of non-blank, non-heading content
+        // lines start with a backtick (after stripping list markers), this is a reference
+        // list, not a procedural section.
+        if is_command_reference(section_lines) {
             continue;
         }
 
@@ -151,7 +191,7 @@ mod tests {
         let (_dir, ctx) = single_file_ctx_with_sections(lines, sections);
         let config = MissingVerificationConfig {
             enabled: true,
-            min_action_verbs: 2,
+            min_action_verbs: 4,
             scope: Vec::new(),
         };
         MissingVerificationChecker::new(&config).check(&ctx)
@@ -166,6 +206,7 @@ mod tests {
                 "Run the build command.",
                 "Execute the migration script.",
                 "Install the dependencies.",
+                "Create the config file.",
                 "",
                 "# Other",
                 "",
@@ -176,13 +217,13 @@ mod tests {
                     level: 1,
                     title: "Setup".to_string(),
                     line: 1,
-                    end_line: 6,
+                    end_line: 7,
                 },
                 Section {
                     level: 1,
                     title: "Other".to_string(),
-                    line: 7,
-                    end_line: 9,
+                    line: 8,
+                    end_line: 10,
                 },
             ],
         );
@@ -199,6 +240,8 @@ mod tests {
                 "",
                 "Run the build command.",
                 "Execute the migration.",
+                "Install the packages.",
+                "Create the database.",
                 "Verify the output is correct.",
                 "",
                 "# Other",
@@ -210,13 +253,13 @@ mod tests {
                     level: 1,
                     title: "Setup".to_string(),
                     line: 1,
-                    end_line: 6,
+                    end_line: 8,
                 },
                 Section {
                     level: 1,
                     title: "Other".to_string(),
-                    line: 7,
-                    end_line: 9,
+                    line: 9,
+                    end_line: 11,
                 },
             ],
         );
@@ -234,6 +277,8 @@ mod tests {
                 "",
                 "Run the build command.",
                 "Execute the migration.",
+                "Install the packages.",
+                "Create the config.",
                 "",
                 "```",
                 "cargo test",
@@ -248,13 +293,13 @@ mod tests {
                     level: 1,
                     title: "Setup".to_string(),
                     line: 1,
-                    end_line: 9,
+                    end_line: 11,
                 },
                 Section {
                     level: 1,
                     title: "Other".to_string(),
-                    line: 10,
-                    end_line: 12,
+                    line: 12,
+                    end_line: 14,
                 },
             ],
         );
@@ -433,6 +478,7 @@ mod tests {
                 "Run the build command.",
                 "Execute the migration script.",
                 "Install the dependencies.",
+                "Create the output directory.",
                 "",
                 "# Other",
                 "",
@@ -443,13 +489,13 @@ mod tests {
                     level: 1,
                     title: "Setup".to_string(),
                     line: 1,
-                    end_line: 6,
+                    end_line: 7,
                 },
                 Section {
                     level: 1,
                     title: "Other".to_string(),
-                    line: 7,
-                    end_line: 9,
+                    line: 8,
+                    end_line: 10,
                 },
             ],
         );
@@ -468,6 +514,8 @@ mod tests {
                 "",
                 "Run the deploy script.",
                 "Execute the rollback plan.",
+                "Install the monitoring agent.",
+                "Configure the load balancer.",
                 "You should see a success message.",
                 "",
                 "# Other",
@@ -479,19 +527,91 @@ mod tests {
                     level: 1,
                     title: "Deploy".to_string(),
                     line: 1,
-                    end_line: 6,
+                    end_line: 8,
                 },
                 Section {
                     level: 1,
                     title: "Other".to_string(),
-                    line: 7,
-                    end_line: 9,
+                    line: 9,
+                    end_line: 11,
                 },
             ],
         );
         assert!(
             result.diagnostics.is_empty(),
             "\"should see\" phrase should count as verification"
+        );
+    }
+
+    #[test]
+    fn test_command_reference_section_skipped() {
+        let result = run_check_with_sections(
+            &[
+                "# CLI Commands",
+                "",
+                "- `cargo build` — compile the project",
+                "- `cargo test` — run all tests",
+                "- `cargo run` — execute the binary",
+                "- `cargo install` — install globally",
+                "",
+                "# Other",
+                "",
+                "Info.",
+            ],
+            vec![
+                Section {
+                    level: 1,
+                    title: "CLI Commands".to_string(),
+                    line: 1,
+                    end_line: 7,
+                },
+                Section {
+                    level: 1,
+                    title: "Other".to_string(),
+                    line: 8,
+                    end_line: 10,
+                },
+            ],
+        );
+        assert!(
+            result.diagnostics.is_empty(),
+            "Command-reference sections (>60% backtick-leading) should be skipped"
+        );
+    }
+
+    #[test]
+    fn test_summary_section_skipped() {
+        let result = run_check_with_sections(
+            &[
+                "# Summary",
+                "",
+                "Run the build pipeline.",
+                "Execute the deployment.",
+                "Install the monitoring.",
+                "Configure the dashboard.",
+                "",
+                "# Other",
+                "",
+                "Info.",
+            ],
+            vec![
+                Section {
+                    level: 1,
+                    title: "Summary".to_string(),
+                    line: 1,
+                    end_line: 7,
+                },
+                Section {
+                    level: 1,
+                    title: "Other".to_string(),
+                    line: 8,
+                    end_line: 10,
+                },
+            ],
+        );
+        assert!(
+            result.diagnostics.is_empty(),
+            "Summary sections should be skipped as informational"
         );
     }
 }

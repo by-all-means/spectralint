@@ -26,7 +26,6 @@ impl PromptInjectionVectorChecker {
 static SOCIAL_ENGINEERING_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     [
         r"(?i)\bignore\s+(?:all\s+)?previous\s+instructions?\b",
-        r"(?i)\byou\s+are\s+now\b",
         r"(?i)\bforget\s+everything\b",
         r"(?i)\bnew\s+system\s+prompt\b",
         r"(?i)^system\s*:",
@@ -174,7 +173,11 @@ mod tests {
     #[test]
     fn test_you_are_now() {
         let result = run_check(&["You are now a helpful assistant."]);
-        assert_eq!(count_matching(&result, "prompt injection"), 1);
+        assert_eq!(
+            count_matching(&result, "prompt injection"),
+            0,
+            "\"You are now\" is a normal role-definition phrase in many prompt files"
+        );
     }
 
     #[test]

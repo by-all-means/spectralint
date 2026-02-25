@@ -8,7 +8,7 @@ use crate::parser::types::ParsedFile;
 use crate::parser::{is_directive_line, non_code_lines};
 use crate::types::{Category, CheckResult, Severity};
 
-use super::utils::ScopeFilter;
+use super::utils::{is_instruction_file, ScopeFilter};
 use super::Checker;
 
 pub struct AgentGuidelinesChecker {
@@ -42,6 +42,8 @@ static NEGATIVE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
         r"(?i)\bdon'?t\b",
         r"(?i)\bavoid\b",
         r"(?i)\bmust not\b",
+        r"(?i)^[-*+\s]*\bno\s+\w+",
+        r"(?i)\bnot\s+(?:acceptable|allowed|permitted)\b",
     ]
     .iter()
     .map(|p| Regex::new(p).unwrap())
@@ -98,6 +100,11 @@ impl Checker for AgentGuidelinesChecker {
                 continue;
             }
 
+            // Skip reference/context files without imperative instructions.
+            if !is_instruction_file(&file.raw_lines) {
+                continue;
+            }
+
             check_missing_negative_constraints(file, &mut result);
             check_multi_responsibility(file, &mut result);
             check_unconstrained_delegation(file, &mut result);
@@ -113,9 +120,9 @@ fn any_pattern_matches(patterns: &[Regex], line: &str) -> bool {
 }
 
 /// Scan directive lines for positive imperatives and negative constraints.
-/// Only fire when: positive_count >= 3 && !has_negative && directive_lines >= 5
-const MIN_POSITIVES: usize = 3;
-const MIN_DIRECTIVE_LINES: usize = 5;
+/// Only fire when: positive_count >= 5 && !has_negative && directive_lines >= 15
+const MIN_POSITIVES: usize = 5;
+const AG_MIN_DIRECTIVE_LINES: usize = 15;
 
 fn check_missing_negative_constraints(file: &ParsedFile, result: &mut CheckResult) {
     let mut positive_count = 0;
@@ -136,7 +143,7 @@ fn check_missing_negative_constraints(file: &ParsedFile, result: &mut CheckResul
         }
     }
 
-    if positive_count >= MIN_POSITIVES && directive_line_count >= MIN_DIRECTIVE_LINES {
+    if positive_count >= MIN_POSITIVES && directive_line_count >= AG_MIN_DIRECTIVE_LINES {
         emit!(
             result,
             file.path,
@@ -150,7 +157,7 @@ fn check_missing_negative_constraints(file: &ParsedFile, result: &mut CheckResul
     }
 }
 
-/// If 4+ distinct responsibility categories appear in section headings,
+/// If 6+ distinct responsibility categories appear in section headings,
 /// emit once at line 1 listing the categories.
 fn check_multi_responsibility(file: &ParsedFile, result: &mut CheckResult) {
     let found_categories: BTreeSet<&str> = file
@@ -165,7 +172,7 @@ fn check_multi_responsibility(file: &ParsedFile, result: &mut CheckResult) {
         })
         .collect();
 
-    if found_categories.len() >= 4 {
+    if found_categories.len() >= 6 {
         let cats: Vec<&str> = found_categories.into_iter().collect();
         emit!(
             result,
@@ -217,10 +224,31 @@ fn check_unconstrained_delegation(file: &ParsedFile, result: &mut CheckResult) {
     }
 }
 
+/// Patterns that indicate the file defines an agent role/persona.
+/// Only matches explicit persona assignments — not incidental mentions of "role".
+static ROLE_INDICATOR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^\s*(?:[-*]\s+)?(?:you\s+are\b|act\s+as\b|your\s+role\s+is\b|you\s+(?:serve|function|operate)\s+as\b)")
+        .unwrap()
+});
+
 /// Emit if no non-code line mentions output/format/return/respond/structure.
+/// Only fires on files that look like agent prompts (have a role definition),
+/// since project instruction files (CLAUDE.md) don't typically need output format specs.
 fn check_missing_output_format(file: &ParsedFile, result: &mut CheckResult) {
     let has_content = file.raw_lines.iter().any(|l| !l.trim().is_empty());
     if !has_content {
+        return;
+    }
+
+    // Only check files that define an agent role — project instruction files
+    // don't need output format specs since the agent's output is implicit.
+    let has_role_line =
+        non_code_lines(&file.raw_lines).any(|(_, line)| ROLE_INDICATOR.is_match(line));
+    let has_role_section = file.sections.iter().any(|s| {
+        let t = s.title.to_lowercase();
+        t == "role" || t == "identity" || t == "persona" || t == "who you are"
+    });
+    if !has_role_line && !has_role_section {
         return;
     }
 
@@ -283,6 +311,17 @@ mod tests {
         }
     }
 
+    /// Prepend imperative lines so the file passes the `is_instruction_file` filter.
+    fn with_imperatives<'a>(lines: &'a [&'a str]) -> Vec<&'a str> {
+        let mut out = vec![
+            "Always follow the rules.",
+            "Never skip validation.",
+            "Ensure correctness.",
+        ];
+        out.extend_from_slice(lines);
+        out
+    }
+
     fn run_check(lines: &[&str]) -> CheckResult {
         let (_dir, ctx) = single_file_ctx(lines);
         AgentGuidelinesChecker::new(&[]).check(&ctx)
@@ -301,20 +340,36 @@ mod tests {
             "Always run tests.",
             "Must check types.",
             "Should lint code.",
+            "Always use strict mode.",
+            "Must validate inputs.",
             "Check the output.",
             "Verify all results.",
+            "Run the formatter.",
+            "Follow coding standards.",
+            "Write clear commit messages.",
+            "Keep functions focused.",
+            "Handle errors properly.",
+            "Use descriptive names.",
+            "Review before merging.",
+            "Document public APIs.",
         ]);
         assert_eq!(count_matching(&result, "negative constraints"), 1);
     }
 
     #[test]
     fn test_few_positives_no_flag() {
-        // Only 2 positives and 2 directive lines — below thresholds
-        let result = run_check(&["Always run tests.", "Must check types."]);
+        // Only 3 positives and 5 directive lines — below thresholds
+        let result = run_check(&[
+            "Always run tests.",
+            "Must check types.",
+            "Should lint code.",
+            "Check the output.",
+            "Verify all results.",
+        ]);
         assert_eq!(
             count_matching(&result, "negative constraints"),
             0,
-            "Files with < 3 positives or < 5 directive lines should not flag"
+            "Files with < 5 positives or < 15 directive lines should not flag"
         );
     }
 
@@ -358,20 +413,71 @@ mod tests {
         assert_eq!(count_matching(&result, "negative constraints"), 0);
     }
 
+    #[test]
+    fn test_negative_constraint_no_at_line_start() {
+        let result = run_check(&["Always check types.", "- No direct imports."]);
+        assert_eq!(
+            count_matching(&result, "negative constraints"),
+            0,
+            "\"No <word>\" at line start should count as negative constraint"
+        );
+    }
+
+    #[test]
+    fn test_negative_constraint_not_acceptable() {
+        let result = run_check(&["Always check types.", "Mutation is not acceptable."]);
+        assert_eq!(
+            count_matching(&result, "negative constraints"),
+            0,
+            "\"not acceptable\" should count as negative constraint"
+        );
+    }
+
     // ── Multi-Responsibility ─────────────────────────────────────────────
 
     #[test]
-    fn test_multi_responsibility_flags_at_4() {
+    fn test_multi_responsibility_flags_at_6() {
+        let lines = with_imperatives(&[
+            "# Build",
+            "# Testing",
+            "# Deploy",
+            "# Review",
+            "# Security",
+            "# Documentation",
+        ]);
         let result = run_check_with_sections(
-            &["# Build", "# Testing", "# Deploy", "# Review"],
+            &lines,
             vec![
                 section("Build", 1, 1),
                 section("Testing", 1, 2),
                 section("Deploy", 1, 3),
                 section("Review", 1, 4),
+                section("Security", 1, 5),
+                section("Documentation", 1, 6),
             ],
         );
         assert_eq!(count_matching(&result, "responsibility"), 1);
+    }
+
+    #[test]
+    fn test_multi_responsibility_no_flag_at_5() {
+        let lines =
+            with_imperatives(&["# Build", "# Testing", "# Deploy", "# Review", "# Security"]);
+        let result = run_check_with_sections(
+            &lines,
+            vec![
+                section("Build", 1, 1),
+                section("Testing", 1, 2),
+                section("Deploy", 1, 3),
+                section("Review", 1, 4),
+                section("Security", 1, 5),
+            ],
+        );
+        assert_eq!(
+            count_matching(&result, "responsibility"),
+            0,
+            "5 categories should not flag (threshold is 6)"
+        );
     }
 
     #[test]
@@ -389,18 +495,23 @@ mod tests {
 
     #[test]
     fn test_multi_responsibility_lists_categories() {
+        let lines = with_imperatives(&[
+            "# Build Process",
+            "# Test Suite",
+            "# Deployment",
+            "# Security Checks",
+            "# Documentation",
+            "# Performance",
+        ]);
         let result = run_check_with_sections(
-            &[
-                "# Build Process",
-                "# Test Suite",
-                "# Deployment",
-                "# Security Checks",
-            ],
+            &lines,
             vec![
                 section("Build Process", 1, 1),
                 section("Test Suite", 1, 2),
                 section("Deployment", 1, 3),
                 section("Security Checks", 1, 4),
+                section("Documentation", 1, 5),
+                section("Performance", 1, 6),
             ],
         );
 
@@ -434,19 +545,19 @@ mod tests {
 
     #[test]
     fn test_delegation_do_whatever() {
-        let result = run_check(&["You can do whatever you want."]);
+        let result = run_check(&with_imperatives(&["You can do whatever you want."]));
         assert_eq!(count_matching(&result, "Unconstrained delegation"), 1);
     }
 
     #[test]
     fn test_delegation_figure_it_out() {
-        let result = run_check(&["Just figure it out."]);
+        let result = run_check(&with_imperatives(&["Just figure it out."]));
         assert_eq!(count_matching(&result, "Unconstrained delegation"), 1);
     }
 
     #[test]
     fn test_delegation_use_best_judgment() {
-        let result = run_check(&["Use your best judgment here."]);
+        let result = run_check(&with_imperatives(&["Use your best judgment here."]));
         assert_eq!(count_matching(&result, "Unconstrained delegation"), 1);
     }
 
@@ -482,7 +593,9 @@ mod tests {
     #[test]
     fn test_delegation_full_autonomy_with_agent_context_flags() {
         // "Full autonomy" addressed to the agent
-        let result = run_check(&["You have full autonomy to make changes."]);
+        let result = run_check(&with_imperatives(&[
+            "You have full autonomy to make changes.",
+        ]));
         assert_eq!(
             count_matching(&result, "Unconstrained delegation"),
             1,
@@ -502,7 +615,7 @@ mod tests {
 
     #[test]
     fn test_delegation_complete_freedom_with_agent_context_flags() {
-        let result = run_check(&["Give the agent complete freedom."]);
+        let result = run_check(&with_imperatives(&["Give the agent complete freedom."]));
         assert_eq!(
             count_matching(&result, "Unconstrained delegation"),
             1,
@@ -512,7 +625,10 @@ mod tests {
 
     #[test]
     fn test_delegation_multiple_per_file() {
-        let result = run_check(&["Do whatever you think is best.", "Figure it out yourself."]);
+        let result = run_check(&with_imperatives(&[
+            "Do whatever you think is best.",
+            "Figure it out yourself.",
+        ]));
         assert_eq!(count_matching(&result, "Unconstrained delegation"), 2);
     }
 
@@ -520,8 +636,23 @@ mod tests {
 
     #[test]
     fn test_missing_output_format_flags() {
-        let result = run_check(&["# Instructions", "Run the tests."]);
+        let result = run_check(&with_imperatives(&[
+            "You are a code review assistant.",
+            "# Instructions",
+            "Run the tests.",
+        ]));
         assert_eq!(count_matching(&result, "output format"), 1);
+    }
+
+    #[test]
+    fn test_missing_output_format_skipped_without_role() {
+        // Project instruction files without a role definition should NOT flag
+        let result = run_check(&with_imperatives(&["# Instructions", "Run the tests."]));
+        assert_eq!(
+            count_matching(&result, "output format"),
+            0,
+            "Files without a role definition should not get output format warnings"
+        );
     }
 
     #[test]
@@ -534,6 +665,22 @@ mod tests {
     fn test_output_format_in_heading_no_flag() {
         let result = run_check(&["# Response Format", "Use markdown."]);
         assert_eq!(count_matching(&result, "output format"), 0);
+    }
+
+    #[test]
+    fn test_role_indicator_ignores_incidental_role() {
+        // A file that mentions "role" incidentally (not as persona definition)
+        // should NOT trigger the output format check.
+        let result = run_check(&with_imperatives(&[
+            "# Access Control",
+            "Each user has a role that determines permissions.",
+            "Check the role before granting access.",
+        ]));
+        assert_eq!(
+            count_matching(&result, "output format"),
+            0,
+            "Incidental mention of 'role' should not trigger output format check"
+        );
     }
 
     #[test]
@@ -550,7 +697,14 @@ mod tests {
 
     #[test]
     fn test_output_format_only_in_code_block_still_flags() {
-        let result = run_check(&["# Guide", "```", "output: json", "```", "Do the work."]);
+        let result = run_check(&with_imperatives(&[
+            "You are a deployment assistant.",
+            "# Guide",
+            "```",
+            "output: json",
+            "```",
+            "Do the work.",
+        ]));
         assert_eq!(
             count_matching(&result, "output format"),
             1,
@@ -579,13 +733,9 @@ mod tests {
     fn test_scope_includes_file() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        // Needs enough content to trigger at least one sub-check (e.g., missing output format)
-        let file = make_file(
-            root,
-            "CLAUDE.md",
-            &["# Instructions", "Run the tests."],
-            vec![],
-        );
+        // Needs enough content to trigger a sub-check (delegation)
+        let lines = with_imperatives(&["Do whatever you want."]);
+        let file = make_file(root, "CLAUDE.md", &lines, vec![]);
         let ctx = make_ctx(root, vec![file]);
         let checker = AgentGuidelinesChecker::new(&["CLAUDE.md".to_string()]);
         let result = checker.check(&ctx);
@@ -601,7 +751,7 @@ mod tests {
     #[test]
     fn test_all_diagnostics_are_info() {
         // "Do whatever" triggers delegation; missing output format triggers too
-        let result = run_check(&["# Guide", "Do whatever you want."]);
+        let result = run_check(&with_imperatives(&["# Guide", "Do whatever you want."]));
 
         assert!(
             !result.diagnostics.is_empty(),
@@ -611,5 +761,21 @@ mod tests {
             assert_eq!(d.severity, Severity::Info);
             assert_eq!(d.category, Category::AgentGuidelines);
         }
+    }
+
+    #[test]
+    fn test_reference_file_without_imperatives_skipped() {
+        // Context/reference file with no imperative instructions
+        let result = run_check(&[
+            "# Company Overview",
+            "",
+            "TechStart Inc is a B2B SaaS company.",
+            "- ARR: $2.4M",
+            "- Burn Rate: $500K/month",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Reference files without imperative instructions should produce no diagnostics"
+        );
     }
 }

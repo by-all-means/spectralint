@@ -1,3 +1,7 @@
+# Your Role
+
+You are a code reviewer with deep expertise.
+
 # Build Pipeline
 
 Always run the full build before committing.
@@ -15,6 +19,14 @@ Deploy to staging first.
 # Security Audit
 
 Review dependencies for vulnerabilities.
+
+# Documentation
+
+Always update documentation when changing APIs.
+
+# Performance
+
+Optimize hot paths for low latency.
 
 # General
 

@@ -67,6 +67,38 @@ pub const AVAILABLE_RULES: &[(&str, &str)] = &[
         "negative-only-framing",
         "Flags files where 75%+ of directives are negative",
     ),
+    (
+        "conflicting-directives",
+        "Detects contradictory instructions in the same file",
+    ),
+    (
+        "missing-role-definition",
+        "Flags files without a \"You are...\" or Role section",
+    ),
+    (
+        "redundant-directive",
+        "Detects near-duplicate directive lines via similarity",
+    ),
+    (
+        "instruction-density",
+        "Flags sections with excessive consecutive bullet points",
+    ),
+    (
+        "missing-examples",
+        "Flags format specs without accompanying code examples",
+    ),
+    (
+        "unbounded-scope",
+        "Detects capability grants without boundary constraints",
+    ),
+    (
+        "circular-reference",
+        "Detects circular file reference chains between instruction files",
+    ),
+    (
+        "large-code-block",
+        "Flags inline code blocks exceeding a configurable threshold",
+    ),
     ("custom", "User-defined regex patterns from config"),
 ];
 
@@ -118,7 +150,7 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              uses snake_case and another uses camelCase for the same field, the agent builds a\n\
              fragmented mental model — it may read the value from one file but fail to apply it\n\
              where the other name is used. This checker normalizes identifiers and flags mismatches\n\
-             using Jaro-Winkler similarity (0.92 threshold).\n\
+             using Jaro-Winkler similarity (0.95 threshold).\n\
              \n\
              Severity: warning\n\
              Config: [checkers.naming_inconsistency]",
@@ -144,7 +176,7 @@ pub fn explain(rule: &str) -> Option<&'static str> {
                 \"Do not\". Agents without boundaries over-apply rules or take unintended actions.\n\
                 Good instructions define what NOT to do, not just what to do.\n\
              \n\
-             2. Multi-responsibility — File covers 4+ distinct areas (build, test, deploy,\n\
+             2. Multi-responsibility — File covers 6+ distinct areas (build, test, deploy,\n\
                 security, etc.) in section headings. Mixed responsibilities produce muddy feedback.\n\
                 Split into focused single-responsibility agent files.\n\
              \n\
@@ -174,12 +206,12 @@ pub fn explain(rule: &str) -> Option<&'static str> {
             "file-size: Warns when instruction files exceed recommended length.\n\
              \n\
              LLMs suffer from \"lost in the middle\" degradation — instructions buried in the\n\
-             middle of a long file are more likely to be ignored or misapplied. At 300+ lines\n\
+             middle of a long file are more likely to be ignored or misapplied. At 400+ lines\n\
              this checker emits an info-level notice; at 500+ lines it emits a warning.\n\
              Split large files into focused sub-files and use file references for progressive\n\
              disclosure.\n\
              \n\
-             Severity: info at 300 lines, warning at 500 lines (configurable)\n\
+             Severity: info at 400 lines, warning at 500 lines (configurable)\n\
              Config: [checkers.file_size] (max_lines, warn_lines)",
         ),
         "credential-exposure" => Some(
@@ -233,12 +265,12 @@ pub fn explain(rule: &str) -> Option<&'static str> {
             "emoji-density: Flags excessive emoji usage in instruction files.\n\
              \n\
              Emoji like 🚀, ✅, 📊 are visual decorations designed for human readers. Agents\n\
-             process them as tokens but gain no instruction value. A file with 10+ emoji is\n\
+             process them as tokens but gain no instruction value. A file with 20+ emoji is\n\
              likely styled for human presentation rather than optimized for agent consumption.\n\
              Each emoji wastes context window tokens that could carry actual instructions.\n\
              \n\
              Severity: info\n\
-             Config: [checkers.emoji_density] (max_emoji, default: 10)",
+             Config: [checkers.emoji_density] (max_emoji, default: 20)",
         ),
         "session-journal" => Some(
             "session-journal: Detects session logs masquerading as instruction files.\n\
@@ -291,13 +323,13 @@ pub fn explain(rule: &str) -> Option<&'static str> {
         "missing-verification" => Some(
             "missing-verification: Flags action sections without verification criteria.\n\
              \n\
-             Sections with 2+ action directives (run, execute, create, build, deploy, etc.)\n\
+             Sections with 4+ action directives (run, execute, create, build, deploy, etc.)\n\
              but no verification signals (verify, test, assert, expected output, \"should see\")\n\
              leave agents with no way to confirm success. Adding verification steps — expected\n\
              output, test commands, or success criteria — makes instructions self-validating.\n\
              \n\
              Severity: info\n\
-             Config: [checkers.missing_verification] (min_action_verbs, default: 2)",
+             Config: [checkers.missing_verification] (min_action_verbs, default: 4)",
         ),
         "negative-only-framing" => Some(
             "negative-only-framing: Flags files where 75%+ of directives are negative.\n\
@@ -311,6 +343,113 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              \n\
              Severity: info\n\
              Config: [checkers.negative_only_framing] (threshold, min_negative_count)",
+        ),
+        "conflicting-directives" => Some(
+            "conflicting-directives: Detects contradictory instructions in the same file.\n\
+             \n\
+             When a file says \"always use formal tone\" and also \"keep it casual\", the agent\n\
+             receives mutually exclusive instructions. It may follow one, alternate between both,\n\
+             or produce confused output. This checker defines ~6 contradiction pairs covering tone,\n\
+             API usage, file creation, confirmation behavior, verbosity, and resource modification.\n\
+             When both members of a pair match on different lines, it emits.\n\
+             \n\
+             Contradictions are always defects — enabled by --strict or config.\n\
+             \n\
+             Severity: warning\n\
+             Config: [checkers.conflicting_directives]",
+        ),
+        "missing-role-definition" => Some(
+            "missing-role-definition: Flags files without a role/identity definition.\n\
+             \n\
+             Files with 15+ directive lines benefit from an explicit identity statement like\n\
+             \"You are a senior Rust developer\" or a dedicated ## Role / Mission section.\n\
+             Without one, the agent has no persona to anchor its behavior — it may adopt\n\
+             different voices across interactions. Files in commands/, skills/, or tasks/\n\
+             subdirectories are excluded, as are deeply nested files (depth > 2 from root)\n\
+             since they're typically context injections, not standalone agent definitions.\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.missing_role_definition]",
+        ),
+        "redundant-directive" => Some(
+            "redundant-directive: Detects near-duplicate directive lines via Jaro-Winkler similarity.\n\
+             \n\
+             Copy-paste or incremental editing can leave two lines that say almost the same thing:\n\
+             \"Always run the test suite before committing code\" and \"Always run the test suite\n\
+             before committing changes.\" The agent processes both, wasting context window tokens\n\
+             on redundant information. This checker normalizes lines (strips list markers, lowercases,\n\
+             collapses whitespace) and flags pairs with >=95% Jaro-Winkler similarity.\n\
+             Lines shorter than 15 characters and headings are skipped. Capped at 200 directive\n\
+             lines per file for performance.\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.redundant_directive] (similarity_threshold, min_line_length)",
+        ),
+        "instruction-density" => Some(
+            "instruction-density: Flags sections with excessive consecutive bullet points.\n\
+             \n\
+             A wall of 15+ bullet points without structural breaks (blank lines, subheadings,\n\
+             code examples) overwhelms agents. Studies on LLM instruction following show that\n\
+             compliance drops in dense, undifferentiated lists. Breaking long lists into smaller\n\
+             groups with headings or whitespace improves adherence.\n\
+             \n\
+             Only fires on files with 2+ sections to avoid flagging simple list-only files.\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.instruction_density] (max_consecutive_bullets, default: 15)",
+        ),
+        "missing-examples" => Some(
+            "missing-examples: Flags format specifications without accompanying code examples.\n\
+             \n\
+             When a section says \"format as JSON\" or \"output must be YAML\" but provides no\n\
+             concrete example, the agent must guess the exact shape. Different models may produce\n\
+             different structures. A single code block showing the target format eliminates\n\
+             ambiguity. The checker also accepts \"e.g.\", \"for example\" inline signals, and\n\
+             sibling sections titled \"Example\" or \"Sample\".\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.missing_examples]",
+        ),
+        "unbounded-scope" => Some(
+            "unbounded-scope: Detects capability grants without boundary constraints.\n\
+             \n\
+             Files that say \"you can modify any files\" or \"full write access\" without any\n\
+             refusal conditions (\"never modify...\", \"out of scope\", \"ask for confirmation\")\n\
+             create agents with unlimited autonomy. Unbounded agents are unpredictable — they\n\
+             may delete critical files, modify production configs, or execute destructive\n\
+             commands. Every capability grant should be paired with explicit boundaries.\n\
+             \n\
+             Only fires on files with 5+ directive lines to avoid flagging minimal configs.\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.unbounded_scope]",
+        ),
+        "circular-reference" => Some(
+            "circular-reference: Detects circular file reference chains between instruction files.\n\
+             \n\
+             When file A references file B, and file B references file A, the agent encounters\n\
+             an infinite loop in its instruction graph. More complex cycles (A → B → C → A) are\n\
+             equally problematic. This checker builds a directed graph from all file_refs, resolves\n\
+             paths the same way dead-reference does, and runs DFS cycle detection.\n\
+             \n\
+             Template/glob refs (*, [, {, <, ~, $, path/to/) are skipped, and references that\n\
+             don't resolve to any scanned file are ignored (those are dead-reference's job).\n\
+             \n\
+             Severity: warning\n\
+             Config: [checkers.circular_reference]",
+        ),
+        "large-code-block" => Some(
+            "large-code-block: Flags inline code blocks exceeding a line threshold.\n\
+             \n\
+             Code blocks longer than 40 lines in instruction files waste context window tokens\n\
+             and make the file harder to maintain. Long code examples should be extracted into\n\
+             separate files and referenced instead, keeping instruction files focused on directives.\n\
+             \n\
+             The checker counts lines between ``` fences and emits when the count exceeds the\n\
+             configurable threshold (default: 40).\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.large_code_block] (max_lines, default: 40)",
         ),
         "custom" => Some(
             "custom:<name>: User-defined regex patterns from config.\n\

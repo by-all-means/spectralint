@@ -95,6 +95,12 @@ static VAGUE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     patterns.iter().map(|p| Regex::new(p).unwrap()).collect()
 });
 
+// "Do not try to ..." and "try to avoid ..." are deterministic prohibitions, not vague guidance.
+static NEGATED_TRY_TO: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?:\b(?:do\s+not|don't|never|avoid)\s+try\s+to\b|\btry\s+to\s+avoid\b)")
+        .unwrap()
+});
+
 pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
     let content = std::fs::read_to_string(path)?;
     let raw_lines: Vec<String> = content.lines().map(String::from).collect();
@@ -264,6 +270,10 @@ fn extract_directives(lines: &[String], directives: &mut Vec<Directive>) {
 
         for pattern in VAGUE_PATTERNS.iter() {
             if let Some(m) = pattern.find(line) {
+                // Skip negated forms like "Do not try to fix this automatically".
+                if m.as_str().eq_ignore_ascii_case("try to") && NEGATED_TRY_TO.is_match(line) {
+                    continue;
+                }
                 directives.push(Directive {
                     line: i + 1,
                     pattern_matched: m.as_str().to_string(),
@@ -336,6 +346,26 @@ mod tests {
         let parsed = parse_str("You should try to be helpful.\n");
         assert_eq!(parsed.directives.len(), 1);
         assert_eq!(parsed.directives[0].pattern_matched, "try to");
+    }
+
+    #[test]
+    fn test_vague_directive_negated_try_to_skipped() {
+        let parsed = parse_str("Do not try to auto-fix this.\n");
+        assert_eq!(
+            parsed.directives.len(),
+            0,
+            "Negated \"try to\" is a clear prohibition, not vague guidance"
+        );
+    }
+
+    #[test]
+    fn test_vague_directive_try_to_avoid_skipped() {
+        let parsed = parse_str("BAD (try to avoid doing this):\n");
+        assert_eq!(
+            parsed.directives.len(),
+            0,
+            "\"try to avoid\" is a prohibition, not vague guidance"
+        );
     }
 
     #[test]

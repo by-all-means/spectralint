@@ -50,6 +50,13 @@ struct NameOccurrence {
     original: String,
     file_idx: usize,
     line: usize,
+    kind: NameKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NameKind {
+    TableHeader,
+    SectionTitle,
 }
 
 impl Checker for NamingInconsistencyChecker {
@@ -70,6 +77,7 @@ impl Checker for NamingInconsistencyChecker {
                             original: trimmed.to_string(),
                             file_idx,
                             line: table.line,
+                            kind: NameKind::TableHeader,
                         });
                     }
                 }
@@ -81,6 +89,7 @@ impl Checker for NamingInconsistencyChecker {
                         original: trimmed.to_string(),
                         file_idx,
                         line: section.line,
+                        kind: NameKind::SectionTitle,
                     });
                 }
             }
@@ -120,10 +129,11 @@ impl Checker for NamingInconsistencyChecker {
                 "Inconsistent naming: {} refer to the same concept",
                 variants.join(" vs ")
             );
-            let originals: Vec<&str> = unique_originals.iter().copied().collect();
+            let mut iter = unique_originals.iter();
             let suggestion = format!(
                 "Standardize to one form: use either \"{}\" or \"{}\" consistently",
-                originals[0], originals[1]
+                iter.next().unwrap(),
+                iter.next().unwrap()
             );
 
             for occ in group {
@@ -156,6 +166,15 @@ impl Checker for NamingInconsistencyChecker {
                 let group_a = &groups[key_a];
                 let group_b = &groups[key_b];
 
+                // Similar-name matching on section titles is noisy in real-world docs
+                // ("Related Files" vs "Related File List", etc.). Keep this pass focused
+                // on structured schema terms (table headers), where drift is actionable.
+                let has_table_a = group_a.iter().any(|o| o.kind == NameKind::TableHeader);
+                let has_table_b = group_b.iter().any(|o| o.kind == NameKind::TableHeader);
+                if !(has_table_a && has_table_b) {
+                    continue;
+                }
+
                 // Skip dates/timestamps (e.g. "Dec 5, 2025" vs "Dec 4, 2025")
                 if DATE_PATTERN.is_match(&group_a[0].original)
                     || DATE_PATTERN.is_match(&group_b[0].original)
@@ -175,6 +194,14 @@ impl Checker for NamingInconsistencyChecker {
                 let stripped_a = strip_numbered_prefix(&group_a[0].original);
                 let stripped_b = strip_numbered_prefix(&group_b[0].original);
                 if !stripped_a.is_empty() && stripped_a.eq_ignore_ascii_case(stripped_b) {
+                    continue;
+                }
+
+                // Skip if names differ only by trailing plural 's'
+                // (e.g. "Development Workflow" vs "Development Workflows")
+                let deplural_a = key_a.strip_suffix('s').unwrap_or(key_a);
+                let deplural_b = key_b.strip_suffix('s').unwrap_or(key_b);
+                if deplural_a == deplural_b {
                     continue;
                 }
 
@@ -458,12 +485,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
-        // "api_configs" vs "api_config" → very high Jaro-Winkler similarity (>0.95)
+        // "api_endpoint" vs "api_endpont" → very high Jaro-Winkler similarity (>0.95)
+        // This is similar but doesn't just differ by trailing 's'
         let file1 = ParsedFile {
             path: root.join("CLAUDE.md"),
             sections: vec![],
             tables: vec![Table {
-                headers: vec!["api_configs".to_string()],
+                headers: vec!["api_endpoint".to_string()],
                 rows: vec![],
                 line: 5,
                 parent_section: None,
@@ -478,7 +506,7 @@ mod tests {
             path: root.join("AGENTS.md"),
             sections: vec![],
             tables: vec![Table {
-                headers: vec!["api_config".to_string()],
+                headers: vec!["api_endpont".to_string()],
                 rows: vec![],
                 line: 3,
                 parent_section: None,
@@ -830,6 +858,61 @@ mod tests {
         assert!(
             infos.is_empty(),
             "YAML frontmatter lines should not be flagged as similar names"
+        );
+    }
+
+    #[test]
+    fn test_plural_difference_not_flagged() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        use crate::parser::types::Section;
+        let file1 = ParsedFile {
+            path: root.join("CLAUDE.md"),
+            sections: vec![Section {
+                title: "Development Workflows".to_string(),
+                level: 2,
+                line: 5,
+                end_line: 5,
+            }],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: vec![],
+        };
+
+        let file2 = ParsedFile {
+            path: root.join("AGENTS.md"),
+            sections: vec![Section {
+                title: "Development Workflow".to_string(),
+                level: 2,
+                line: 3,
+                end_line: 3,
+            }],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: vec![],
+        };
+
+        let ctx = CheckerContext {
+            files: vec![file1, file2],
+            project_root: root.to_path_buf(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = NamingInconsistencyChecker::new(&[]);
+        let result = checker.check(&ctx);
+        let infos: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Info)
+            .collect();
+        assert!(
+            infos.is_empty(),
+            "Singular/plural difference should not be flagged as similar names"
         );
     }
 }

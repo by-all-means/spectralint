@@ -8,7 +8,7 @@ use crate::engine::cross_ref::CheckerContext;
 use crate::parser::{code_block_lines, non_code_lines};
 use crate::types::{Category, CheckResult, Severity};
 
-use super::utils::ScopeFilter;
+use super::utils::{is_instruction_file, ScopeFilter};
 use super::Checker;
 
 pub struct MissingEssentialSectionsChecker {
@@ -27,7 +27,7 @@ impl MissingEssentialSectionsChecker {
 
 /// Command patterns commonly found in code blocks.
 static CODE_BLOCK_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:cargo|npm|npx|yarn|pnpm|pytest|make|go\s+(?:build|test|run)|docker|pip|poetry|gradle|mvn|bundle|rake|mix|dotnet|cmake)\b").unwrap()
+    Regex::new(r"(?i)\b(?:cargo|bun|uvx?|npm|npx|yarn|pnpm|pytest|make|go\s+(?:build|test|run)|docker|pip|poetry|gradle|mvn|bundle|rake|mix|dotnet|cmake)\b").unwrap()
 });
 
 /// Section headings that indicate build/test/setup content.
@@ -37,7 +37,7 @@ static SECTION_HEADING: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Inline backtick commands.
 static INLINE_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"`[^`]*\b(?:cargo|npm|npx|yarn|pnpm|pytest|make|go\s+(?:build|test|run)|docker|pip|poetry|gradle|mvn|bundle|rake|mix|dotnet|cmake)\b[^`]*`").unwrap()
+    Regex::new(r"`[^`]*\b(?:cargo|bun|uvx?|npm|npx|yarn|pnpm|pytest|make|go\s+(?:build|test|run)|docker|pip|poetry|gradle|mvn|bundle|rake|mix|dotnet|cmake)\b[^`]*`").unwrap()
 });
 
 /// Specialized subdirectories whose files serve specific purposes (commands,
@@ -82,6 +82,13 @@ impl Checker for MissingEssentialSectionsChecker {
             // Skip files in specialized subdirectories (commands, agents, skills, etc.)
             // — these serve specific purposes and don't need build/test commands
             if is_specialized_file(&file.path, &ctx.project_root) {
+                continue;
+            }
+
+            // Skip reference/context files that don't contain imperative instructions.
+            // Files like activity logs, curated lists, and context dumps don't need
+            // build/test commands because they aren't telling the agent what to do.
+            if !is_instruction_file(&file.raw_lines) {
                 continue;
             }
 
@@ -210,9 +217,11 @@ mod tests {
         let result = run_check(&[
             "# Guide",
             "",
-            "Be careful with the code.",
+            "Always follow best practices.",
             "",
-            "Follow best practices.",
+            "You must ensure code quality.",
+            "",
+            "Never skip unit tests.",
         ]);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].severity, Severity::Info);
@@ -286,6 +295,43 @@ mod tests {
         assert!(
             result.diagnostics.is_empty(),
             "Files in specialized directories (commands, agents, skills) should be skipped"
+        );
+    }
+
+    #[test]
+    fn test_reference_file_without_imperatives_skipped() {
+        let result = run_check(&[
+            "# Company Overview",
+            "",
+            "TechStart Inc is a B2B SaaS company.",
+            "",
+            "## Financial Snapshot",
+            "",
+            "- ARR: $2.4M",
+            "- Burn Rate: $500K/month",
+            "- Runway: 20 months",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Reference/context files without imperative instructions should be skipped"
+        );
+    }
+
+    #[test]
+    fn test_instruction_file_without_commands_flags() {
+        let result = run_check(&[
+            "# Guidelines",
+            "",
+            "Always use TypeScript for new code.",
+            "Never commit directly to main.",
+            "Ensure all PRs have tests.",
+            "",
+            "Follow the coding standards.",
+        ]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Instruction files with imperatives but no build commands should be flagged"
         );
     }
 

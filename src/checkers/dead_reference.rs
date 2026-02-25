@@ -6,6 +6,7 @@ use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::types::{Category, CheckResult, Severity};
 
+use super::utils::is_template_ref;
 use super::Checker;
 
 /// Lines containing these verbs indicate the referenced file is being
@@ -47,10 +48,14 @@ static CONVENTION_LIST_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
 ///   `src/templates/`:  — sub-items are relative to this directory
 static DIR_CONTEXT_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"`([^`]+/)`").unwrap());
 
-/// Lines describing naming conventions — the filename is an example, not a real reference.
+/// Lines describing naming conventions or file-type conventions — the filename
+/// is an example or category being prescribed, not a real dependency.
 /// e.g., "**Naming**: Use kebab-case: `optimize-images.md`"
-static NAMING_CONVENTION_LINE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:kebab[- ]?case|camel[- ]?case|snake[- ]?case|pascal[- ]?case|naming\s*:)")
+///       "Every SKILL.md must include YAML frontmatter:"
+///       "you SHOULD read the corresponding SKILL.md"
+///       "### SKILL.md Requirements"
+static CONVENTION_LINE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(?:kebab[- ]?case|camel[- ]?case|snake[- ]?case|pascal[- ]?case|naming\s*:)|\b(?:every|each)\b.*\b(?:must|should)\b|\b(?:the\s+)?corresponding\b|^#+\s+\S+\.md\s+(?:requirements|format|structure|template|conventions?|guidelines?|standards?)")
         .unwrap()
 });
 
@@ -151,32 +156,7 @@ impl Checker for DeadReferenceChecker {
             }
 
             for file_ref in &file.file_refs {
-                // Skip template/glob patterns like commands/[command].md, *.md,
-                // <skill-name>/SKILL.md, or path/to/agent.md
-                if file_ref.path.contains(['*', '[', '{', '<', '>']) {
-                    continue;
-                }
-
-                // Skip home directory references (~/.claude/CLAUDE.md)
-                if file_ref.path.starts_with('~') {
-                    continue;
-                }
-
-                // Skip absolute paths (/Users/drew/code/basic-memory/CHANGELOG.md)
-                if file_ref.path.starts_with('/') {
-                    continue;
-                }
-
-                // Skip paths containing shell variables ($ARGUMENTS, $MD_OUT)
-                if file_ref.path.contains('$') {
-                    continue;
-                }
-
-                // Skip obvious template/example paths
-                if file_ref.path.starts_with("path/to/")
-                    || file_ref.path.starts_with("@")
-                    || file_ref.path.starts_with("example/")
-                {
+                if is_template_ref(&file_ref.path) {
                     continue;
                 }
 
@@ -224,7 +204,7 @@ impl Checker for DeadReferenceChecker {
                         || FILE_CALLED_NAMED.is_match(line_content)
                         || EXAMPLE_CONTEXT.is_match(line_content)
                         || ARROW_MAPPING.is_match(line_content)
-                        || NAMING_CONVENTION_LINE.is_match(line_content)
+                        || CONVENTION_LINE.is_match(line_content)
                     {
                         continue;
                     }
@@ -1373,6 +1353,72 @@ mod tests {
             result.diagnostics.len(),
             1,
             "Non-procedural missing reference should still be flagged"
+        );
+    }
+
+    /// Build a context where `CLAUDE.md` references a bare `ref_path` on line 1
+    /// with the given `raw_line` as the sole line content. The referenced file
+    /// does NOT exist on disk, so only line-level skip heuristics prevent a
+    /// diagnostic.
+    fn bare_ref_ctx(root: &std::path::Path, ref_path: &str, raw_line: &str) -> CheckerContext {
+        let parsed = ParsedFile {
+            path: root.join("CLAUDE.md"),
+            sections: vec![],
+            tables: vec![],
+            file_refs: vec![FileRef {
+                path: ref_path.to_string(),
+                line: 1,
+                source_file: root.join("CLAUDE.md"),
+            }],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: vec![raw_line.to_string()],
+        };
+        CheckerContext {
+            files: vec![parsed],
+            project_root: root.to_path_buf(),
+            historical_indices: HashSet::new(),
+        }
+    }
+
+    #[test]
+    fn test_convention_description_heading_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = bare_ref_ctx(dir.path(), "SKILL.md", "### SKILL.md Requirements");
+        let result = DeadReferenceChecker.check(&ctx);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Convention description headings should be skipped"
+        );
+    }
+
+    #[test]
+    fn test_convention_every_must_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = bare_ref_ctx(
+            dir.path(),
+            "SKILL.md",
+            "Every `SKILL.md` must include YAML frontmatter:",
+        );
+        let result = DeadReferenceChecker.check(&ctx);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Prescriptive convention lines (every X must) should be skipped"
+        );
+    }
+
+    #[test]
+    fn test_corresponding_reference_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = bare_ref_ctx(
+            dir.path(),
+            "SKILL.md",
+            "you SHOULD read the corresponding `SKILL.md` to ensure compliance",
+        );
+        let result = DeadReferenceChecker.check(&ctx);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Generic 'corresponding' references should be skipped"
         );
     }
 }

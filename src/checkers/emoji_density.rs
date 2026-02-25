@@ -41,18 +41,35 @@ static EMOJI_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
+/// Functional emoji used as status indicators in tables, checklists, and access matrices.
+/// These carry semantic meaning (pass/fail, status, severity) and should not count
+/// as decorative noise.
+static FUNCTIONAL_EMOJI: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("[✅✓❌✗⚠☑☒🟢🟡🟠🔴🔵🟣⭕🔄]").unwrap());
+
 impl Checker for EmojiDensityChecker {
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
         for file in &ctx.files {
-            let mut count = 0;
+            let mut total = 0;
+            let mut functional = 0;
 
             for (_, line) in non_code_lines(&file.raw_lines) {
-                count += EMOJI_PATTERN.find_iter(line).count();
+                let line_emoji = EMOJI_PATTERN.find_iter(line).count();
+                total += line_emoji;
+
+                if line.trim_start().starts_with('|') {
+                    // All emoji in table rows are semantic labels/indicators
+                    functional += line_emoji;
+                } else {
+                    functional += FUNCTIONAL_EMOJI.find_iter(line).count();
+                }
             }
 
-            if count >= self.max_emoji {
+            let decorative = total.saturating_sub(functional);
+
+            if decorative >= self.max_emoji {
                 emit!(
                     result,
                     file.path,
@@ -60,9 +77,9 @@ impl Checker for EmojiDensityChecker {
                     Severity::Info,
                     Category::EmojiDensity,
                     suggest: "Remove decorative emoji — they consume tokens without adding instruction value",
-                    "File contains {} emoji (threshold: {}). Emoji add visual noise without \
-                     instruction value for agents.",
-                    count,
+                    "File contains {} decorative emoji (threshold: {}). Emoji add visual noise \
+                     without instruction value for agents.",
+                    decorative,
                     self.max_emoji
                 );
             }
@@ -93,16 +110,16 @@ mod tests {
     #[test]
     fn test_high_emoji_count_detected() {
         let result = run_check(&[
-            "# 🚀 Project",
-            "## 🎯 Goals",
+            "# 🚀 Project 🎯 Mission",
+            "## 🎨 Design 💻 Code",
             "- ✅ Done",
             "- ✅ Also done",
             "- ✅ More done",
             "- ❌ Removed",
-            "## 📊 Stats",
-            "## ⚡ Performance",
-            "## 💡 Tips",
-            "## 🔧 Config",
+            "## 📊 Stats 📈 Trends",
+            "## ⚡ Performance 🔧 Config",
+            "## 💡 Tips 🌟 Features",
+            "## 🎪 Demo 🎁 Bonus",
         ]);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].severity, Severity::Info);
@@ -133,7 +150,7 @@ mod tests {
 
     #[test]
     fn test_custom_threshold() {
-        let result = run_check_with_threshold(&["✅ Done", "❌ Skip", "🚀 Go"], 3);
+        let result = run_check_with_threshold(&["✅ Done", "❌ Skip", "🚀 Go 🎯 Aim 💡 Think"], 2);
         assert_eq!(result.diagnostics.len(), 1);
     }
 
@@ -153,6 +170,77 @@ mod tests {
     #[test]
     fn test_message_includes_count() {
         let result = run_check_with_threshold(&["✅❌🚀🎯📊"], 3);
-        assert!(result.diagnostics[0].message.contains('5'));
+        // 2 decorative (🚀🎯📊 = 3 decorative, ✅❌ = functional) → message should contain "3"
+        assert!(result.diagnostics[0].message.contains('3'));
+    }
+
+    #[test]
+    fn test_functional_emoji_excluded() {
+        // 25 functional emoji (✅/❌) should not flag at threshold 20
+        let lines: Vec<&str> = (0..25)
+            .map(|i| if i % 2 == 0 { "✅ Pass" } else { "❌ Fail" })
+            .collect();
+        let result = run_check_with_threshold(&lines, 20);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Functional emoji (✅/❌) used as status indicators should not count"
+        );
+    }
+
+    #[test]
+    fn test_emoji_in_table_rows_excluded() {
+        let result = run_check_with_threshold(
+            &[
+                "| Feature | Status |",
+                "| --- | --- |",
+                "| 📱 Mobile | 💻 Desktop |",
+                "| 🎯 Goals | ⭐ Priority |",
+                "| 🏆 Winner | done |",
+            ],
+            3,
+        );
+        assert!(
+            result.diagnostics.is_empty(),
+            "Emoji in table rows should be treated as semantic labels"
+        );
+    }
+
+    #[test]
+    fn test_emoji_in_headers_still_flags() {
+        let lines: Vec<&str> = (0..25)
+            .map(|i| match i % 5 {
+                0 => "# 🚀 Launch Section",
+                1 => "## 🎯 Target Goals",
+                2 => "### ✨ Sparkle Time",
+                3 => "#### 💡 Bright Ideas",
+                _ => "##### ⚡ Fast Lane",
+            })
+            .collect();
+        let result = run_check_with_threshold(&lines, 20);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Decorative emoji in headers should still be flagged"
+        );
+    }
+
+    #[test]
+    fn test_decorative_emoji_still_flags() {
+        // 25 decorative emoji (🚀🎯✨💡⚡) should still flag at threshold 20
+        let lines: Vec<&str> = (0..25)
+            .map(|i| match i % 5 {
+                0 => "🚀 Launch",
+                1 => "🎯 Target",
+                2 => "✨ Sparkle",
+                3 => "💡 Idea",
+                _ => "⚡ Fast",
+            })
+            .collect();
+        let result = run_check_with_threshold(&lines, 20);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Decorative emoji should still be flagged"
+        );
     }
 }

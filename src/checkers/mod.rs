@@ -1,4 +1,6 @@
 mod agent_guidelines;
+mod circular_reference;
+mod conflicting_directives;
 mod credential_exposure;
 mod custom_pattern;
 mod dangerous_command;
@@ -7,15 +9,21 @@ mod emoji_density;
 mod enum_drift;
 mod file_size;
 mod heading_hierarchy;
+mod instruction_density;
+mod large_code_block;
 mod macros;
 mod missing_essential_sections;
+mod missing_examples;
+mod missing_role_definition;
 mod missing_verification;
 mod naming_inconsistency;
 mod negative_only_framing;
 mod placeholder_text;
 mod prompt_injection_vector;
+mod redundant_directive;
 mod session_journal;
 mod stale_reference;
+mod unbounded_scope;
 pub(crate) mod utils;
 mod vague_directive;
 
@@ -65,6 +73,7 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
     if config.checkers.file_size.enabled {
         checkers.push(Box::new(file_size::FileSizeChecker::new(
             &config.checkers.file_size,
+            config.strict,
         )));
     }
     if config.checkers.credential_exposure.enabled {
@@ -126,6 +135,54 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
                 &config.checkers.negative_only_framing,
             ),
         ));
+    }
+    if config.strict || config.checkers.conflicting_directives.enabled {
+        checkers.push(Box::new(
+            conflicting_directives::ConflictingDirectivesChecker::new(
+                &config.checkers.conflicting_directives.scope,
+            ),
+        ));
+    }
+    if config.strict || config.checkers.missing_role_definition.enabled {
+        checkers.push(Box::new(
+            missing_role_definition::MissingRoleDefinitionChecker::new(
+                &config.checkers.missing_role_definition.scope,
+            ),
+        ));
+    }
+    if config.strict || config.checkers.redundant_directive.enabled {
+        checkers.push(Box::new(
+            redundant_directive::RedundantDirectiveChecker::new(
+                &config.checkers.redundant_directive,
+            ),
+        ));
+    }
+    if config.strict || config.checkers.instruction_density.enabled {
+        checkers.push(Box::new(
+            instruction_density::InstructionDensityChecker::new(
+                &config.checkers.instruction_density,
+            ),
+        ));
+    }
+    if config.strict || config.checkers.missing_examples.enabled {
+        checkers.push(Box::new(missing_examples::MissingExamplesChecker::new(
+            &config.checkers.missing_examples.scope,
+        )));
+    }
+    if config.strict || config.checkers.unbounded_scope.enabled {
+        checkers.push(Box::new(unbounded_scope::UnboundedScopeChecker::new(
+            &config.checkers.unbounded_scope.scope,
+        )));
+    }
+    if config.checkers.circular_reference.enabled {
+        checkers.push(Box::new(circular_reference::CircularReferenceChecker::new(
+            &config.checkers.circular_reference.scope,
+        )));
+    }
+    if config.checkers.large_code_block.enabled {
+        checkers.push(Box::new(large_code_block::LargeCodeBlockChecker::new(
+            &config.checkers.large_code_block,
+        )));
     }
     if !config.checkers.custom_patterns.is_empty() {
         checkers.push(Box::new(custom_pattern::CustomPatternChecker::new(

@@ -414,12 +414,12 @@ fn unicode_in_enum_drift_values() {
 
     fs::write(
         root.join("CLAUDE.md"),
-        "# Routes\n\n| Status | Action |\n|--------|--------|\n| activo | procesar |\n| inactivo | saltar |\n",
+        "Always follow the rules.\nNever skip validation.\nEnsure correctness.\n# Routes\n\n| Status | Action |\n|--------|--------|\n| activo | procesar |\n| inactivo | saltar |\n",
     )
     .unwrap();
     fs::write(
         root.join("AGENTS.md"),
-        "# Routes\n\n| Status | Action |\n|--------|--------|\n| activo | procesar |\n| archivado | eliminar |\n",
+        "Always follow the rules.\nNever skip validation.\nEnsure correctness.\n# Routes\n\n| Status | Action |\n|--------|--------|\n| activo | procesar |\n| archivado | eliminar |\n",
     )
     .unwrap();
     fs::write(
@@ -1061,12 +1061,12 @@ fn empty_scope_preserves_current_behavior() {
 
     fs::write(
         root.join("CLAUDE.md"),
-        "# Routes\n\n| Status | Action |\n|--------|--------|\n| active | process |\n| pending | queue |\n",
+        "Always follow the rules.\nNever skip validation.\nEnsure correctness.\n# Routes\n\n| Status | Action |\n|--------|--------|\n| active | process |\n| pending | queue |\n",
     )
     .unwrap();
     fs::write(
         root.join("AGENTS.md"),
-        "# Routes\n\n| Status | Action |\n|--------|--------|\n| active | process |\n| archived | delete |\n",
+        "Always follow the rules.\nNever skip validation.\nEnsure correctness.\n# Routes\n\n| Status | Action |\n|--------|--------|\n| active | process |\n| archived | delete |\n",
     )
     .unwrap();
     // Enable enum_drift (disabled by default) but no scope
@@ -1692,7 +1692,7 @@ fn file_size_warning_large_file() {
         .collect();
 
     assert_eq!(file_size.len(), 1, "Expected 1 file-size diagnostic");
-    assert_eq!(file_size[0]["severity"].as_str().unwrap(), "warning");
+    assert_eq!(file_size[0]["severity"].as_str().unwrap(), "info");
 }
 
 #[test]
@@ -2036,7 +2036,7 @@ fn emoji_density_detected() {
 
     fs::write(
         root.join(".spectralintrc.toml"),
-        "[checkers.emoji_density]\nenabled = true\n",
+        "[checkers.emoji_density]\nenabled = true\nmax_emoji = 5\n",
     )
     .unwrap();
 
@@ -2283,10 +2283,9 @@ fn missing_essential_sections_detected() {
         root.join("CLAUDE.md"),
         "# Guidelines\n\n\
          ## Output Format\n\nReturn JSON.\n\n\
-         Be careful with the code.\n\
-         Follow best practices.\n\
-         Keep things simple.\n\
-         Write clean code.\n\
+         Always follow best practices.\n\
+         You must ensure code quality.\n\
+         Never skip unit tests.\n\
          Use descriptive names.\n\
          Handle errors properly.\n",
     )
@@ -2433,7 +2432,8 @@ fn missing_verification_detected() {
         "# Setup\n\n\
          Run the build command.\n\
          Execute the migration script.\n\
-         Install the dependencies.\n\n\
+         Install the dependencies.\n\
+         Create the config file.\n\n\
          # Other\n\n\
          ## Output Format\n\nReturn JSON.\n",
     )

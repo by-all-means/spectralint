@@ -1,4 +1,5 @@
 use regex::Regex;
+use std::collections::HashSet;
 use std::sync::LazyLock;
 
 use crate::emit;
@@ -23,10 +24,18 @@ impl DangerousCommandChecker {
 
 static IF_EXISTS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bIF\s+EXISTS\b").unwrap());
 
+const FORCE_WITH_LEASE: &str = "--force-with-lease";
+
+/// Common build/artifact directories where `rm -rf <dir>` is safe routine cleanup.
+/// Only matches relative paths (with optional `.?/` prefix) to avoid matching system directories.
+static SAFE_RM_TARGET: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\brm\s+(?:-[^\s]*\s+)*(?:\.?/)?(?:build|dist|out|target|node_modules|\.cache|__pycache__|\.next|\.nuxt|coverage|\.tox|\.mypy_cache|\.pytest_cache|\.venv|venv|vendor)\b").unwrap()
+});
+
 static DANGEROUS_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     [
-        (r"\brm\s+.*-[^\s]*r[^\s]*f", "rm -rf"),
-        (r"\bgit\s+push\s+.*--force", "git push --force"),
+        (r"\brm\s+.*?-[^\s]*r[^\s]*f", "rm -rf"),
+        (r"\bgit\s+push\s+.*?--force", "git push --force"),
         (r"\bgit\s+push\s+-f\b", "git push -f"),
         (r"\bgit\s+reset\s+--hard", "git reset --hard"),
         (r"\bgit\s+clean\s+-[^\s]*f", "git clean -f"),
@@ -49,11 +58,44 @@ impl Checker for DangerousCommandChecker {
                 continue;
             }
 
+            let mut seen_in_block: HashSet<&'static str> = HashSet::new();
+            let mut prev_idx: Option<usize> = None;
+
             for (i, line) in code_block_lines(&file.raw_lines) {
+                // Reset per-block dedup when there's a gap in line indices
+                // (gap means we left one code block and entered another).
+                if let Some(prev) = prev_idx {
+                    if i > prev + 1 {
+                        seen_in_block.clear();
+                    }
+                }
+                prev_idx = Some(i);
+
+                let trimmed = line.trim_start();
+                // Skip shell comments (#) and SQL comments (--)
+                if trimmed.starts_with('#') || trimmed.starts_with("--") {
+                    continue;
+                }
+
                 for (pat, label) in DANGEROUS_PATTERNS.iter() {
                     if pat.is_match(line) {
                         // Special case: DROP TABLE/DATABASE with IF EXISTS is defensive and safe
                         if label.contains("DROP") && IF_EXISTS.is_match(line) {
+                            continue;
+                        }
+
+                        // Special case: --force-with-lease is the safe variant
+                        if *label == "git push --force" && line.contains(FORCE_WITH_LEASE) {
+                            continue;
+                        }
+
+                        // Special case: rm -rf targeting known build/artifact dirs is routine cleanup
+                        if *label == "rm -rf" && SAFE_RM_TARGET.is_match(line) {
+                            continue;
+                        }
+
+                        // Prevent noisy repetition in long blocks/lists of the same command.
+                        if !seen_in_block.insert(label) {
                             continue;
                         }
 
@@ -105,6 +147,15 @@ mod tests {
     fn test_git_push_force() {
         let result = run_check(&["```", "git push --force", "```"]);
         assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_git_push_force_with_lease_skipped() {
+        let result = run_check(&["```", "git push --force-with-lease", "```"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "--force-with-lease is the safe variant and should not be flagged"
+        );
     }
 
     #[test]
@@ -171,5 +222,98 @@ mod tests {
     fn test_no_code_blocks_no_diagnostic() {
         let result = run_check(&["# Commands", "Run git push to deploy."]);
         assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_shell_comment_skipped() {
+        let result = run_check(&["```bash", "# rm -rf /tmp/old", "```"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Shell comments should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_sql_comment_skipped() {
+        let result = run_check(&["```sql", "-- DROP TABLE users;", "```"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "SQL comments should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_duplicate_in_same_block_warns_once() {
+        let result = run_check(&["```bash", "rm -rf /tmp/old", "rm -rf /tmp/new", "```"]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Same command twice in one block should only warn once"
+        );
+    }
+
+    #[test]
+    fn test_duplicate_across_blocks_warns_per_block() {
+        let result = run_check(&[
+            "```bash",
+            "rm -rf /tmp/old",
+            "```",
+            "Some text in between",
+            "```bash",
+            "rm -rf /tmp/new",
+            "```",
+        ]);
+        assert_eq!(
+            result.diagnostics.len(),
+            2,
+            "Same command in separate blocks should warn in each block"
+        );
+    }
+
+    #[test]
+    fn test_rm_rf_build_dir_skipped() {
+        let result = run_check(&["```bash", "rm -rf build", "```"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "rm -rf targeting a build artifact directory should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_rm_rf_node_modules_skipped() {
+        let result = run_check(&["```bash", "rm -rf node_modules", "```"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "rm -rf targeting node_modules should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_rm_rf_dist_with_path_skipped() {
+        let result = run_check(&["```bash", "rm -rf ./dist", "```"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "rm -rf targeting ./dist should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_rm_rf_system_path_still_flagged() {
+        let result = run_check(&["```bash", "rm -rf /", "```"]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "rm -rf targeting / should still be flagged"
+        );
+    }
+
+    #[test]
+    fn test_rm_rf_unknown_dir_still_flagged() {
+        let result = run_check(&["```bash", "rm -rf data", "```"]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "rm -rf targeting unknown directories should still be flagged"
+        );
     }
 }

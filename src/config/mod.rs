@@ -38,6 +38,14 @@ pub struct CheckersConfig {
     pub prompt_injection_vector: ScopedCheckerConfig,
     pub missing_verification: MissingVerificationConfig,
     pub negative_only_framing: NegativeOnlyFramingConfig,
+    pub conflicting_directives: ScopedCheckerConfig,
+    pub missing_role_definition: ScopedCheckerConfig,
+    pub redundant_directive: RedundantDirectiveConfig,
+    pub instruction_density: InstructionDensityConfig,
+    pub missing_examples: ScopedCheckerConfig,
+    pub unbounded_scope: ScopedCheckerConfig,
+    pub circular_reference: ScopedCheckerConfig,
+    pub large_code_block: LargeCodeBlockConfig,
     pub custom_patterns: Vec<CustomPattern>,
 }
 
@@ -48,21 +56,12 @@ impl Default for CheckersConfig {
             vague_directive: VagueDirectiveConfig::default(),
             naming_inconsistency: ScopedCheckerConfig::default(),
             // Strict-only checkers: disabled by default, enabled by strict = true
-            enum_drift: ScopedCheckerConfig {
-                enabled: false,
-                ..Default::default()
-            },
-            agent_guidelines: ScopedCheckerConfig {
-                enabled: false,
-                ..Default::default()
-            },
+            enum_drift: ScopedCheckerConfig::disabled(),
+            agent_guidelines: ScopedCheckerConfig::disabled(),
             placeholder_text: ScopedCheckerConfig::default(),
             file_size: FileSizeConfig::default(),
             credential_exposure: ScopedCheckerConfig::default(),
-            heading_hierarchy: ScopedCheckerConfig {
-                enabled: false,
-                ..Default::default()
-            },
+            heading_hierarchy: ScopedCheckerConfig::disabled(),
             dangerous_command: ScopedCheckerConfig::default(),
             stale_reference: ScopedCheckerConfig::default(),
             emoji_density: EmojiDensityConfig::default(),
@@ -71,6 +70,14 @@ impl Default for CheckersConfig {
             prompt_injection_vector: ScopedCheckerConfig::default(),
             missing_verification: MissingVerificationConfig::default(),
             negative_only_framing: NegativeOnlyFramingConfig::default(),
+            conflicting_directives: ScopedCheckerConfig::disabled(),
+            missing_role_definition: ScopedCheckerConfig::disabled(),
+            redundant_directive: RedundantDirectiveConfig::default(),
+            instruction_density: InstructionDensityConfig::default(),
+            missing_examples: ScopedCheckerConfig::disabled(),
+            unbounded_scope: ScopedCheckerConfig::disabled(),
+            circular_reference: ScopedCheckerConfig::default(),
+            large_code_block: LargeCodeBlockConfig::default(),
             custom_patterns: Vec::new(),
         }
     }
@@ -87,7 +94,7 @@ impl Default for EmojiDensityConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            max_emoji: 10,
+            max_emoji: 20,
         }
     }
 }
@@ -122,7 +129,7 @@ impl Default for MissingVerificationConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            min_action_verbs: 2,
+            min_action_verbs: 4,
             scope: Vec::new(),
         }
     }
@@ -150,6 +157,62 @@ impl Default for NegativeOnlyFramingConfig {
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
+pub struct RedundantDirectiveConfig {
+    pub enabled: bool,
+    pub similarity_threshold: f64,
+    pub min_line_length: usize,
+    pub scope: Vec<String>,
+}
+
+impl Default for RedundantDirectiveConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            similarity_threshold: 0.95,
+            min_line_length: 15,
+            scope: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct InstructionDensityConfig {
+    pub enabled: bool,
+    pub max_consecutive_bullets: usize,
+    pub scope: Vec<String>,
+}
+
+impl Default for InstructionDensityConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_consecutive_bullets: 15,
+            scope: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct LargeCodeBlockConfig {
+    pub enabled: bool,
+    pub max_lines: usize,
+    pub scope: Vec<String>,
+}
+
+impl Default for LargeCodeBlockConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_lines: 40,
+            scope: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
 pub struct FileSizeConfig {
     pub enabled: bool,
     pub max_lines: usize,
@@ -161,7 +224,7 @@ impl Default for FileSizeConfig {
         Self {
             enabled: true,
             max_lines: 500,
-            warn_lines: 300,
+            warn_lines: 400,
         }
     }
 }
@@ -226,6 +289,16 @@ impl Default for VagueDirectiveConfig {
             enabled: true,
             strict: false,
             extra_patterns: Vec::new(),
+            scope: Vec::new(),
+        }
+    }
+}
+
+impl ScopedCheckerConfig {
+    /// A disabled checker (strict-only checks that are off by default).
+    fn disabled() -> Self {
+        Self {
+            enabled: false,
             scope: Vec::new(),
         }
     }
@@ -297,7 +370,7 @@ enabled = true
 [checkers.file_size]
 enabled = true
 max_lines = 500
-warn_lines = 300
+warn_lines = 400
 
 [checkers.credential_exposure]
 enabled = true
@@ -334,16 +407,46 @@ enabled = true
 
 # [checkers.emoji_density]
 # enabled = true
-# max_emoji = 10
+# max_emoji = 20
 
 # [checkers.missing_verification]
 # enabled = true
-# min_action_verbs = 2
+# min_action_verbs = 4
 
 # [checkers.negative_only_framing]
 # enabled = true
 # threshold = 0.75
 # min_negative_count = 5
+
+# ── Prompt-quality checks ──
+
+# [checkers.conflicting_directives]
+# enabled = true
+
+# [checkers.missing_role_definition]
+# enabled = true
+
+# [checkers.redundant_directive]
+# enabled = true
+# similarity_threshold = 0.95
+# min_line_length = 15
+
+# [checkers.instruction_density]
+# enabled = true
+# max_consecutive_bullets = 15
+
+# [checkers.missing_examples]
+# enabled = true
+
+# [checkers.unbounded_scope]
+# enabled = true
+
+[checkers.circular_reference]
+enabled = true
+
+[checkers.large_code_block]
+enabled = true
+max_lines = 40
 
 # Custom regex patterns:
 # [[checkers.custom_patterns]]

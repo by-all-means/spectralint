@@ -40,6 +40,19 @@ static PLACEHOLDER_VALUE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?i)(?:your[_-]|placeholder|changeme|change[_-]me|EXAMPLE|xxx|\.\.\.)"#).unwrap()
 });
 
+/// Matches lines in test/example/fixture contexts where credentials are expected.
+static TEST_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?:test|example|sample|dummy|fake|mock|fixture|setUp|setup)").unwrap()
+});
+
+/// Credential values that are obviously test/dummy data.
+static TEST_CREDENTIAL_VALUE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?i)^["']?(?:test|example|sample|dummy|fake|mock|password|secret|changeme|abc|123)"#,
+    )
+    .unwrap()
+});
+
 impl Checker for CredentialExposureChecker {
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
@@ -58,6 +71,20 @@ impl Checker for CredentialExposureChecker {
                         // Skip placeholder/example values (your-api-key, xxx, etc.)
                         if PLACEHOLDER_VALUE.is_match(matched) {
                             continue;
+                        }
+
+                        // Skip credentials in test/example/fixture contexts
+                        if TEST_CONTEXT.is_match(line) {
+                            continue;
+                        }
+
+                        // Skip obviously fake credential values (test, example, abc, 123, etc.)
+                        // Extract the value portion after the = or : delimiter
+                        if let Some(eq_pos) = matched.find(['=', ':']) {
+                            let value_part = matched[eq_pos + 1..].trim_start();
+                            if TEST_CREDENTIAL_VALUE.is_match(value_part) {
+                                continue;
+                            }
                         }
 
                         let display = match matched.char_indices().nth(30) {
@@ -205,6 +232,43 @@ mod tests {
             result.diagnostics.len(),
             1,
             "Real-looking credentials should still be flagged"
+        );
+    }
+
+    #[test]
+    fn test_test_context_password_skipped() {
+        let result = run_check(&[r#"password='testpass123' # setUp fixture"#]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Credentials in test/setUp context should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_example_context_skipped() {
+        let result = run_check(&[r#"# Example: token = "sk-live-abc123def456ghi789jkl012mno""#]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Credentials in example context should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_test_credential_value_skipped() {
+        let result = run_check(&[r#"password = "testpassword12345""#]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Obviously fake credential values like 'testpassword' should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_real_credential_not_in_test_context_still_flagged() {
+        let result = run_check(&[r#"secret = "a]k9#mP2$xQ7!nR4vL8wB""#]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Real-looking credentials outside test context should still be flagged"
         );
     }
 }
