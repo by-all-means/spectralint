@@ -46,6 +46,17 @@ pub struct CheckersConfig {
     pub unbounded_scope: ScopedCheckerConfig,
     pub circular_reference: ScopedCheckerConfig,
     pub large_code_block: LargeCodeBlockConfig,
+    pub duplicate_section: ScopedCheckerConfig,
+    pub absolute_path: ScopedCheckerConfig,
+    pub generic_instruction: ScopedCheckerConfig,
+    pub misordered_steps: ScopedCheckerConfig,
+    pub section_length_imbalance: SectionLengthImbalanceConfig,
+    pub unclosed_fence: ScopedCheckerConfig,
+    pub untagged_code_block: ScopedCheckerConfig,
+    pub duplicate_instruction_file: ScopedCheckerConfig,
+    pub outdated_model_reference: ScopedCheckerConfig,
+    pub broken_table: ScopedCheckerConfig,
+    pub placeholder_url: ScopedCheckerConfig,
     pub custom_patterns: Vec<CustomPattern>,
 }
 
@@ -78,6 +89,17 @@ impl Default for CheckersConfig {
             unbounded_scope: ScopedCheckerConfig::disabled(),
             circular_reference: ScopedCheckerConfig::default(),
             large_code_block: LargeCodeBlockConfig::default(),
+            duplicate_section: ScopedCheckerConfig::default(),
+            absolute_path: ScopedCheckerConfig::default(),
+            generic_instruction: ScopedCheckerConfig::disabled(),
+            misordered_steps: ScopedCheckerConfig::default(),
+            section_length_imbalance: SectionLengthImbalanceConfig::default(),
+            unclosed_fence: ScopedCheckerConfig::default(),
+            untagged_code_block: ScopedCheckerConfig::disabled(),
+            duplicate_instruction_file: ScopedCheckerConfig::default(),
+            outdated_model_reference: ScopedCheckerConfig::default(),
+            broken_table: ScopedCheckerConfig::default(),
+            placeholder_url: ScopedCheckerConfig::default(),
             custom_patterns: Vec::new(),
         }
     }
@@ -148,8 +170,8 @@ impl Default for NegativeOnlyFramingConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            threshold: 0.75,
-            min_negative_count: 5,
+            threshold: 0.65,
+            min_negative_count: 3,
             scope: Vec::new(),
         }
     }
@@ -167,7 +189,7 @@ pub struct RedundantDirectiveConfig {
 impl Default for RedundantDirectiveConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             similarity_threshold: 0.95,
             min_line_length: 15,
             scope: Vec::new(),
@@ -213,6 +235,26 @@ impl Default for LargeCodeBlockConfig {
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
+pub struct SectionLengthImbalanceConfig {
+    pub enabled: bool,
+    pub min_section_lines: usize,
+    pub imbalance_ratio: f64,
+    pub scope: Vec<String>,
+}
+
+impl Default for SectionLengthImbalanceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            min_section_lines: 50,
+            imbalance_ratio: 4.0,
+            scope: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
 pub struct FileSizeConfig {
     pub enabled: bool,
     pub max_lines: usize,
@@ -223,8 +265,8 @@ impl Default for FileSizeConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            max_lines: 500,
-            warn_lines: 400,
+            max_lines: 750,
+            warn_lines: 500,
         }
     }
 }
@@ -369,8 +411,8 @@ enabled = true
 
 [checkers.file_size]
 enabled = true
-max_lines = 500
-warn_lines = 400
+max_lines = 750
+warn_lines = 500
 
 [checkers.credential_exposure]
 enabled = true
@@ -415,8 +457,8 @@ enabled = true
 
 # [checkers.negative_only_framing]
 # enabled = true
-# threshold = 0.75
-# min_negative_count = 5
+# threshold = 0.65
+# min_negative_count = 3
 
 # ── Prompt-quality checks ──
 
@@ -426,8 +468,8 @@ enabled = true
 # [checkers.missing_role_definition]
 # enabled = true
 
-# [checkers.redundant_directive]
-# enabled = true
+[checkers.redundant_directive]
+enabled = true
 # similarity_threshold = 0.95
 # min_line_length = 15
 
@@ -447,6 +489,43 @@ enabled = true
 [checkers.large_code_block]
 enabled = true
 max_lines = 40
+
+[checkers.duplicate_section]
+enabled = true
+
+[checkers.absolute_path]
+enabled = true
+
+[checkers.misordered_steps]
+enabled = true
+
+# ── New strict-only checks ──
+
+# [checkers.generic_instruction]
+# enabled = true
+
+# [checkers.section_length_imbalance]
+# enabled = true
+# min_section_lines = 50
+# imbalance_ratio = 4.0
+
+[checkers.unclosed_fence]
+enabled = true
+
+[checkers.broken_table]
+enabled = true
+
+[checkers.duplicate_instruction_file]
+enabled = true
+
+[checkers.outdated_model_reference]
+enabled = true
+
+[checkers.placeholder_url]
+enabled = true
+
+# [checkers.untagged_code_block]
+# enabled = true
 
 # Custom regex patterns:
 # [[checkers.custom_patterns]]

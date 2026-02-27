@@ -9,7 +9,7 @@ pub const AVAILABLE_RULES: &[(&str, &str)] = &[
     ),
     (
         "naming-inconsistency",
-        "Same concept named differently across files",
+        "Same concept named differently within or across files",
     ),
     (
         "enum-drift",
@@ -21,7 +21,7 @@ pub const AVAILABLE_RULES: &[(&str, &str)] = &[
     ),
     (
         "placeholder-text",
-        "Detects leftover placeholders like [TODO], [TBD], etc.",
+        "Detects leftover placeholders like TODO, TBD, FIXME, etc.",
     ),
     (
         "file-size",
@@ -65,7 +65,7 @@ pub const AVAILABLE_RULES: &[(&str, &str)] = &[
     ),
     (
         "negative-only-framing",
-        "Flags files where 75%+ of directives are negative",
+        "Flags files where 65%+ of directives are negative",
     ),
     (
         "conflicting-directives",
@@ -99,6 +99,38 @@ pub const AVAILABLE_RULES: &[(&str, &str)] = &[
         "large-code-block",
         "Flags inline code blocks exceeding a configurable threshold",
     ),
+    (
+        "duplicate-section",
+        "Flags repeated section headings within a file",
+    ),
+    (
+        "absolute-path",
+        "Flags hardcoded personal paths that break portability",
+    ),
+    (
+        "generic-instruction",
+        "Flags meaningless instructions the model already knows",
+    ),
+    ("misordered-steps", "Flags out-of-order numbered steps"),
+    (
+        "section-length-imbalance",
+        "Flags disproportionately long sections relative to siblings",
+    ),
+    ("unclosed-fence", "Flags code fences that are never closed"),
+    (
+        "untagged-code-block",
+        "Flags code fences without a language tag",
+    ),
+    (
+        "duplicate-instruction-file",
+        "Flags near-duplicate instruction files",
+    ),
+    (
+        "outdated-model-reference",
+        "Flags references to deprecated or old model names",
+    ),
+    ("broken-table", "Flags malformed markdown tables"),
+    ("placeholder-url", "Flags placeholder/example URLs in prose"),
     ("custom", "User-defined regex patterns from config"),
 ];
 
@@ -144,7 +176,7 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              Config: [checkers.vague_directive] (strict, extra_patterns)",
         ),
         "naming-inconsistency" => Some(
-            "naming-inconsistency: Detects the same concept named differently across files.\n\
+            "naming-inconsistency: Detects the same concept named differently within or across files.\n\
              \n\
              LLMs treat `api_key` and `apiKey` as two different concepts. When one instruction file\n\
              uses snake_case and another uses camelCase for the same field, the agent builds a\n\
@@ -194,7 +226,7 @@ pub fn explain(rule: &str) -> Option<&'static str> {
         "placeholder-text" => Some(
             "placeholder-text: Detects leftover placeholders in instruction files.\n\
              \n\
-             Patterns like [TODO], [TBD], [FIXME], [insert here], \"etc.\", \"and so on\", and\n\
+             Patterns like TODO, TBD, FIXME, [insert here], \"etc.\", \"and so on\", and\n\
              trailing ellipsis (...) indicate unfinished content. Agents interpret placeholders\n\
              literally or skip them entirely, leading to incomplete behavior. Replace every\n\
              placeholder with actual, specific content before the file reaches an agent.\n\
@@ -206,12 +238,12 @@ pub fn explain(rule: &str) -> Option<&'static str> {
             "file-size: Warns when instruction files exceed recommended length.\n\
              \n\
              LLMs suffer from \"lost in the middle\" degradation — instructions buried in the\n\
-             middle of a long file are more likely to be ignored or misapplied. At 400+ lines\n\
-             this checker emits an info-level notice; at 500+ lines it emits a warning.\n\
+             middle of a long file are more likely to be ignored or misapplied. At 500+ lines\n\
+             this checker emits an info-level notice; at 750+ lines it emits a warning.\n\
              Split large files into focused sub-files and use file references for progressive\n\
              disclosure.\n\
              \n\
-             Severity: info at 400 lines, warning at 500 lines (configurable)\n\
+             Severity: info at 500 lines, warning at 750 lines (configurable)\n\
              Config: [checkers.file_size] (max_lines, warn_lines)",
         ),
         "credential-exposure" => Some(
@@ -332,14 +364,14 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              Config: [checkers.missing_verification] (min_action_verbs, default: 4)",
         ),
         "negative-only-framing" => Some(
-            "negative-only-framing: Flags files where 75%+ of directives are negative.\n\
+            "negative-only-framing: Flags files where 65%+ of directives are negative.\n\
              \n\
              Files dominated by \"Don't\", \"Never\", and \"Avoid\" tell agents what NOT to do\n\
              but give no clear path forward. Agents without positive guidance (Always/Use/Run/\n\
              Follow) tend to become paralyzed or overly conservative. A healthy instruction\n\
              file balances constraints with actionable directives.\n\
              \n\
-             Fires when: negative_count >= 5 AND negative/(positive+negative) >= 0.75\n\
+             Fires when: negative_count >= 3 AND negative/(positive+negative) >= 0.65\n\
              \n\
              Severity: info\n\
              Config: [checkers.negative_only_framing] (threshold, min_negative_count)",
@@ -349,8 +381,9 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              \n\
              When a file says \"always use formal tone\" and also \"keep it casual\", the agent\n\
              receives mutually exclusive instructions. It may follow one, alternate between both,\n\
-             or produce confused output. This checker defines ~6 contradiction pairs covering tone,\n\
-             API usage, file creation, confirmation behavior, verbosity, and resource modification.\n\
+             or produce confused output. This checker defines ~14 contradiction pairs covering tone,\n\
+             API usage, file creation, confirmation, verbosity, resource modification, testing,\n\
+             comments, dependencies, error handling, autonomy, commits, complexity, and git workflow.\n\
              When both members of a pair match on different lines, it emits.\n\
              \n\
              Contradictions are always defects — enabled by --strict or config.\n\
@@ -450,6 +483,152 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              \n\
              Severity: info\n\
              Config: [checkers.large_code_block] (max_lines, default: 40)",
+        ),
+        "duplicate-section" => Some(
+            "duplicate-section: Flags repeated section headings within a file.\n\
+             \n\
+             When the same heading appears twice at the same level (e.g., two `## Testing`\n\
+             sections), agents may only process one or conflate their contents. This typically\n\
+             happens from copy-paste or incremental editing. The checker case-normalizes titles\n\
+             and includes heading level in the comparison, so `## Testing` and `### Testing`\n\
+             are treated as distinct.\n\
+             \n\
+             Severity: warning\n\
+             Config: [checkers.duplicate_section]",
+        ),
+        "absolute-path" => Some(
+            "absolute-path: Flags hardcoded personal paths that break portability.\n\
+             \n\
+             Paths like `/home/john/project`, `/Users/alice/dev`, `C:\\Users\\Bob\\`, and\n\
+             `~/Documents` are tied to a specific machine. When instruction files contain these\n\
+             paths, they break for every other developer or CI environment. Agents following\n\
+             hardcoded paths will fail silently or create files in non-existent directories.\n\
+             \n\
+             System paths (`/etc/`, `/usr/`, `/tmp/`, `/var/`, `/opt/`, etc.) are excluded\n\
+             since they're legitimate cross-machine references.\n\
+             \n\
+             Severity: warning\n\
+             Config: [checkers.absolute_path]",
+        ),
+        "generic-instruction" => Some(
+            "generic-instruction: Flags meaningless instructions the model already knows.\n\
+             \n\
+             Phrases like \"follow best practices\", \"write clean code\", and \"think step by step\"\n\
+             waste context window tokens without adding actionable information. The model already\n\
+             knows to write clean code — what it needs is *your* project's specific definition of\n\
+             clean: naming conventions, error handling patterns, test requirements.\n\
+             \n\
+             Lines with elaboration (followed by `:` or `—`) are excluded, since the generic\n\
+             phrase is being used as a lead-in to specific guidance.\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.generic_instruction]",
+        ),
+        "misordered-steps" => Some(
+            "misordered-steps: Flags out-of-order numbered steps.\n\
+             \n\
+             When instructions say \"Step 1... Step 3... Step 2\", agents execute in document\n\
+             order regardless of numbering. The mismatch between numbered order and document\n\
+             order creates confusion — a human reader expects step 2 before step 3, but the\n\
+             agent processes them as written. The checker tracks step numbers per section and\n\
+             flags when a lower number follows a higher one.\n\
+             \n\
+             Step 1 resets the sequence (allows re-enumeration within a section).\n\
+             Each heading starts a fresh tracking context.\n\
+             \n\
+             Severity: warning\n\
+             Config: [checkers.misordered_steps]",
+        ),
+        "section-length-imbalance" => Some(
+            "section-length-imbalance: Flags disproportionately long sections.\n\
+             \n\
+             When one `##` section is 80 lines and its siblings are 10 lines each, the long\n\
+             section dominates the file and likely covers too much ground. Agents may lose focus\n\
+             on instructions buried deep in an oversized section. The checker compares sibling\n\
+             sections at the same heading level and flags outliers that exceed the median by a\n\
+             configurable ratio (default: 4x) and minimum line count (default: 50).\n\
+             \n\
+             Requires at least 3 sibling sections to compute meaningful statistics.\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.section_length_imbalance] (min_section_lines, imbalance_ratio)",
+        ),
+        "unclosed-fence" => Some(
+            "unclosed-fence: Flags code fences that are never closed.\n\
+             \n\
+             An opening ``` fence without a matching closing fence causes everything below\n\
+             it to be treated as code. Agents parsing the file will miss all instructions\n\
+             after the unclosed fence, silently dropping critical directives.\n\
+             \n\
+             Severity: warning\n\
+             Config: [checkers.unclosed_fence]",
+        ),
+        "untagged-code-block" => Some(
+            "untagged-code-block: Flags code fences without a language tag.\n\
+             \n\
+             Bare ``` fences without a language tag (e.g., ```bash, ```json) make it harder\n\
+             for agents to parse and interpret the block correctly. Adding a language tag\n\
+             provides semantic context that improves code extraction and execution.\n\
+             \n\
+             Only flags blocks with 2+ content lines (one-liners often don't need a tag).\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.untagged_code_block]",
+        ),
+        "duplicate-instruction-file" => Some(
+            "duplicate-instruction-file: Flags near-duplicate instruction files.\n\
+             \n\
+             When two instruction files share 70%+ of their directive lines, they likely\n\
+             represent the same instructions maintained in two places. This creates a\n\
+             consistency burden — edits to one file may not be reflected in the other,\n\
+             leading to divergent agent behavior depending on which file is loaded.\n\
+             \n\
+             Consolidate into one file or split responsibilities clearly.\n\
+             \n\
+             Severity: warning\n\
+             Config: [checkers.duplicate_instruction_file]",
+        ),
+        "outdated-model-reference" => Some(
+            "outdated-model-reference: Flags references to deprecated or old model names.\n\
+             \n\
+             References to GPT-3.5, GPT-4 Turbo, Claude 2, Claude Instant, Claude 3 Haiku/\n\
+             Sonnet/Opus, text-davinci, or code-davinci point to models that have been\n\
+             superseded. Agents following these references may use deprecated API endpoints\n\
+             or make incorrect capability assumptions.\n\
+             \n\
+             Lines containing \"history\", \"changelog\", or \"deprecated\" are excluded, as are\n\
+             headings and lines inside code blocks.\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.outdated_model_reference]",
+        ),
+        "broken-table" => Some(
+            "broken-table: Flags malformed markdown tables.\n\
+             \n\
+             Two sub-checks:\n\
+             \n\
+             1. Column count mismatch — A data row has a different number of columns than\n\
+                the header row. Agents parsing the table may misalign values or skip rows.\n\
+             \n\
+             2. Missing separator row — A table header is followed by data rows without a\n\
+                |---|---| separator. Without the separator, markdown parsers don't recognize\n\
+                the block as a table at all.\n\
+             \n\
+             Severity: warning\n\
+             Config: [checkers.broken_table]",
+        ),
+        "placeholder-url" => Some(
+            "placeholder-url: Flags placeholder/example URLs in prose.\n\
+             \n\
+             URLs like https://example.com, http://localhost:3000, https://your-api.com, and\n\
+             template URLs with {placeholders} in non-code prose indicate unfinished content.\n\
+             Agents may attempt to call these endpoints, resulting in failures or unintended\n\
+             network requests. Replace with actual endpoints or remove.\n\
+             \n\
+             URLs inside code blocks are excluded (code examples legitimately use example.com).\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.placeholder_url]",
         ),
         "custom" => Some(
             "custom:<name>: User-defined regex patterns from config.\n\

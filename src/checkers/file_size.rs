@@ -106,34 +106,34 @@ mod tests {
 
     #[test]
     fn test_warn_threshold_info() {
-        let result = run_check_with_lines(400);
-        assert_eq!(result.diagnostics.len(), 1);
-        assert_eq!(result.diagnostics[0].severity, Severity::Info);
-    }
-
-    #[test]
-    fn test_below_warn_threshold_no_diagnostic() {
-        let result = run_check_with_lines(399);
-        assert!(result.diagnostics.is_empty());
-    }
-
-    #[test]
-    fn test_max_threshold_info_in_default_mode() {
         let result = run_check_with_lines(500);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].severity, Severity::Info);
     }
 
     #[test]
+    fn test_below_warn_threshold_no_diagnostic() {
+        let result = run_check_with_lines(499);
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_max_threshold_info_in_default_mode() {
+        let result = run_check_with_lines(750);
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(result.diagnostics[0].severity, Severity::Info);
+    }
+
+    #[test]
     fn test_above_max_info_in_default_mode() {
-        let result = run_check_with_lines(600);
+        let result = run_check_with_lines(800);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].severity, Severity::Info);
     }
 
     #[test]
     fn test_max_threshold_warning_in_strict_mode() {
-        let result = run_check_with_lines_strict(500, true);
+        let result = run_check_with_lines_strict(750, true);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].severity, Severity::Warning);
     }

@@ -117,10 +117,6 @@ impl Checker for NamingInconsistencyChecker {
                 continue;
             }
 
-            if !group.iter().any(|o| o.file_idx != group[0].file_idx) {
-                continue;
-            }
-
             let variants: Vec<_> = unique_originals
                 .iter()
                 .map(|s| format!("\"{s}\""))
@@ -374,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn test_same_file_no_warning() {
+    fn test_same_file_exact_match_warns() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
@@ -404,7 +400,6 @@ mod tests {
         let ctx = CheckerContext {
             files: vec![file],
             project_root: root.to_path_buf(),
-
             historical_indices: HashSet::new(),
         };
 
@@ -417,9 +412,11 @@ mod tests {
             .filter(|d| d.severity == Severity::Warning)
             .collect();
         assert!(
-            warnings.is_empty(),
-            "Same-file inconsistency should not warn"
+            !warnings.is_empty(),
+            "Same-file exact-match inconsistency should warn"
         );
+        assert!(warnings[0].message.contains("api_key"));
+        assert!(warnings[0].message.contains("apiKey"));
     }
 
     #[test]

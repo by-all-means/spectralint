@@ -1,3 +1,4 @@
+use crate::config::LargeCodeBlockConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::types::{Category, CheckResult, Severity};
@@ -11,7 +12,7 @@ pub struct LargeCodeBlockChecker {
 }
 
 impl LargeCodeBlockChecker {
-    pub fn new(config: &crate::config::LargeCodeBlockConfig) -> Self {
+    pub fn new(config: &LargeCodeBlockConfig) -> Self {
         Self {
             scope: ScopeFilter::new(&config.scope),
             max_lines: config.max_lines,

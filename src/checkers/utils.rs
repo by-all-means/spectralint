@@ -51,6 +51,11 @@ pub(crate) fn is_instruction_file(raw_lines: &[String]) -> bool {
     count >= MIN_IMPERATIVE_LINES
 }
 
+/// Returns `true` if the line is a markdown heading (starts with `#`).
+pub(crate) fn is_heading(line: &str) -> bool {
+    line.trim_start().starts_with('#')
+}
+
 pub(crate) struct ScopeFilter(Option<GlobSet>);
 
 impl ScopeFilter {

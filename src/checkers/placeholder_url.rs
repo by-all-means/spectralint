@@ -1,0 +1,162 @@
+use regex::Regex;
+use std::sync::LazyLock;
+
+use crate::emit;
+use crate::engine::cross_ref::CheckerContext;
+use crate::parser::{is_directive_line, non_code_lines};
+use crate::types::{Category, CheckResult, Severity};
+
+use super::utils::{is_heading, ScopeFilter};
+use super::Checker;
+
+pub struct PlaceholderUrlChecker {
+    scope: ScopeFilter,
+}
+
+impl PlaceholderUrlChecker {
+    pub fn new(scope_patterns: &[String]) -> Self {
+        Self {
+            scope: ScopeFilter::new(scope_patterns),
+        }
+    }
+}
+
+static PLACEHOLDER_URLS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+    vec![
+        // Well-known placeholder domains
+        Regex::new(r"https?://(?:example\.com|example\.org|placeholder\.com|your-domain\.com|localhost:\d+|127\.0\.0\.1)").unwrap(),
+        // Placeholder API subdomains
+        Regex::new(r"https?://(?:api\.example|your-api|my-api|test-api)\.").unwrap(),
+        // Template URLs with {placeholders}
+        Regex::new(r"https?://\S*\{[^}]+\}\S*").unwrap(),
+    ]
+});
+
+impl Checker for PlaceholderUrlChecker {
+    fn check(&self, ctx: &CheckerContext) -> CheckResult {
+        let mut result = CheckResult::default();
+
+        for file in &ctx.files {
+            if !self.scope.includes(&file.path, &ctx.project_root) {
+                continue;
+            }
+
+            for (idx, line) in non_code_lines(&file.raw_lines) {
+                if is_heading(line) {
+                    continue;
+                }
+                if !is_directive_line(line) {
+                    continue;
+                }
+
+                for pattern in PLACEHOLDER_URLS.iter() {
+                    if let Some(m) = pattern.find(line) {
+                        emit!(
+                            result,
+                            file.path,
+                            idx + 1,
+                            Severity::Info,
+                            Category::PlaceholderUrl,
+                            suggest: "Replace placeholder URL with the actual endpoint or remove it",
+                            "Placeholder URL: {}",
+                            m.as_str()
+                        );
+                        break; // One diagnostic per line
+                    }
+                }
+            }
+        }
+
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::checkers::utils::test_helpers::single_file_ctx;
+
+    fn run_check(lines: &[&str]) -> CheckResult {
+        let (_dir, ctx) = single_file_ctx(lines);
+        PlaceholderUrlChecker::new(&[]).check(&ctx)
+    }
+
+    #[test]
+    fn test_example_com_flags() {
+        let result = run_check(&["Send requests to https://example.com/api"]);
+        assert_eq!(result.diagnostics.len(), 1);
+        assert!(result.diagnostics[0].message.contains("example.com"));
+    }
+
+    #[test]
+    fn test_api_example_flags() {
+        let result = run_check(&["Use https://api.example.com/v2"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_your_api_flags() {
+        let result = run_check(&["POST to https://your-api.company.com"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_real_url_no_flag() {
+        let result = run_check(&["See https://github.com/owner/repo"]);
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_in_code_block_no_flag() {
+        let result = run_check(&["```bash", "curl https://example.com/api", "```"]);
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_template_url_flags() {
+        let result = run_check(&["Endpoint: https://api.{env}.company.com/v2"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_localhost_flags() {
+        let result = run_check(&["Health check at http://localhost:3000/health"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_loopback_flags() {
+        let result = run_check(&["Connect to http://127.0.0.1:8080"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_heading_no_flag() {
+        let result = run_check(&["## https://example.com setup"]);
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_example_org_flags() {
+        let result = run_check(&["Visit https://example.org for info"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_your_domain_flags() {
+        let result = run_check(&["Deploy to https://your-domain.com"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_blockquote_no_flag() {
+        let result = run_check(&["> See https://example.com/api for details"]);
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_table_row_no_flag() {
+        let result = run_check(&["| https://example.com | placeholder |"]);
+        assert!(result.diagnostics.is_empty());
+    }
+}

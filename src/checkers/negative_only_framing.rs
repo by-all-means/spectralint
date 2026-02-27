@@ -53,11 +53,10 @@ impl Checker for NegativeOnlyFramingChecker {
                     continue;
                 }
 
-                if POSITIVE_PATTERNS.is_match(line) {
-                    positive_count += 1;
-                }
                 if NEGATIVE_PATTERNS.is_match(line) {
                     negative_count += 1;
+                } else if POSITIVE_PATTERNS.is_match(line) {
+                    positive_count += 1;
                 }
             }
 
@@ -98,7 +97,7 @@ mod tests {
     use crate::checkers::utils::test_helpers::single_file_ctx;
 
     fn run_check(lines: &[&str]) -> CheckResult {
-        run_check_with_config(lines, 0.75, 5)
+        run_check_with_config(lines, 0.65, 3)
     }
 
     fn run_check_with_config(
@@ -204,6 +203,23 @@ mod tests {
         assert!(
             result.diagnostics.is_empty(),
             "Lines in blockquotes should be skipped"
+        );
+    }
+
+    #[test]
+    fn test_must_not_counts_as_negative_only() {
+        // "Must not" should count as negative only, not both positive and negative.
+        // With 3 "must not" lines and 0 positive lines: ratio is 100%.
+        let result = run_check(&[
+            "Must not deploy on Fridays.",
+            "Must not skip tests.",
+            "Must not hardcode values.",
+        ]);
+        assert_eq!(result.diagnostics.len(), 1);
+        // Verify the message shows 0 positive (not inflated by double-counting)
+        assert!(
+            result.diagnostics[0].message.contains("0 positive"),
+            "\"must not\" lines should not also count as positive"
         );
     }
 

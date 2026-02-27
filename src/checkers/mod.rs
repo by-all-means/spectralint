@@ -1,29 +1,40 @@
+mod absolute_path;
 mod agent_guidelines;
+mod broken_table;
 mod circular_reference;
 mod conflicting_directives;
 mod credential_exposure;
 mod custom_pattern;
 mod dangerous_command;
 mod dead_reference;
+mod duplicate_instruction_file;
+mod duplicate_section;
 mod emoji_density;
 mod enum_drift;
 mod file_size;
+mod generic_instruction;
 mod heading_hierarchy;
 mod instruction_density;
 mod large_code_block;
 mod macros;
+mod misordered_steps;
 mod missing_essential_sections;
 mod missing_examples;
 mod missing_role_definition;
 mod missing_verification;
 mod naming_inconsistency;
 mod negative_only_framing;
+mod outdated_model_reference;
 mod placeholder_text;
+mod placeholder_url;
 mod prompt_injection_vector;
 mod redundant_directive;
+mod section_length_imbalance;
 mod session_journal;
 mod stale_reference;
 mod unbounded_scope;
+mod unclosed_fence;
+mod untagged_code_block;
 pub(crate) mod utils;
 mod vague_directive;
 
@@ -182,6 +193,71 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
     if config.checkers.large_code_block.enabled {
         checkers.push(Box::new(large_code_block::LargeCodeBlockChecker::new(
             &config.checkers.large_code_block,
+        )));
+    }
+    if config.checkers.duplicate_section.enabled {
+        checkers.push(Box::new(duplicate_section::DuplicateSectionChecker::new(
+            &config.checkers.duplicate_section.scope,
+        )));
+    }
+    if config.checkers.absolute_path.enabled {
+        checkers.push(Box::new(absolute_path::AbsolutePathChecker::new(
+            &config.checkers.absolute_path.scope,
+        )));
+    }
+    if config.strict || config.checkers.generic_instruction.enabled {
+        checkers.push(Box::new(
+            generic_instruction::GenericInstructionChecker::new(
+                &config.checkers.generic_instruction.scope,
+            ),
+        ));
+    }
+    if config.checkers.misordered_steps.enabled {
+        checkers.push(Box::new(misordered_steps::MisorderedStepsChecker::new(
+            &config.checkers.misordered_steps.scope,
+        )));
+    }
+    if config.strict || config.checkers.section_length_imbalance.enabled {
+        checkers.push(Box::new(
+            section_length_imbalance::SectionLengthImbalanceChecker::new(
+                &config.checkers.section_length_imbalance,
+            ),
+        ));
+    }
+    if config.checkers.unclosed_fence.enabled {
+        checkers.push(Box::new(unclosed_fence::UnclosedFenceChecker::new(
+            &config.checkers.unclosed_fence.scope,
+        )));
+    }
+    if config.strict || config.checkers.untagged_code_block.enabled {
+        checkers.push(Box::new(
+            untagged_code_block::UntaggedCodeBlockChecker::new(
+                &config.checkers.untagged_code_block.scope,
+            ),
+        ));
+    }
+    if config.checkers.duplicate_instruction_file.enabled {
+        checkers.push(Box::new(
+            duplicate_instruction_file::DuplicateInstructionFileChecker::new(
+                &config.checkers.duplicate_instruction_file.scope,
+            ),
+        ));
+    }
+    if config.checkers.outdated_model_reference.enabled {
+        checkers.push(Box::new(
+            outdated_model_reference::OutdatedModelReferenceChecker::new(
+                &config.checkers.outdated_model_reference.scope,
+            ),
+        ));
+    }
+    if config.checkers.broken_table.enabled {
+        checkers.push(Box::new(broken_table::BrokenTableChecker::new(
+            &config.checkers.broken_table.scope,
+        )));
+    }
+    if config.checkers.placeholder_url.enabled {
+        checkers.push(Box::new(placeholder_url::PlaceholderUrlChecker::new(
+            &config.checkers.placeholder_url.scope,
         )));
     }
     if !config.checkers.custom_patterns.is_empty() {

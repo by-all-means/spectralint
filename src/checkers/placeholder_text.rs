@@ -23,9 +23,9 @@ impl PlaceholderTextChecker {
 
 static PLACEHOLDER_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     [
-        r"(?i)\[TODO\]",
-        r"(?i)\[TBD\]",
-        r"(?i)\[FIXME\]",
+        r"(?i)\bTODO\b(?:\s*:)?",
+        r"(?i)\bTBD\b(?:\s*:)?",
+        r"(?i)\bFIXME\b(?:\s*:)?",
         r"(?i)\[insert .+?\]",
         r"(?i)\betc\.?(?:\s|$)",
         r"(?i)\band so on\b",
@@ -122,20 +122,35 @@ mod tests {
 
     #[test]
     fn test_todo_detected() {
-        let result = run_check(&["# Title", "[TODO] implement this"]);
+        let result = run_check(&["# Title", "TODO implement this"]);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].severity, Severity::Warning);
     }
 
     #[test]
+    fn test_todo_with_colon_detected() {
+        let result = run_check(&["TODO: add error handling"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_todo_inside_word_not_detected() {
+        let result = run_check(&["TODOLIST of items to complete"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "TODO inside a word (TODOLIST) should not match"
+        );
+    }
+
+    #[test]
     fn test_tbd_detected() {
-        let result = run_check(&["[TBD] needs review"]);
+        let result = run_check(&["TBD needs review"]);
         assert_eq!(result.diagnostics.len(), 1);
     }
 
     #[test]
     fn test_fixme_detected() {
-        let result = run_check(&["[FIXME] broken"]);
+        let result = run_check(&["FIXME broken"]);
         assert_eq!(result.diagnostics.len(), 1);
     }
 
@@ -241,13 +256,13 @@ mod tests {
 
     #[test]
     fn test_in_code_block_skipped() {
-        let result = run_check(&["```", "[TODO] implement", "```"]);
+        let result = run_check(&["```", "TODO implement", "```"]);
         assert!(result.diagnostics.is_empty());
     }
 
     #[test]
     fn test_multiple_placeholders() {
-        let result = run_check(&["[TODO] first", "[TBD] second"]);
+        let result = run_check(&["TODO first", "TBD second"]);
         assert_eq!(result.diagnostics.len(), 2);
     }
 }

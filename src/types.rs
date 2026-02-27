@@ -47,6 +47,17 @@ pub enum Category {
     UnboundedScope,
     CircularReference,
     LargeCodeBlock,
+    DuplicateSection,
+    AbsolutePath,
+    GenericInstruction,
+    MisorderedSteps,
+    SectionLengthImbalance,
+    UnclosedFence,
+    UntaggedCodeBlock,
+    DuplicateInstructionFile,
+    OutdatedModelReference,
+    BrokenTable,
+    PlaceholderUrl,
     CustomPattern(String),
 }
 
@@ -84,6 +95,17 @@ impl std::fmt::Display for Category {
             Category::UnboundedScope => f.write_str("unbounded-scope"),
             Category::CircularReference => f.write_str("circular-reference"),
             Category::LargeCodeBlock => f.write_str("large-code-block"),
+            Category::DuplicateSection => f.write_str("duplicate-section"),
+            Category::AbsolutePath => f.write_str("absolute-path"),
+            Category::GenericInstruction => f.write_str("generic-instruction"),
+            Category::MisorderedSteps => f.write_str("misordered-steps"),
+            Category::SectionLengthImbalance => f.write_str("section-length-imbalance"),
+            Category::UnclosedFence => f.write_str("unclosed-fence"),
+            Category::UntaggedCodeBlock => f.write_str("untagged-code-block"),
+            Category::DuplicateInstructionFile => f.write_str("duplicate-instruction-file"),
+            Category::OutdatedModelReference => f.write_str("outdated-model-reference"),
+            Category::BrokenTable => f.write_str("broken-table"),
+            Category::PlaceholderUrl => f.write_str("placeholder-url"),
             Category::CustomPattern(name) => write!(f, "custom:{name}"),
         }
     }
@@ -265,6 +287,32 @@ mod tests {
             "circular-reference"
         );
         assert_eq!(Category::LargeCodeBlock.to_string(), "large-code-block");
+        assert_eq!(Category::DuplicateSection.to_string(), "duplicate-section");
+        assert_eq!(Category::AbsolutePath.to_string(), "absolute-path");
+        assert_eq!(
+            Category::GenericInstruction.to_string(),
+            "generic-instruction"
+        );
+        assert_eq!(Category::MisorderedSteps.to_string(), "misordered-steps");
+        assert_eq!(
+            Category::SectionLengthImbalance.to_string(),
+            "section-length-imbalance"
+        );
+        assert_eq!(Category::UnclosedFence.to_string(), "unclosed-fence");
+        assert_eq!(
+            Category::UntaggedCodeBlock.to_string(),
+            "untagged-code-block"
+        );
+        assert_eq!(
+            Category::DuplicateInstructionFile.to_string(),
+            "duplicate-instruction-file"
+        );
+        assert_eq!(
+            Category::OutdatedModelReference.to_string(),
+            "outdated-model-reference"
+        );
+        assert_eq!(Category::BrokenTable.to_string(), "broken-table");
+        assert_eq!(Category::PlaceholderUrl.to_string(), "placeholder-url");
         assert_eq!(
             Category::CustomPattern("todo".to_string()).to_string(),
             "custom:todo"
