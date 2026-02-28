@@ -4,8 +4,8 @@
 # Reproduces the benchmark numbers from the README.
 #
 # Prerequisites:
-#   - spectralint on PATH (cargo install spectralint)
 #   - git, python3
+#   - Run from the spectralint repo root (uses cargo run --release)
 #
 # Usage:
 #   ./benchmarks/run.sh              # clone + scan (standard mode)
@@ -15,9 +15,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_LIST="$SCRIPT_DIR/repos.txt"
 CLONE_DIR="${SPECTRALINT_BENCH_DIR:-/tmp/spectralint-bench-repos}"
 RESULTS_DIR="${SPECTRALINT_BENCH_RESULTS:-/tmp/spectralint-bench-results}"
+
+# Build the local binary once (release mode for accurate perf)
+echo "==> Building spectralint (release)"
+cargo build --release --manifest-path "$REPO_ROOT/Cargo.toml"
+SPECTRALINT="$REPO_ROOT/target/release/spectralint"
 
 STRICT=false
 SKIP_CLONE=false
@@ -66,10 +72,11 @@ fi
 for dir in "$CLONE_DIR"/*/; do
   repo_name="$(basename "$dir")"
   out="$RESULTS_DIR/$repo_name.json"
-  spectralint check "$dir" --format json $STRICT_FLAG > "$out" 2>/dev/null || true
+  "$SPECTRALINT" check "$dir" --format json $STRICT_FLAG > "$out" 2>/dev/null || true
 done
 
 # ── Summarise ──────────────────────────────────────────────────────────────
 
 echo "==> Results in $RESULTS_DIR"
+echo "    Binary: $("$SPECTRALINT" --version 2>&1 || echo "unknown")"
 python3 "$SCRIPT_DIR/summarise.py" "$RESULTS_DIR"

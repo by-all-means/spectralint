@@ -6,7 +6,7 @@ This directory contains everything needed to reproduce the benchmark numbers fro
 
 1. **Repo selection**: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_count`, top 100 results (February 2026)
 2. **Cloning**: Shallow clones (`--depth 1`) of each repository
-3. **Scanning**: `spectralint check <repo> --format json` for each repo
+3. **Scanning**: `cargo run --release -- check <repo> --format json` for each repo (uses local build)
 4. **Aggregation**: Python script summarises findings by rule and severity
 
 ## Files

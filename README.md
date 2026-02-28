@@ -34,48 +34,81 @@ We cloned the top 100 public GitHub repos containing `CLAUDE.md` (sorted by star
 Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_count`, top 100 results, February 2026. Full shallow clones, all instruction files scanned (CLAUDE.md, AGENTS.md, .claude/\*\*, .github/copilot-instructions.md). See [`benchmarks/`](benchmarks/) for the repo list and reproduction script.
 
 ```
-100 repos scanned → 286 findings
+100 repos scanned → 531 findings (56% of repos)
 
-  file-size                     100   info/warn (files exceeding 300/500 lines)
-  naming-inconsistency           56   info      (similar names across files)
-  dead-reference                 47   error     (files that genuinely don't exist)
-  missing-essential-sections     35   info      (no build/test commands)
-  dangerous-command              27   warning   (rm -rf, DROP TABLE in code blocks)
-  vague-directive                15   info      ("try to", "when possible")
-  placeholder-text                2   warning   ([TODO], [TBD] left in)
-  stale-reference                 2   warning   (time-sensitive conditions)
-  prompt-injection-vector         1   warning   (social engineering pattern)
-  credential-exposure             1   error     (hardcoded secret)
+  absolute-path                139   warning   (hardcoded /Users/... paths)
+  hardcoded-file-structure     107   info      (source paths that don't exist on disk)
+  large-code-block              73   info      (inline code >40 lines)
+  dead-reference                45   error     (files that genuinely don't exist)
+  orphaned-section              25   info      (sections with no actionable content)
+  file-size                     21   info/warn (files exceeding 400/500 lines)
+  duplicate-instruction-file    18   warning   (near-duplicate files)
+  placeholder-text              17   warning   ([TODO], [TBD] left in)
+  placeholder-url               12   info      (example.com/localhost URLs left in)
+  instruction-without-context   12   info      (directives with no code examples)
+  vague-directive               12   info      ("try to", "when possible")
+  stale-style-rule               7   info      (formatter-enforceable rules)
+  dangerous-command              6   warning   (rm -rf, DROP TABLE in code blocks)
 ```
 
-**21% of repos had errors or warnings** — dead references to files that genuinely don't exist, dangerous commands in code blocks, stale time-sensitive logic, and one hardcoded credential. Every finding manually verified against the actual repo. With `--strict`, 6 additional opinionated checks (including enum-drift) bring total findings to 2,296 across 91% of repos.
+**40% of repos had errors or warnings** — dead references to files that genuinely don't exist, duplicate instruction files, dangerous commands, placeholder text, and hardcoded paths. Every finding manually verified against the actual repo.
 
-## 18 Built-in Rules
+## 48 Built-in Rules
 
 | Rule | Severity | What it catches |
 |------|----------|-----------------|
 | `dead-reference` | error | `.md` references to files that don't exist |
 | `credential-exposure` | error | Hardcoded API keys, tokens, passwords |
+| `absolute-path` | warning | Hardcoded `/Users/...`, `C:\...` paths |
 | `naming-inconsistency` | warning | `api_key` in one file vs `apiKey` in another |
-| `enum-drift` | warning | Tables with matching columns but divergent values *(strict)* |
-| `stale-reference` | warning | "After March 2025, use the new API" time bombs |
+| `duplicate-instruction-file` | warning | Near-duplicate instruction files |
 | `placeholder-text` | warning | `[TODO]`, `[TBD]`, unfinished content |
 | `dangerous-command` | warning | `rm -rf`, `DROP TABLE` in code blocks |
 | `session-journal` | warning | Session logs masquerading as instructions |
-| `file-size` | info/warn | Files exceeding 300/500 lines |
+| `circular-reference` | warning | A→B→C→A file reference cycles |
+| `broken-table` | warning | Malformed markdown tables |
+| `duplicate-section` | warning | Repeated section headings in same file |
+| `unclosed-fence` | warning | Code blocks missing closing ` ``` ` |
+| `stale-reference` | warning | "After March 2025, use the new API" time bombs |
+| `file-size` | info/warn | Files exceeding 400/500 lines |
+| `hardcoded-file-structure` | info | Source paths (`src/auth/handler.ts`) that don't exist on disk |
+| `large-code-block` | info | Inline code blocks exceeding 40 lines |
+| `orphaned-section` | info | Sections with no actionable content |
+| `placeholder-url` | info | `example.com` URLs left in |
 | `vague-directive` | info | "try to", "when possible", "use your judgment" |
+| `generic-instruction` | info | "follow best practices", "write clean code" |
+| `instruction-without-context` | info | Directive-heavy files with no code examples |
+| `context-window-waste` | info | 3+ consecutive blank lines wasting tokens |
+| `stale-style-rule` | info | Formatter-enforceable rules (indentation, quotes, semicolons) |
+| `ambiguous-scope-reference` | info | Unclear "this file", "the config" references |
+| `boilerplate-template` | info | Unchanged template content |
+| `outdated-model-reference` | info | References to deprecated AI model names |
+| `missing-essential-sections` | info | No build/test commands for agents to verify work |
+| `misordered-steps` | info | Numbered steps out of sequence |
+| `prompt-injection-vector` | warn/info | "Ignore previous instructions", hidden Unicode, base64 payloads |
+| `conflicting-directives` | warning | Contradictory instructions in the same file *(strict)* |
+| `cross-file-contradiction` | warning | Contradictory instructions across files *(strict)* |
+| `enum-drift` | warning | Tables with matching columns but divergent values *(strict)* |
 | `agent-guidelines` | info | Missing boundaries, multi-responsibility, no output format *(strict)* |
 | `heading-hierarchy` | info | Skipped heading levels (h1 → h3) *(strict)* |
-| `emoji-density` | info | 10+ decorative emoji wasting tokens *(strict)* |
-| `missing-essential-sections` | info | No build/test commands for agents to verify work |
-| `prompt-injection-vector` | warn/info | "Ignore previous instructions", hidden Unicode, base64 payloads |
+| `emoji-density` | info | 20+ decorative emoji wasting tokens *(strict)* |
 | `missing-verification` | info | Action sections without success criteria *(strict)* |
 | `negative-only-framing` | info | 75%+ of directives are "Don't/Never/Avoid" *(strict)* |
+| `missing-role-definition` | info | No "You are..." or Role section *(strict)* |
+| `redundant-directive` | info | Near-duplicate directive lines *(strict)* |
+| `instruction-density` | info | Sections with 15+ consecutive bullet points *(strict)* |
+| `missing-examples` | info | Format specs without code examples *(strict)* |
+| `unbounded-scope` | info | Capability grants without boundary constraints *(strict)* |
+| `section-length-imbalance` | info | Wildly uneven section sizes *(strict)* |
+| `untagged-code-block` | info | Code blocks without language tags *(strict)* |
+| `emphasis-overuse` | info | Excessive bold/italic/caps formatting *(strict)* |
+| `excessive-nesting` | info | Deeply nested list structures *(strict)* |
+| `unversioned-stack-reference` | info | "Built with React" without version pinning *(strict)* |
 | `custom` | configurable | Your own regex patterns |
 
 ## Features
 
-- **18 built-in rules** covering security, consistency, content quality, and agent best practices
+- **48 built-in rules** covering security, consistency, content quality, and agent best practices
 <!-- spectralint-disable-next-line vague-directive -->
 - **Vague directive detection** — finds non-deterministic language ("try to", "when possible")
 - **Cross-file analysis** — naming inconsistency and enum drift across multiple files
@@ -197,7 +230,9 @@ enabled = true
 
 # Strict-only checkers (disabled by default, enabled by --strict or strict = true):
 # enum_drift, agent_guidelines, heading_hierarchy, emoji_density,
-# missing_verification, negative_only_framing
+# missing_verification, negative_only_framing, conflicting_directives,
+# missing_role_definition, redundant_directive, instruction_density,
+# missing_examples, unbounded_scope
 
 # Custom regex patterns
 [[checkers.custom_patterns]]
@@ -280,7 +315,7 @@ Add to your workflow:
 
 ## Strict Mode
 
-Enable 6 additional opinionated checkers (enum-drift, agent-guidelines, heading-hierarchy, emoji-density, missing-verification, negative-only-framing):
+Enable 17 additional opinionated checkers (enum-drift, agent-guidelines, heading-hierarchy, emoji-density, missing-verification, negative-only-framing, cross-file-contradiction, missing-role-definition, redundant-directive, instruction-density, missing-examples, unbounded-scope, section-length-imbalance, untagged-code-block, emphasis-overuse, excessive-nesting, unversioned-stack-reference):
 
 ```sh
 # Via CLI flag
