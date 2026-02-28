@@ -3,7 +3,6 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::non_code_lines;
 use crate::types::{Category, CheckResult, Severity};
 
 use super::utils::ScopeFilter;
@@ -30,17 +29,17 @@ impl StaleReferenceChecker {
 static DEPRECATED_PERMANENT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\bdeprecated\s+in\s+(?:favor|lieu|preference)\b").unwrap());
 
-static STALE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    [
-        r"(?i)\b(?:before|after|until|since|as of)\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+20\d{2}",
-        r"(?i)\b(?:before|after|until|since|as of)\s+20\d{2}",
-        r"(?i)\b(?:before|after|until|since|as of)\s+\d{1,2}/\d{1,2}/\d{2,4}",
-        r"(?i)\bif\b.*\byear\b.*\b20\d{2}\b",
-        r"(?i)\bdeprecated\s+(?:in|since|after)\b",
-    ]
-    .iter()
-    .map(|p| Regex::new(p).unwrap())
-    .collect()
+static STALE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)(?:",
+        r"\b(?:before|after|until|since|as of)\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+20\d{2}",
+        r"|\b(?:before|after|until|since|as of)\s+20\d{2}",
+        r"|\b(?:before|after|until|since|as of)\s+\d{1,2}/\d{1,2}/\d{2,4}",
+        r"|\bif\b.*\byear\b.*\b20\d{2}\b",
+        r"|\bdeprecated\s+(?:in|since|after)\b",
+        r")",
+    ))
+    .unwrap()
 });
 
 /// Time markers in descriptive/project-context prose are often legitimate
@@ -62,7 +61,7 @@ impl Checker for StaleReferenceChecker {
                 continue;
             }
 
-            for (i, line) in non_code_lines(&file.raw_lines) {
+            for (i, line) in file.non_code_lines() {
                 // Skip "deprecated in favor/lieu/preference" — permanent statements
                 if DEPRECATED_PERMANENT.is_match(line) {
                     continue;
@@ -73,12 +72,9 @@ impl Checker for StaleReferenceChecker {
                     continue;
                 }
 
-                for pat in STALE_PATTERNS.iter() {
-                    if let Some(m) = pat.find(line) {
-                        // Skip matches inside inline backtick code (e.g., `--since 2024-01-01`)
-                        if inside_inline_code(line, m.start()) {
-                            continue;
-                        }
+                if let Some(m) = STALE_PATTERN.find(line) {
+                    // Skip matches inside inline backtick code (e.g., `--since 2024-01-01`)
+                    if !inside_inline_code(line, m.start()) {
                         emit!(
                             result,
                             file.path,
@@ -89,7 +85,6 @@ impl Checker for StaleReferenceChecker {
                             "Time-sensitive reference found: \"{}\"",
                             m.as_str()
                         );
-                        break;
                     }
                 }
             }

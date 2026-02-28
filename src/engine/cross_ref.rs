@@ -10,6 +10,8 @@ use super::scanner::matches_glob;
 pub struct CheckerContext {
     pub files: Vec<ParsedFile>,
     pub project_root: PathBuf,
+    pub canonical_root: Option<PathBuf>,
+    pub filename_index: HashSet<String>,
     pub historical_indices: HashSet<usize>,
 }
 
@@ -18,6 +20,7 @@ impl CheckerContext {
         files: Vec<ParsedFile>,
         project_root: &Path,
         historical_patterns: &[String],
+        filename_index: HashSet<String>,
     ) -> Self {
         let historical_set = build_glob_set(historical_patterns);
         let historical_indices = files
@@ -26,22 +29,48 @@ impl CheckerContext {
             .filter(|(_, f)| matches_glob(&f.path, project_root, &historical_set))
             .map(|(i, _)| i)
             .collect();
+        let canonical_root = project_root.canonicalize().ok();
         Self {
             files,
             project_root: project_root.to_path_buf(),
+            canonical_root,
+            filename_index,
             historical_indices,
         }
     }
 }
 
+/// Simple filename index builder for tests (walks the tree collecting basenames).
+#[cfg(test)]
+pub(crate) fn build_filename_index(root: &Path) -> HashSet<String> {
+    let mut index = HashSet::new();
+    fn collect(dir: &Path, index: &mut HashSet<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let Ok(ft) = entry.file_type() else {
+                continue;
+            };
+            let name = entry.file_name();
+            if ft.is_dir() {
+                collect(&entry.path(), index);
+            } else {
+                index.insert(name.to_string_lossy().into_owned());
+            }
+        }
+    }
+    collect(root, &mut index);
+    index
+}
+
 pub(crate) fn build_glob_set(patterns: &[String]) -> GlobSet {
     let mut builder = GlobSetBuilder::new();
-    patterns
-        .iter()
-        .filter_map(|p| GlobBuilder::new(p).case_insensitive(true).build().ok())
-        .for_each(|glob| {
+    for pattern in patterns {
+        if let Ok(glob) = GlobBuilder::new(pattern).case_insensitive(true).build() {
             builder.add(glob);
-        });
+        }
+    }
     builder.build().unwrap_or_default()
 }
 
@@ -58,6 +87,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         }
     }
 
@@ -73,7 +103,7 @@ mod tests {
 
         let patterns = vec!["changelog*".to_string(), "retro*".to_string()];
 
-        let ctx = CheckerContext::build(files, root, &patterns);
+        let ctx = CheckerContext::build(files, root, &patterns, HashSet::new());
 
         assert!(
             !ctx.historical_indices.contains(&0),
@@ -104,7 +134,7 @@ mod tests {
 
         let patterns = vec!["docs/history.md".to_string()];
 
-        let ctx = CheckerContext::build(files, root, &patterns);
+        let ctx = CheckerContext::build(files, root, &patterns, HashSet::new());
 
         assert!(!ctx.historical_indices.contains(&0));
         assert!(
@@ -125,7 +155,7 @@ mod tests {
             make_parsed_file(root, "CLAUDE.md"),
         ];
 
-        let ctx = CheckerContext::build(files, root, &[]);
+        let ctx = CheckerContext::build(files, root, &[], HashSet::new());
 
         assert!(
             ctx.historical_indices.is_empty(),

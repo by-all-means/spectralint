@@ -39,7 +39,7 @@ fn is_system_path(line: &str, match_start: usize) -> bool {
 }
 
 /// Returns true if ALL `~/` on this line are inside URLs or markdown link text.
-fn contains_url_with_tilde(line: &str) -> bool {
+fn all_tildes_in_urls(line: &str) -> bool {
     for (i, _) in line.match_indices("~/") {
         let before_tilde = &line[..i];
 
@@ -81,7 +81,7 @@ fn detect_personal_path(line: &str) -> Option<String> {
     if let Some(m) = WINDOWS_PERSONAL.find(line) {
         return Some(format!("Hardcoded personal path: {}", m.as_str()));
     }
-    if line.contains("~/") && !contains_url_with_tilde(line) {
+    if line.contains("~/") && !all_tildes_in_urls(line) {
         return Some("Tilde home path detected".to_string());
     }
     None

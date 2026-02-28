@@ -75,17 +75,10 @@ impl Checker for DuplicateSectionChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::checkers::utils::test_helpers::single_file_ctx_with_sections;
+    use crate::checkers::utils::test_helpers::{
+        section_with_end as section, single_file_ctx_with_sections,
+    };
     use crate::parser::types::Section;
-
-    fn section(title: &str, level: u8, line: usize, end_line: usize) -> Section {
-        Section {
-            level,
-            title: title.to_string(),
-            line,
-            end_line,
-        }
-    }
 
     fn run_check(sections: Vec<Section>) -> CheckResult {
         let lines: Vec<&str> = vec!["# Doc"];

@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::{is_directive_line, non_code_lines};
+use crate::parser::is_directive_line;
 use crate::types::{Category, CheckResult, Severity};
 
 use super::utils::ScopeFilter;
@@ -23,17 +23,17 @@ impl PromptInjectionVectorChecker {
 
 // ── Social engineering patterns (Warning) ────────────────────────────────
 
-static SOCIAL_ENGINEERING_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    [
-        r"(?i)\bignore\s+(?:all\s+)?previous\s+instructions?\b",
-        r"(?i)\bforget\s+everything\b",
-        r"(?i)\bnew\s+system\s+prompt\b",
-        r"(?i)^system\s*:",
-        r"(?i)\boverride\s+previous\b",
-    ]
-    .iter()
-    .map(|p| Regex::new(p).unwrap())
-    .collect()
+static SOCIAL_ENGINEERING: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)(?:",
+        r"\bignore\s+(?:all\s+)?previous\s+instructions?\b",
+        r"|\bforget\s+everything\b",
+        r"|\bnew\s+system\s+prompt\b",
+        r"|^system\s*:",
+        r"|\boverride\s+previous\b",
+        r")",
+    ))
+    .unwrap()
 });
 
 // ── Base64 payload detection (Info) ──────────────────────────────────────
@@ -70,25 +70,22 @@ impl Checker for PromptInjectionVectorChecker {
                 continue;
             }
 
-            for (i, line) in non_code_lines(&file.raw_lines) {
+            for (i, line) in file.non_code_lines() {
                 let line_num = i + 1;
 
                 // Sub-check 1: Social engineering (Warning) — skip blockquotes
                 if is_directive_line(line) {
-                    for pat in SOCIAL_ENGINEERING_PATTERNS.iter() {
-                        if let Some(m) = pat.find(line) {
-                            emit!(
-                                result,
-                                file.path,
-                                line_num,
-                                Severity::Warning,
-                                Category::PromptInjectionVector,
-                                suggest: "Remove or rewrite this phrase — it resembles a prompt injection attack",
-                                "Potential prompt injection: \"{}\"",
-                                m.as_str()
-                            );
-                            break;
-                        }
+                    if let Some(m) = SOCIAL_ENGINEERING.find(line) {
+                        emit!(
+                            result,
+                            file.path,
+                            line_num,
+                            Severity::Warning,
+                            Category::PromptInjectionVector,
+                            suggest: "Remove or rewrite this phrase — it resembles a prompt injection attack",
+                            "Potential prompt injection: \"{}\"",
+                            m.as_str()
+                        );
                     }
                 }
 

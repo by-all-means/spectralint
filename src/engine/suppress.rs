@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::parser::types::{InlineSuppress, ParsedFile, SuppressKind};
+use crate::types::Category;
 
 #[derive(Debug)]
 pub(super) struct SuppressedRange {
@@ -69,14 +70,16 @@ pub(super) fn is_suppressed(
     suppressions: &HashMap<PathBuf, Vec<SuppressedRange>>,
     file: &Path,
     line: usize,
-    category: &str,
+    category: &Category,
 ) -> bool {
-    suppressions.get(file).is_some_and(|ranges| {
-        ranges.iter().any(|range| {
-            line >= range.start_line
-                && line <= range.end_line
-                && range.rule.as_ref().map_or(true, |rule| rule == category)
-        })
+    let Some(ranges) = suppressions.get(file) else {
+        return false;
+    };
+    let cat_str = category.to_string();
+    ranges.iter().any(|range| {
+        line >= range.start_line
+            && line <= range.end_line
+            && range.rule.as_ref().map_or(true, |rule| cat_str == *rule)
     })
 }
 
@@ -104,19 +107,19 @@ mod tests {
             &map,
             Path::new("test.md"),
             6,
-            "dead-reference"
+            &Category::DeadReference
         ));
         assert!(!is_suppressed(
             &map,
             Path::new("test.md"),
             7,
-            "dead-reference"
+            &Category::DeadReference
         ));
         assert!(!is_suppressed(
             &map,
             Path::new("test.md"),
             6,
-            "vague-directive"
+            &Category::VagueDirective
         ));
     }
 
@@ -144,19 +147,19 @@ mod tests {
             &map,
             Path::new("test.md"),
             5,
-            "dead-reference"
+            &Category::DeadReference
         ));
         assert!(is_suppressed(
             &map,
             Path::new("test.md"),
             5,
-            "vague-directive"
+            &Category::VagueDirective
         ));
         assert!(!is_suppressed(
             &map,
             Path::new("test.md"),
             9,
-            "dead-reference"
+            &Category::DeadReference
         ));
     }
 
@@ -184,7 +187,7 @@ mod tests {
             &map,
             Path::new("test.md"),
             5,
-            "dead-reference"
+            &Category::DeadReference
         ));
 
         // vague-directive at line 5 should NOT be suppressed
@@ -192,7 +195,7 @@ mod tests {
             &map,
             Path::new("test.md"),
             5,
-            "vague-directive"
+            &Category::VagueDirective
         ));
 
         // naming-inconsistency at line 5 should NOT be suppressed
@@ -200,7 +203,7 @@ mod tests {
             &map,
             Path::new("test.md"),
             5,
-            "naming-inconsistency"
+            &Category::NamingInconsistency
         ));
 
         // dead-reference at line 9 (outside range) should NOT be suppressed
@@ -208,7 +211,7 @@ mod tests {
             &map,
             Path::new("test.md"),
             9,
-            "dead-reference"
+            &Category::DeadReference
         ));
     }
 
@@ -229,22 +232,27 @@ mod tests {
             &map,
             Path::new("test.md"),
             6,
-            "dead-reference"
+            &Category::DeadReference
         ));
         assert!(is_suppressed(
             &map,
             Path::new("test.md"),
             6,
-            "vague-directive"
+            &Category::VagueDirective
         ));
-        assert!(is_suppressed(&map, Path::new("test.md"), 6, "enum-drift"));
+        assert!(is_suppressed(
+            &map,
+            Path::new("test.md"),
+            6,
+            &Category::EnumDrift,
+        ));
 
         // Line 7 should NOT be suppressed
         assert!(!is_suppressed(
             &map,
             Path::new("test.md"),
             7,
-            "dead-reference"
+            &Category::DeadReference
         ));
     }
 
@@ -260,8 +268,6 @@ mod tests {
         assert_eq!(ranges[0].start_line, 10);
         assert_eq!(ranges[0].end_line, 30);
     }
-
-    // ── Item 7: Suppress comment edge cases ──────────────────────────────
 
     #[test]
     fn test_nested_disable_blocks() {
@@ -326,25 +332,25 @@ mod tests {
             &map,
             Path::new("test.md"),
             6,
-            "dead-reference"
+            &Category::DeadReference
         ));
         assert!(!is_suppressed(
             &map,
             Path::new("test.md"),
             6,
-            "vague-directive"
+            &Category::VagueDirective
         ));
         assert!(is_suppressed(
             &map,
             Path::new("test.md"),
             8,
-            "vague-directive"
+            &Category::VagueDirective
         ));
         assert!(!is_suppressed(
             &map,
             Path::new("test.md"),
             8,
-            "dead-reference"
+            &Category::DeadReference
         ));
     }
 
@@ -377,13 +383,13 @@ mod tests {
             &map,
             Path::new("test.md"),
             4,
-            "dead-reference"
+            &Category::DeadReference
         ));
         assert!(is_suppressed(
             &map,
             Path::new("test.md"),
             4,
-            "vague-directive"
+            &Category::VagueDirective
         ));
     }
 
@@ -391,7 +397,7 @@ mod tests {
     fn test_suppression_for_unknown_file() {
         let map = HashMap::new();
         assert!(
-            !is_suppressed(&map, Path::new("unknown.md"), 5, "dead-reference"),
+            !is_suppressed(&map, Path::new("unknown.md"), 5, &Category::DeadReference),
             "File not in suppression map should never be suppressed"
         );
     }
@@ -421,21 +427,21 @@ mod tests {
             &map,
             Path::new("test.md"),
             6,
-            "dead-reference"
+            &Category::DeadReference
         ));
         // Line 7 suppressed by second disable-next-line
         assert!(is_suppressed(
             &map,
             Path::new("test.md"),
             7,
-            "dead-reference"
+            &Category::DeadReference
         ));
         // Line 8 not suppressed
         assert!(!is_suppressed(
             &map,
             Path::new("test.md"),
             8,
-            "dead-reference"
+            &Category::DeadReference
         ));
     }
 }

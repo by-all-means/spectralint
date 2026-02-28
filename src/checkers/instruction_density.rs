@@ -6,7 +6,7 @@ use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::types::{Category, CheckResult, Severity};
 
-use super::utils::ScopeFilter;
+use super::utils::{is_bullet_line, ScopeFilter};
 use super::Checker;
 
 pub struct InstructionDensityChecker {
@@ -22,10 +22,6 @@ impl InstructionDensityChecker {
         }
     }
 }
-
-/// Matches bullet-point lines (-, *, +, or numbered lists).
-static BULLET_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s*(?:[-*+]|\d+\.)\s+").unwrap());
 
 /// Section titles that are navigation/reference/inventory, not instruction lists.
 static SKIP_SECTION_TITLE: LazyLock<Regex> = LazyLock::new(|| {
@@ -79,29 +75,23 @@ impl Checker for InstructionDensityChecker {
 
                 let section_lines = &file.raw_lines[start..end];
 
-                let mut consecutive = 0usize;
-                let mut run_start_line = 0usize;
-                let mut in_code_block = false;
+                let mut consecutive = 0;
+                let mut run_start_line = 0;
 
                 for (offset, line) in section_lines.iter().enumerate() {
-                    let trimmed = line.trim();
-
-                    if trimmed.starts_with("```") {
-                        in_code_block = !in_code_block;
+                    if file.is_code(start + offset) {
                         consecutive = 0;
                         continue;
                     }
 
-                    if in_code_block {
-                        continue;
-                    }
+                    let trimmed = line.trim();
 
                     if trimmed.is_empty() || trimmed.starts_with('#') {
                         consecutive = 0;
                         continue;
                     }
 
-                    if BULLET_PATTERN.is_match(line) {
+                    if is_bullet_line(line) {
                         if consecutive == 0 {
                             run_start_line = start + offset + 1; // 1-indexed
                         }

@@ -1,9 +1,9 @@
 use anyhow::Result;
+use clap::Parser;
+
 use spectralint::cli::{Cli, Commands};
 use spectralint::config::Config;
 use spectralint::engine;
-
-use clap::Parser;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -31,13 +31,23 @@ fn main() -> Result<()> {
             }
         }
         Commands::Init => {
+            use std::io::Write;
             let path = std::env::current_dir()?.join(".spectralintrc.toml");
-            if path.exists() {
-                eprintln!(".spectralintrc.toml already exists");
-                std::process::exit(1);
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(mut f) => {
+                    f.write_all(Config::default_toml().as_bytes())?;
+                    println!("Created .spectralintrc.toml");
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    eprintln!(".spectralintrc.toml already exists");
+                    std::process::exit(1);
+                }
+                Err(e) => return Err(e.into()),
             }
-            std::fs::write(&path, Config::default_toml())?;
-            println!("Created .spectralintrc.toml");
         }
         Commands::Explain { rule: None } => {
             println!("{}", spectralint::cli::explain::list_rules());

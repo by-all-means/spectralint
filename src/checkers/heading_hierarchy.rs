@@ -57,35 +57,11 @@ impl Checker for HeadingHierarchyChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::types::{ParsedFile, Section};
-    use std::collections::HashSet;
-
-    fn section(title: &str, level: u8, line: usize) -> Section {
-        Section {
-            level,
-            title: title.to_string(),
-            line,
-            end_line: 0,
-        }
-    }
+    use crate::checkers::utils::test_helpers::{section, single_file_ctx_with_sections};
+    use crate::parser::types::Section;
 
     fn run_check(sections: Vec<Section>) -> CheckResult {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-        let file = ParsedFile {
-            path: root.join("CLAUDE.md"),
-            sections,
-            tables: vec![],
-            file_refs: vec![],
-            directives: vec![],
-            suppress_comments: vec![],
-            raw_lines: vec![],
-        };
-        let ctx = CheckerContext {
-            files: vec![file],
-            project_root: root.to_path_buf(),
-            historical_indices: HashSet::new(),
-        };
+        let (_dir, ctx) = single_file_ctx_with_sections(&[], sections);
         HeadingHierarchyChecker::new(&[]).check(&ctx)
     }
 

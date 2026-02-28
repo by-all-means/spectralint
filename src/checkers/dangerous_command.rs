@@ -4,7 +4,6 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::code_block_lines;
 use crate::types::{Category, CheckResult, Severity};
 
 use super::utils::ScopeFilter;
@@ -61,13 +60,11 @@ impl Checker for DangerousCommandChecker {
             let mut seen_in_block: HashSet<&'static str> = HashSet::new();
             let mut prev_idx: Option<usize> = None;
 
-            for (i, line) in code_block_lines(&file.raw_lines) {
+            for (i, line) in file.code_block_lines() {
                 // Reset per-block dedup when there's a gap in line indices
                 // (gap means we left one code block and entered another).
-                if let Some(prev) = prev_idx {
-                    if i > prev + 1 {
-                        seen_in_block.clear();
-                    }
+                if prev_idx.is_some_and(|prev| i > prev + 1) {
+                    seen_in_block.clear();
                 }
                 prev_idx = Some(i);
 

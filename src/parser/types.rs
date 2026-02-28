@@ -9,6 +9,9 @@ pub struct ParsedFile {
     pub directives: Vec<Directive>,
     pub suppress_comments: Vec<InlineSuppress>,
     pub raw_lines: Vec<String>,
+    /// Pre-computed code block mask: `true` if line is inside a fenced code block.
+    /// Fence markers themselves are marked `true` (excluded from non-code iteration).
+    pub in_code_block: Vec<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -52,4 +55,31 @@ pub struct InlineSuppress {
     pub line: usize,
     pub kind: SuppressKind,
     pub rule: Option<String>,
+}
+
+impl ParsedFile {
+    /// Whether line `i` is inside a fenced code block.
+    /// Returns `false` when the mask is empty (test convenience).
+    pub fn is_code(&self, i: usize) -> bool {
+        self.in_code_block.get(i).copied().unwrap_or(false)
+    }
+
+    /// Iterate non-code lines using the pre-computed mask (O(1) per line, no fence tracking).
+    pub fn non_code_lines(&self) -> impl Iterator<Item = (usize, &str)> + '_ {
+        self.raw_lines
+            .iter()
+            .enumerate()
+            .filter_map(move |(i, line)| (!self.is_code(i)).then_some((i, line.as_str())))
+    }
+
+    /// Iterate code-block lines using the pre-computed mask (excludes fence markers).
+    pub fn code_block_lines(&self) -> impl Iterator<Item = (usize, &str)> + '_ {
+        self.raw_lines
+            .iter()
+            .enumerate()
+            .filter_map(move |(i, line)| {
+                (self.is_code(i) && !line.trim_start().starts_with("```"))
+                    .then_some((i, line.as_str()))
+            })
+    }
 }

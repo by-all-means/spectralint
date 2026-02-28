@@ -3,10 +3,10 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::{is_directive_line, non_code_lines};
+use crate::parser::is_directive_line;
 use crate::types::{Category, CheckResult, Severity};
 
-use super::utils::{is_heading, ScopeFilter};
+use super::utils::{has_elaboration_after, is_heading, ScopeFilter};
 use super::Checker;
 
 pub struct GenericInstructionChecker {
@@ -21,32 +21,23 @@ impl GenericInstructionChecker {
     }
 }
 
-static GENERIC_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    [
-        r"(?i)\bfollow\s+best\s+practices?\b",
-        r"(?i)\bwrite\s+clean\s+code\b",
-        r"(?i)\bwrite\s+(?:good|quality|readable|maintainable)\s+code\b",
-        r"(?i)\bthink\s+(?:step[- ]by[- ]step|carefully)\b",
-        r"(?i)\bbe\s+(?:helpful|accurate|thorough)\s+and\s+(?:helpful|accurate|thorough)\b",
-        r"(?i)\buse\s+(?:common\s+sense|good\s+(?:judgment|judgement))\b",
-        r"(?i)\bpay\s+(?:close\s+)?attention\s+to\s+detail\b",
-        r"(?i)\bensure\s+(?:code\s+)?quality\b",
-        r"(?i)\bproduce\s+high[- ]quality\b",
-        r"(?i)\bstrive\s+for\s+excellence\b",
-    ]
-    .iter()
-    .map(|p| Regex::new(p).unwrap())
-    .collect()
+static GENERIC_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)\b(?:",
+        r"follow\s+best\s+practices?",
+        r"|write\s+clean\s+code",
+        r"|write\s+(?:good|quality|readable|maintainable)\s+code",
+        r"|think\s+(?:step[- ]by[- ]step|carefully)",
+        r"|be\s+(?:helpful|accurate|thorough)\s+and\s+(?:helpful|accurate|thorough)",
+        r"|use\s+(?:common\s+sense|good\s+(?:judgment|judgement))",
+        r"|pay\s+(?:close\s+)?attention\s+to\s+detail",
+        r"|ensure\s+(?:code\s+)?quality",
+        r"|produce\s+high[- ]quality",
+        r"|strive\s+for\s+excellence",
+        r")\b",
+    ))
+    .unwrap()
 });
-
-/// Check if the matched phrase is followed by elaboration (`:` or ` —` or ` -`).
-fn has_elaboration_after(line: &str, match_end: usize) -> bool {
-    let rest = line[match_end..].trim_start();
-    rest.starts_with(':')
-        || rest.starts_with("—")
-        || rest.starts_with("- ")
-        || rest.starts_with("– ")
-}
 
 impl Checker for GenericInstructionChecker {
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
@@ -57,20 +48,15 @@ impl Checker for GenericInstructionChecker {
                 continue;
             }
 
-            for (idx, line) in non_code_lines(&file.raw_lines) {
+            for (idx, line) in file.non_code_lines() {
                 let line_num = idx + 1;
 
                 if is_heading(line) || !is_directive_line(line) {
                     continue;
                 }
 
-                for pattern in GENERIC_PATTERNS.iter() {
-                    if let Some(m) = pattern.find(line) {
-                        // Skip if elaboration follows
-                        if has_elaboration_after(line, m.end()) {
-                            continue;
-                        }
-
+                if let Some(m) = GENERIC_PATTERN.find(line) {
+                    if !has_elaboration_after(line, m.end()) {
                         emit!(
                             result,
                             file.path,
@@ -81,7 +67,6 @@ impl Checker for GenericInstructionChecker {
                             "Generic instruction: \"{}\"",
                             m.as_str()
                         );
-                        break; // One flag per line
                     }
                 }
             }

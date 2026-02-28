@@ -40,7 +40,7 @@ impl Checker for EnumDriftChecker {
             .filter(|(file_idx, f)| {
                 !ctx.historical_indices.contains(file_idx)
                     && self.scope.includes(&f.path, &ctx.project_root)
-                    && is_instruction_file(&f.raw_lines)
+                    && is_instruction_file(&f.raw_lines, &f.in_code_block)
             })
             .flat_map(|(file_idx, file)| {
                 file.tables.iter().map(move |table| TableRef {
@@ -169,6 +169,24 @@ mod tests {
     use super::*;
     use crate::parser::types::{ParsedFile, Table};
 
+    fn make_parsed_file(
+        path: std::path::PathBuf,
+        tables: Vec<Table>,
+        raw_lines: Vec<String>,
+    ) -> ParsedFile {
+        let in_code_block = crate::parser::build_code_block_mask(&raw_lines);
+        ParsedFile {
+            path,
+            sections: vec![],
+            tables,
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines,
+            in_code_block,
+        }
+    }
+
     #[test]
     fn test_enum_drift_detected() {
         let dir = tempfile::tempdir().unwrap();
@@ -180,10 +198,9 @@ mod tests {
             "Ensure correctness.".to_string(),
         ];
 
-        let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
-            sections: vec![],
-            tables: vec![Table {
+        let file1 = make_parsed_file(
+            root.join("CLAUDE.md"),
+            vec![Table {
                 headers: vec!["Status".to_string(), "Action".to_string()],
                 rows: vec![
                     vec!["active".to_string(), "process".to_string()],
@@ -193,16 +210,12 @@ mod tests {
                 line: 5,
                 parent_section: Some("Routing".to_string()),
             }],
-            file_refs: vec![],
-            directives: vec![],
-            suppress_comments: vec![],
-            raw_lines: imperative_lines.clone(),
-        };
+            imperative_lines.clone(),
+        );
 
-        let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
-            sections: vec![],
-            tables: vec![Table {
+        let file2 = make_parsed_file(
+            root.join("AGENTS.md"),
+            vec![Table {
                 headers: vec!["Status".to_string(), "Action".to_string()],
                 rows: vec![
                     vec!["active".to_string(), "process".to_string()],
@@ -212,15 +225,14 @@ mod tests {
                 line: 3,
                 parent_section: Some("Routing".to_string()),
             }],
-            file_refs: vec![],
-            directives: vec![],
-            suppress_comments: vec![],
-            raw_lines: imperative_lines,
-        };
+            imperative_lines,
+        );
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
 
             historical_indices: HashSet::new(),
         };
@@ -262,6 +274,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -280,6 +293,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let mut historical = HashSet::new();
@@ -288,6 +302,8 @@ mod tests {
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: historical,
         };
 
@@ -321,6 +337,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
@@ -330,6 +347,8 @@ mod tests {
                 make_file("C.md", "archived"),
             ],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -370,6 +389,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -380,11 +400,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
 
             historical_indices: HashSet::new(),
         };
@@ -415,6 +438,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -433,11 +457,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -470,6 +497,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -485,11 +513,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -519,6 +550,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -534,11 +566,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -568,6 +603,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -583,11 +619,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -612,10 +651,9 @@ mod tests {
             "Ensure correctness.".to_string(),
         ];
 
-        let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
-            sections: vec![],
-            tables: vec![Table {
+        let file1 = make_parsed_file(
+            root.join("CLAUDE.md"),
+            vec![Table {
                 headers: vec!["Status".to_string(), "Action".to_string()],
                 rows: vec![
                     vec!["".to_string(), "process".to_string()],
@@ -624,16 +662,12 @@ mod tests {
                 line: 5,
                 parent_section: Some("Routing".to_string()),
             }],
-            file_refs: vec![],
-            directives: vec![],
-            suppress_comments: vec![],
-            raw_lines: imperative_lines.clone(),
-        };
+            imperative_lines.clone(),
+        );
 
-        let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
-            sections: vec![],
-            tables: vec![Table {
+        let file2 = make_parsed_file(
+            root.join("AGENTS.md"),
+            vec![Table {
                 headers: vec!["Status".to_string(), "Action".to_string()],
                 rows: vec![
                     vec!["active".to_string(), "process".to_string()],
@@ -642,15 +676,14 @@ mod tests {
                 line: 3,
                 parent_section: Some("Routing".to_string()),
             }],
-            file_refs: vec![],
-            directives: vec![],
-            suppress_comments: vec![],
-            raw_lines: imperative_lines,
-        };
+            imperative_lines,
+        );
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -682,39 +715,33 @@ mod tests {
         ];
 
         let long_value = "a".repeat(60);
-        let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
-            sections: vec![],
-            tables: vec![Table {
+        let file1 = make_parsed_file(
+            root.join("CLAUDE.md"),
+            vec![Table {
                 headers: vec!["Status".to_string(), "Action".to_string()],
                 rows: vec![vec![long_value.clone(), "process".to_string()]],
                 line: 5,
                 parent_section: Some("Routing".to_string()),
             }],
-            file_refs: vec![],
-            directives: vec![],
-            suppress_comments: vec![],
-            raw_lines: imperative_lines.clone(),
-        };
+            imperative_lines.clone(),
+        );
 
-        let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
-            sections: vec![],
-            tables: vec![Table {
+        let file2 = make_parsed_file(
+            root.join("AGENTS.md"),
+            vec![Table {
                 headers: vec!["Status".to_string(), "Action".to_string()],
                 rows: vec![vec!["active".to_string(), "process".to_string()]],
                 line: 3,
                 parent_section: Some("Routing".to_string()),
             }],
-            file_refs: vec![],
-            directives: vec![],
-            suppress_comments: vec![],
-            raw_lines: imperative_lines,
-        };
+            imperative_lines,
+        );
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -762,11 +789,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 

@@ -2,11 +2,11 @@ use std::collections::HashSet;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
+use crate::parser::is_directive_line;
 use crate::parser::types::ParsedFile;
-use crate::parser::{is_directive_line, non_code_lines};
 use crate::types::{Category, CheckResult, Severity};
 
-use super::utils::{is_instruction_file, ScopeFilter, MIN_DIRECTIVE_LINES};
+use super::utils::{is_instruction_file, normalize_directive, ScopeFilter, MIN_DIRECTIVE_LINES};
 use super::Checker;
 
 pub struct DuplicateInstructionFileChecker {
@@ -24,31 +24,9 @@ impl DuplicateInstructionFileChecker {
 /// Minimum overlap ratio to consider files as near-duplicates.
 const OVERLAP_THRESHOLD: f64 = 0.7;
 
-/// Normalize a directive line for comparison: strip list markers, lowercase, collapse whitespace.
-fn normalize_directive(line: &str) -> String {
-    let trimmed = line.trim();
-    let stripped = trimmed
-        .strip_prefix("- ")
-        .or_else(|| trimmed.strip_prefix("* "))
-        .or_else(|| {
-            // Strip numbered list markers like "1. ", "12. "
-            let after_digits = trimmed.trim_start_matches(|c: char| c.is_ascii_digit());
-            (after_digits.len() < trimmed.len())
-                .then(|| after_digits.strip_prefix(". "))
-                .flatten()
-        })
-        .unwrap_or(trimmed);
-
-    stripped
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
-}
-
 /// Collect normalized directive lines for a file.
-fn collect_directives(raw_lines: &[String]) -> Vec<String> {
-    non_code_lines(raw_lines)
+fn collect_directives(file: &ParsedFile) -> Vec<String> {
+    file.non_code_lines()
         .filter(|(_, line)| is_directive_line(line) && !line.trim().is_empty())
         .map(|(_, line)| normalize_directive(line))
         .filter(|d| !d.is_empty())
@@ -57,14 +35,9 @@ fn collect_directives(raw_lines: &[String]) -> Vec<String> {
 
 /// Check if file A references file B (parent/child relationship).
 fn references_other(file: &ParsedFile, other: &ParsedFile) -> bool {
-    let other_name = other
-        .path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
-    if other_name.is_empty() {
+    let Some(other_name) = other.path.file_name().and_then(|n| n.to_str()) else {
         return false;
-    }
+    };
     file.file_refs.iter().any(|r| r.path.contains(other_name))
 }
 
@@ -83,10 +56,10 @@ impl Checker for DuplicateInstructionFileChecker {
                 if !self.scope.includes(&f.path, &ctx.project_root) {
                     return None;
                 }
-                if !is_instruction_file(&f.raw_lines) {
+                if !is_instruction_file(&f.raw_lines, &f.in_code_block) {
                     return None;
                 }
-                let directives = collect_directives(&f.raw_lines);
+                let directives = collect_directives(f);
                 if directives.len() < MIN_DIRECTIVE_LINES {
                     return None;
                 }
@@ -158,6 +131,8 @@ mod tests {
         lines: &[&str],
         file_refs: Vec<FileRef>,
     ) -> ParsedFile {
+        let raw_lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
+        let in_code_block = crate::parser::build_code_block_mask(&raw_lines);
         ParsedFile {
             path: root.join(name),
             sections: vec![],
@@ -165,7 +140,8 @@ mod tests {
             file_refs,
             directives: vec![],
             suppress_comments: vec![],
-            raw_lines: lines.iter().map(|s| s.to_string()).collect(),
+            raw_lines,
+            in_code_block,
         }
     }
 
@@ -196,6 +172,8 @@ mod tests {
         let ctx = CheckerContext {
             files: vec![file_a, file_b],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -233,6 +211,8 @@ mod tests {
         let ctx = CheckerContext {
             files: vec![file_a, file_b],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -254,6 +234,8 @@ mod tests {
         let ctx = CheckerContext {
             files: vec![file_a, file_b],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -284,6 +266,8 @@ mod tests {
         let ctx = CheckerContext {
             files: vec![file_a, file_b],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -303,6 +287,8 @@ mod tests {
         let ctx = CheckerContext {
             files: vec![file_a],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -333,6 +319,8 @@ mod tests {
         let ctx = CheckerContext {
             files: vec![file_a, file_b, file_c],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 

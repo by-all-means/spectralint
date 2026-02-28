@@ -1,29 +1,26 @@
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::{is_directive_line, non_code_lines, NON_DIRECTIVE_CONTEXTS};
+use crate::parser::{is_directive_line, NON_DIRECTIVE_CONTEXT};
 use crate::types::{Category, CheckResult, Severity};
 
-use super::utils::ScopeFilter;
+use super::utils::{ScopeFilter, REGEX_SIZE_LIMIT};
 use super::Checker;
 
-/// Additional patterns enabled by `strict = true`. These are common hedging
-/// phrases that are borderline — normal in English prose but can introduce
-/// ambiguity for agents. No prompt engineering guide specifically calls these
-/// out, so they are opt-in only.
-static STRICT_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    [
-        r"(?i)\bwhen possible\b",
-        r"(?i)\bwhen needed\b",
-        r"(?i)\bas needed\b",
-        r"(?i)\bwhen necessary\b",
-        r"(?i)\bconsider\b",
-    ]
-    .iter()
-    .map(|p| Regex::new(p).unwrap())
-    .collect()
+/// Hedging phrases enabled by `strict = true` (opt-in only).
+static STRICT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)\b(?:",
+        r"when possible",
+        r"|when needed",
+        r"|as needed",
+        r"|when necessary",
+        r"|consider",
+        r")\b",
+    ))
+    .unwrap()
 });
 
 pub struct VagueDirectiveChecker {
@@ -36,13 +33,15 @@ impl VagueDirectiveChecker {
     pub fn new(strict: bool, extra_patterns: &[String], scope_patterns: &[String]) -> Self {
         let extra_patterns = extra_patterns
             .iter()
-            .filter_map(|p| match Regex::new(p) {
-                Ok(r) => Some(r),
-                Err(e) => {
-                    eprintln!("Warning: invalid vague_directive extra_pattern \"{p}\": {e}");
-                    None
-                }
-            })
+            .filter_map(
+                |p| match RegexBuilder::new(p).size_limit(REGEX_SIZE_LIMIT).build() {
+                    Ok(r) => Some(r),
+                    Err(e) => {
+                        eprintln!("Warning: invalid vague_directive extra_pattern \"{p}\": {e}");
+                        None
+                    }
+                },
+            )
             .collect();
         Self {
             strict,
@@ -62,7 +61,6 @@ impl Checker for VagueDirectiveChecker {
             if !self.scope.includes(&file.path, &ctx.project_root) {
                 continue;
             }
-            // Built-in patterns (already parsed)
             for directive in &file.directives {
                 emit!(
                     result,
@@ -76,33 +74,34 @@ impl Checker for VagueDirectiveChecker {
                 );
             }
 
-            // Strict patterns + extra user-defined patterns
             if has_additional {
-                let strict_patterns: &[Regex] = if self.strict { &STRICT_PATTERNS } else { &[] };
-
-                for (i, line) in non_code_lines(&file.raw_lines) {
+                for (i, line) in file.non_code_lines() {
                     if !is_directive_line(line) {
                         continue;
                     }
 
-                    if NON_DIRECTIVE_CONTEXTS.iter().any(|p| p.is_match(line)) {
+                    if NON_DIRECTIVE_CONTEXT.is_match(line) {
                         continue;
                     }
 
-                    for pattern in strict_patterns.iter().chain(&self.extra_patterns) {
-                        if let Some(m) = pattern.find(line) {
-                            emit!(
-                                result,
-                                file.path,
-                                i + 1,
-                                Severity::Info,
-                                Category::VagueDirective,
-                                suggest: "Replace with a specific, deterministic instruction",
-                                "Non-deterministic directive found: \"{}\"",
-                                m.as_str().trim()
-                            );
-                            break;
-                        }
+                    let found = if self.strict {
+                        STRICT_PATTERN.find(line)
+                    } else {
+                        None
+                    }
+                    .or_else(|| self.extra_patterns.iter().find_map(|p| p.find(line)));
+
+                    if let Some(m) = found {
+                        emit!(
+                            result,
+                            file.path,
+                            i + 1,
+                            Severity::Info,
+                            Category::VagueDirective,
+                            suggest: "Replace with a specific, deterministic instruction",
+                            "Non-deterministic directive found: \"{}\"",
+                            m.as_str().trim()
+                        );
                     }
                 }
             }
@@ -134,11 +133,14 @@ mod tests {
             }],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -167,11 +169,14 @@ mod tests {
                 "This is probably fine.".to_string(),
                 "This line is clean.".to_string(),
             ],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -222,6 +227,7 @@ mod tests {
             }],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let out_of_scope = ParsedFile {
@@ -235,11 +241,14 @@ mod tests {
             }],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![in_scope, out_of_scope],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -273,11 +282,14 @@ mod tests {
             }],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -310,11 +322,14 @@ mod tests {
                 "Restart when necessary.".to_string(),
                 "Consider using caching.".to_string(),
             ],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -344,11 +359,14 @@ mod tests {
                 "Do this when possible.".to_string(),
                 "Consider using caching.".to_string(),
             ],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -377,11 +395,14 @@ mod tests {
                 "Do this when possible.".to_string(),
                 "This is probably fine.".to_string(),
             ],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 

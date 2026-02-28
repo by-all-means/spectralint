@@ -58,6 +58,17 @@ pub enum Category {
     OutdatedModelReference,
     BrokenTable,
     PlaceholderUrl,
+    EmphasisOveruse,
+    BoilerplateTemplate,
+    OrphanedSection,
+    ExcessiveNesting,
+    ContextWindowWaste,
+    AmbiguousScopeReference,
+    InstructionWithoutContext,
+    CrossFileContradiction,
+    StaleStyleRule,
+    HardcodedFileStructure,
+    UnversionedStackReference,
     CustomPattern(String),
 }
 
@@ -106,6 +117,17 @@ impl std::fmt::Display for Category {
             Category::OutdatedModelReference => f.write_str("outdated-model-reference"),
             Category::BrokenTable => f.write_str("broken-table"),
             Category::PlaceholderUrl => f.write_str("placeholder-url"),
+            Category::EmphasisOveruse => f.write_str("emphasis-overuse"),
+            Category::BoilerplateTemplate => f.write_str("boilerplate-template"),
+            Category::OrphanedSection => f.write_str("orphaned-section"),
+            Category::ExcessiveNesting => f.write_str("excessive-nesting"),
+            Category::ContextWindowWaste => f.write_str("context-window-waste"),
+            Category::AmbiguousScopeReference => f.write_str("ambiguous-scope-reference"),
+            Category::InstructionWithoutContext => f.write_str("instruction-without-context"),
+            Category::CrossFileContradiction => f.write_str("cross-file-contradiction"),
+            Category::StaleStyleRule => f.write_str("stale-style-rule"),
+            Category::HardcodedFileStructure => f.write_str("hardcoded-file-structure"),
+            Category::UnversionedStackReference => f.write_str("unversioned-stack-reference"),
             Category::CustomPattern(name) => write!(f, "custom:{name}"),
         }
     }
@@ -313,6 +335,38 @@ mod tests {
         );
         assert_eq!(Category::BrokenTable.to_string(), "broken-table");
         assert_eq!(Category::PlaceholderUrl.to_string(), "placeholder-url");
+        assert_eq!(Category::EmphasisOveruse.to_string(), "emphasis-overuse");
+        assert_eq!(
+            Category::BoilerplateTemplate.to_string(),
+            "boilerplate-template"
+        );
+        assert_eq!(Category::OrphanedSection.to_string(), "orphaned-section");
+        assert_eq!(Category::ExcessiveNesting.to_string(), "excessive-nesting");
+        assert_eq!(
+            Category::ContextWindowWaste.to_string(),
+            "context-window-waste"
+        );
+        assert_eq!(
+            Category::AmbiguousScopeReference.to_string(),
+            "ambiguous-scope-reference"
+        );
+        assert_eq!(
+            Category::InstructionWithoutContext.to_string(),
+            "instruction-without-context"
+        );
+        assert_eq!(
+            Category::CrossFileContradiction.to_string(),
+            "cross-file-contradiction"
+        );
+        assert_eq!(Category::StaleStyleRule.to_string(), "stale-style-rule");
+        assert_eq!(
+            Category::HardcodedFileStructure.to_string(),
+            "hardcoded-file-structure"
+        );
+        assert_eq!(
+            Category::UnversionedStackReference.to_string(),
+            "unversioned-stack-reference"
+        );
         assert_eq!(
             Category::CustomPattern("todo".to_string()).to_string(),
             "custom:todo"
@@ -334,8 +388,6 @@ mod tests {
         assert_eq!(json["severity"], "error");
     }
 
-    // ── Item 23: Severity deserialization round-trip ──────────────────────
-
     #[test]
     fn test_severity_deserialize_roundtrip() {
         for sev in [Severity::Info, Severity::Warning, Severity::Error] {
@@ -353,8 +405,6 @@ mod tests {
             "Invalid severity should fail deserialization"
         );
     }
-
-    // ── Item 25: Diagnostic sort stability ───────────────────────────────
 
     #[test]
     fn test_diagnostic_sort_by_file_then_line() {

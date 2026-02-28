@@ -1,20 +1,28 @@
 mod absolute_path;
 mod agent_guidelines;
+mod ambiguous_scope_reference;
+mod boilerplate_template;
 mod broken_table;
 mod circular_reference;
 mod conflicting_directives;
+mod context_window_waste;
 mod credential_exposure;
+mod cross_file_contradiction;
 mod custom_pattern;
 mod dangerous_command;
 mod dead_reference;
 mod duplicate_instruction_file;
 mod duplicate_section;
 mod emoji_density;
+mod emphasis_overuse;
 mod enum_drift;
+mod excessive_nesting;
 mod file_size;
 mod generic_instruction;
+mod hardcoded_file_structure;
 mod heading_hierarchy;
 mod instruction_density;
+mod instruction_without_context;
 mod large_code_block;
 mod macros;
 mod misordered_steps;
@@ -24,6 +32,7 @@ mod missing_role_definition;
 mod missing_verification;
 mod naming_inconsistency;
 mod negative_only_framing;
+mod orphaned_section;
 mod outdated_model_reference;
 mod placeholder_text;
 mod placeholder_url;
@@ -32,9 +41,11 @@ mod redundant_directive;
 mod section_length_imbalance;
 mod session_journal;
 mod stale_reference;
+mod stale_style_rule;
 mod unbounded_scope;
 mod unclosed_fence;
 mod untagged_code_block;
+mod unversioned_stack_reference;
 pub(crate) mod utils;
 mod vague_directive;
 
@@ -147,7 +158,7 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
             ),
         ));
     }
-    if config.strict || config.checkers.conflicting_directives.enabled {
+    if config.checkers.conflicting_directives.enabled {
         checkers.push(Box::new(
             conflicting_directives::ConflictingDirectivesChecker::new(
                 &config.checkers.conflicting_directives.scope,
@@ -205,7 +216,7 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
             &config.checkers.absolute_path.scope,
         )));
     }
-    if config.strict || config.checkers.generic_instruction.enabled {
+    if config.checkers.generic_instruction.enabled {
         checkers.push(Box::new(
             generic_instruction::GenericInstructionChecker::new(
                 &config.checkers.generic_instruction.scope,
@@ -259,6 +270,75 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
         checkers.push(Box::new(placeholder_url::PlaceholderUrlChecker::new(
             &config.checkers.placeholder_url.scope,
         )));
+    }
+    if config.strict || config.checkers.emphasis_overuse.enabled {
+        checkers.push(Box::new(emphasis_overuse::EmphasisOveruseChecker::new(
+            &config.checkers.emphasis_overuse,
+        )));
+    }
+    if config.checkers.boilerplate_template.enabled {
+        checkers.push(Box::new(
+            boilerplate_template::BoilerplateTemplateChecker::new(
+                &config.checkers.boilerplate_template.scope,
+            ),
+        ));
+    }
+    if config.checkers.orphaned_section.enabled {
+        checkers.push(Box::new(orphaned_section::OrphanedSectionChecker::new(
+            &config.checkers.orphaned_section.scope,
+        )));
+    }
+    if config.strict || config.checkers.excessive_nesting.enabled {
+        checkers.push(Box::new(excessive_nesting::ExcessiveNestingChecker::new(
+            &config.checkers.excessive_nesting,
+        )));
+    }
+    if config.strict || config.checkers.cross_file_contradiction.enabled {
+        checkers.push(Box::new(
+            cross_file_contradiction::CrossFileContradictionChecker::new(
+                &config.checkers.cross_file_contradiction.scope,
+            ),
+        ));
+    }
+    if config.checkers.instruction_without_context.enabled {
+        checkers.push(Box::new(
+            instruction_without_context::InstructionWithoutContextChecker::new(
+                &config.checkers.instruction_without_context.scope,
+            ),
+        ));
+    }
+    if config.checkers.ambiguous_scope_reference.enabled {
+        checkers.push(Box::new(
+            ambiguous_scope_reference::AmbiguousScopeReferenceChecker::new(
+                &config.checkers.ambiguous_scope_reference.scope,
+            ),
+        ));
+    }
+    if config.checkers.context_window_waste.enabled {
+        checkers.push(Box::new(
+            context_window_waste::ContextWindowWasteChecker::new(
+                &config.checkers.context_window_waste.scope,
+            ),
+        ));
+    }
+    if config.checkers.stale_style_rule.enabled {
+        checkers.push(Box::new(stale_style_rule::StaleStyleRuleChecker::new(
+            &config.checkers.stale_style_rule.scope,
+        )));
+    }
+    if config.checkers.hardcoded_file_structure.enabled {
+        checkers.push(Box::new(
+            hardcoded_file_structure::HardcodedFileStructureChecker::new(
+                &config.checkers.hardcoded_file_structure.scope,
+            ),
+        ));
+    }
+    if config.strict || config.checkers.unversioned_stack_reference.enabled {
+        checkers.push(Box::new(
+            unversioned_stack_reference::UnversionedStackReferenceChecker::new(
+                &config.checkers.unversioned_stack_reference.scope,
+            ),
+        ));
     }
     if !config.checkers.custom_patterns.is_empty() {
         checkers.push(Box::new(custom_pattern::CustomPatternChecker::new(

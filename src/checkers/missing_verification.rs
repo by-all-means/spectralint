@@ -78,17 +78,12 @@ static CMD_REF_LIST_MARKER: LazyLock<Regex> =
 
 /// Returns true if >60% of content lines in a section start with a backtick
 /// after stripping list markers. Indicates a command-reference section.
-fn is_command_reference(section_lines: &[String]) -> bool {
+fn is_command_reference(section_lines: &[String], mask: &[bool], offset: usize) -> bool {
     let mut content_lines = 0;
     let mut backtick_lines = 0;
-    let mut in_code_block = false;
 
-    for line in section_lines {
-        if line.trim().starts_with("```") {
-            in_code_block = !in_code_block;
-            continue;
-        }
-        if in_code_block {
+    for (i, line) in section_lines.iter().enumerate() {
+        if *mask.get(offset + i).unwrap_or(&false) {
             continue;
         }
         let trimmed = line.trim();
@@ -107,7 +102,6 @@ fn is_command_reference(section_lines: &[String]) -> bool {
 
 fn check_sections(file: &ParsedFile, min_action_verbs: usize, result: &mut CheckResult) {
     for section in &file.sections {
-        // Get lines for this section
         let start = section.line.saturating_sub(1);
         let end = section.end_line.min(file.raw_lines.len());
 
@@ -117,49 +111,35 @@ fn check_sections(file: &ParsedFile, min_action_verbs: usize, result: &mut Check
 
         let section_lines = &file.raw_lines[start..end];
 
-        // Skip sections < 3 lines
         if section_lines.len() < 3 {
             continue;
         }
 
-        // Skip informational/descriptive sections — they use action verbs in
-        // explanatory context, not as procedural instructions.
         if INFORMATIONAL_TITLE.is_match(&section.title) {
             continue;
         }
 
-        // Skip command-reference sections: if >60% of non-blank, non-heading content
-        // lines start with a backtick (after stripping list markers), this is a reference
-        // list, not a procedural section.
-        if is_command_reference(section_lines) {
+        if is_command_reference(section_lines, &file.in_code_block, start) {
             continue;
         }
 
-        // Count action verbs in non-code lines
         let mut action_count = 0;
         let mut has_verification = false;
-        let mut in_code_block = false;
 
-        for line in section_lines {
-            if line.trim().starts_with("```") {
-                in_code_block = !in_code_block;
-                continue;
-            }
+        for (i, line) in section_lines.iter().enumerate() {
+            let in_code = *file.in_code_block.get(start + i).unwrap_or(&false);
 
-            if in_code_block {
-                // Check for test commands in code blocks
+            if in_code {
                 if TEST_COMMAND.is_match(line) {
                     has_verification = true;
                 }
                 continue;
             }
 
-            // Count action verbs
             if ACTION_VERB.is_match(line) {
                 action_count += 1;
             }
 
-            // Check for verification signals
             if VERIFICATION_SIGNAL.is_match(line) || VERIFICATION_PHRASE.is_match(line) {
                 has_verification = true;
             }

@@ -3,7 +3,6 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::non_code_lines;
 use crate::types::{Category, CheckResult, Severity};
 
 use super::utils::ScopeFilter;
@@ -89,7 +88,7 @@ impl Checker for SessionJournalChecker {
             let mut weak_markers: Vec<&str> = Vec::new();
             let mut checkmark_count = 0;
 
-            for (_, line) in non_code_lines(&file.raw_lines) {
+            for (_, line) in file.non_code_lines() {
                 checkmark_count += CHECKMARK_PATTERN.find_iter(line).count();
 
                 for (pat, label) in STRONG_MARKERS.iter() {

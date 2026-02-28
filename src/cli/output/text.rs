@@ -46,22 +46,15 @@ pub fn render(result: &CheckResult, project_root: &Path) {
     println!("  {} across {} files", parts.join(", "), file_count.bold());
     println!("  {}", "\u{2501}".repeat(50).dimmed());
 
-    let severity_order = |cat: &str| -> u8 {
-        by_category.get(cat).map_or(3, |diags| {
-            diags
-                .iter()
-                .map(|d| match d.severity {
-                    Severity::Error => 0,
-                    Severity::Warning => 1,
-                    Severity::Info => 2,
-                })
-                .min()
-                .unwrap_or(3)
-        })
+    let max_severity = |cat: &str| -> Severity {
+        by_category
+            .get(cat)
+            .and_then(|diags| diags.iter().map(|d| d.severity).max())
+            .unwrap_or(Severity::Info)
     };
 
     let mut categories: Vec<_> = by_category.keys().collect();
-    categories.sort_by_key(|&cat| (severity_order(cat), cat));
+    categories.sort_by(|&a, &b| max_severity(b).cmp(&max_severity(a)).then_with(|| a.cmp(b)));
 
     for cat_name in categories {
         let diags = &by_category[cat_name];

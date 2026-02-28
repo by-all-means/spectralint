@@ -4,8 +4,8 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
+use crate::parser::is_directive_line;
 use crate::parser::types::ParsedFile;
-use crate::parser::{is_directive_line, non_code_lines};
 use crate::types::{Category, CheckResult, Severity};
 
 use super::utils::{is_instruction_file, ScopeFilter};
@@ -23,46 +23,33 @@ impl AgentGuidelinesChecker {
     }
 }
 
-static POSITIVE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    [
-        r"(?i)\balways\b",
-        r"(?i)\bmust\b",
-        r"(?i)\bshould\b",
-        r"(?i)\bmake sure\b",
-    ]
-    .iter()
-    .map(|p| Regex::new(p).unwrap())
-    .collect()
+static POSITIVE_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\b(?:always|must|should|make sure)\b").unwrap());
+
+static NEGATIVE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)(?:",
+        r"\b(?:never|do not|don'?t|avoid|must not)\b",
+        r"|\bnot\s+(?:acceptable|allowed|permitted)\b",
+        r"|^[-*+\s]*\bno\s+\w+",
+        r")",
+    ))
+    .unwrap()
 });
 
-static NEGATIVE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    [
-        r"(?i)\bnever\b",
-        r"(?i)\bdo not\b",
-        r"(?i)\bdon'?t\b",
-        r"(?i)\bavoid\b",
-        r"(?i)\bmust not\b",
-        r"(?i)^[-*+\s]*\bno\s+\w+",
-        r"(?i)\bnot\s+(?:acceptable|allowed|permitted)\b",
-    ]
-    .iter()
-    .map(|p| Regex::new(p).unwrap())
-    .collect()
-});
-
-static DELEGATION_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    [
-        r"(?i)\bdo whatever\b",
-        r"(?i)\bhandle everything\b",
-        r"(?i)\bfull autonomy\b",
-        r"(?i)\bcomplete freedom\b",
-        r"(?i)\buse your best judgm?ent\b",
-        r"(?i)\bfigure it out\b",
-        r"(?i)\bas you see fit\b",
-    ]
-    .iter()
-    .map(|p| Regex::new(p).unwrap())
-    .collect()
+static DELEGATION_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)\b(?:",
+        r"do whatever",
+        r"|handle everything",
+        r"|full autonomy",
+        r"|complete freedom",
+        r"|use your best judgm?ent",
+        r"|figure it out",
+        r"|as you see fit",
+        r")\b",
+    ))
+    .unwrap()
 });
 
 /// Words that address an agent. Required for ambiguous delegation phrases
@@ -101,7 +88,7 @@ impl Checker for AgentGuidelinesChecker {
             }
 
             // Skip reference/context files without imperative instructions.
-            if !is_instruction_file(&file.raw_lines) {
+            if !is_instruction_file(&file.raw_lines, &file.in_code_block) {
                 continue;
             }
 
@@ -115,10 +102,6 @@ impl Checker for AgentGuidelinesChecker {
     }
 }
 
-fn any_pattern_matches(patterns: &[Regex], line: &str) -> bool {
-    patterns.iter().any(|p| p.is_match(line))
-}
-
 /// Scan directive lines for positive imperatives and negative constraints.
 /// Only fire when: positive_count >= 5 && !has_negative && directive_lines >= 15
 const MIN_POSITIVES: usize = 5;
@@ -128,17 +111,17 @@ fn check_missing_negative_constraints(file: &ParsedFile, result: &mut CheckResul
     let mut positive_count = 0;
     let mut directive_line_count = 0;
 
-    for (_, line) in non_code_lines(&file.raw_lines) {
+    for (_, line) in file.non_code_lines() {
         if !is_directive_line(line) {
             continue;
         }
 
         directive_line_count += 1;
 
-        if any_pattern_matches(&POSITIVE_PATTERNS, line) {
+        if POSITIVE_PATTERN.is_match(line) {
             positive_count += 1;
         }
-        if any_pattern_matches(&NEGATIVE_PATTERNS, line) {
+        if NEGATIVE_PATTERN.is_match(line) {
             return;
         }
     }
@@ -191,35 +174,33 @@ fn check_multi_responsibility(file: &ParsedFile, result: &mut CheckResult) {
 
 /// Detect open-ended delegation phrases on directive lines.
 fn check_unconstrained_delegation(file: &ParsedFile, result: &mut CheckResult) {
-    for (i, line) in non_code_lines(&file.raw_lines) {
+    for (i, line) in file.non_code_lines() {
         if !is_directive_line(line) {
             continue;
         }
 
-        for pat in DELEGATION_PATTERNS.iter() {
-            if let Some(m) = pat.find(line) {
-                let matched_lower = m.as_str().to_lowercase();
-                // "full autonomy" and "complete freedom" are ambiguous — they can
-                // describe a project ("Full autonomy, no external dependencies")
-                // rather than granting agent freedom. Require agent-addressing context.
-                if (matched_lower.contains("autonomy") || matched_lower.contains("freedom"))
-                    && !AGENT_ADDRESSING.is_match(line)
-                {
-                    continue;
-                }
-
-                emit!(
-                    result,
-                    file.path,
-                    i + 1,
-                    Severity::Info,
-                    Category::AgentGuidelines,
-                    suggest: "Provide specific boundaries instead of open-ended autonomy",
-                    "Unconstrained delegation: \"{}\". \
-                     Provide specific boundaries instead of open-ended autonomy.",
-                    m.as_str()
-                );
+        if let Some(m) = DELEGATION_PATTERN.find(line) {
+            let matched_lower = m.as_str().to_lowercase();
+            // "full autonomy" and "complete freedom" are ambiguous — they can
+            // describe a project ("Full autonomy, no external dependencies")
+            // rather than granting agent freedom. Require agent-addressing context.
+            if (matched_lower.contains("autonomy") || matched_lower.contains("freedom"))
+                && !AGENT_ADDRESSING.is_match(line)
+            {
+                continue;
             }
+
+            emit!(
+                result,
+                file.path,
+                i + 1,
+                Severity::Info,
+                Category::AgentGuidelines,
+                suggest: "Provide specific boundaries instead of open-ended autonomy",
+                "Unconstrained delegation: \"{}\". \
+                 Provide specific boundaries instead of open-ended autonomy.",
+                m.as_str()
+            );
         }
     }
 }
@@ -242,17 +223,23 @@ fn check_missing_output_format(file: &ParsedFile, result: &mut CheckResult) {
 
     // Only check files that define an agent role — project instruction files
     // don't need output format specs since the agent's output is implicit.
-    let has_role_line =
-        non_code_lines(&file.raw_lines).any(|(_, line)| ROLE_INDICATOR.is_match(line));
+    let has_role_line = file
+        .non_code_lines()
+        .any(|(_, line)| ROLE_INDICATOR.is_match(line));
     let has_role_section = file.sections.iter().any(|s| {
-        let t = s.title.to_lowercase();
-        t == "role" || t == "identity" || t == "persona" || t == "who you are"
+        matches!(
+            s.title.to_lowercase().as_str(),
+            "role" | "identity" | "persona" | "who you are"
+        )
     });
     if !has_role_line && !has_role_section {
         return;
     }
 
-    if non_code_lines(&file.raw_lines).any(|(_, line)| OUTPUT_FORMAT_PATTERN.is_match(line)) {
+    if file
+        .non_code_lines()
+        .any(|(_, line)| OUTPUT_FORMAT_PATTERN.is_match(line))
+    {
         return;
     }
 
@@ -272,7 +259,7 @@ fn check_missing_output_format(file: &ParsedFile, result: &mut CheckResult) {
 mod tests {
     use super::*;
     use crate::checkers::utils::test_helpers::{
-        count_matching, single_file_ctx, single_file_ctx_with_sections,
+        count_matching, section, single_file_ctx, single_file_ctx_with_sections,
     };
     use crate::parser::types::Section;
     use std::collections::HashSet;
@@ -281,6 +268,8 @@ mod tests {
         CheckerContext {
             files,
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         }
     }
@@ -289,8 +278,10 @@ mod tests {
         root: &std::path::Path,
         name: &str,
         lines: &[&str],
-        sections: Vec<Section>,
+        sections: Vec<crate::parser::types::Section>,
     ) -> ParsedFile {
+        let raw_lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
+        let in_code_block = crate::parser::build_code_block_mask(&raw_lines);
         ParsedFile {
             path: root.join(name),
             sections,
@@ -298,16 +289,8 @@ mod tests {
             file_refs: vec![],
             directives: vec![],
             suppress_comments: vec![],
-            raw_lines: lines.iter().map(|s| s.to_string()).collect(),
-        }
-    }
-
-    fn section(title: &str, level: u8, line: usize) -> Section {
-        Section {
-            level,
-            title: title.to_string(),
-            line,
-            end_line: 0,
+            raw_lines,
+            in_code_block,
         }
     }
 

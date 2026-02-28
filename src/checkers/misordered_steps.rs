@@ -3,7 +3,6 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::non_code_lines;
 use crate::types::{Category, CheckResult, Severity};
 
 use super::utils::{is_heading, ScopeFilter};
@@ -35,7 +34,7 @@ impl Checker for MisorderedStepsChecker {
 
             let mut prev_step: Option<(usize, u32)> = None; // (line, number)
 
-            for (idx, line) in non_code_lines(&file.raw_lines) {
+            for (idx, line) in file.non_code_lines() {
                 let line_num = idx + 1;
 
                 if is_heading(line) {

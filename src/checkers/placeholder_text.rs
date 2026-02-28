@@ -3,7 +3,6 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::non_code_lines;
 use crate::types::{Category, CheckResult, Severity};
 
 use super::utils::ScopeFilter;
@@ -21,19 +20,19 @@ impl PlaceholderTextChecker {
     }
 }
 
-static PLACEHOLDER_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    [
-        r"(?i)\bTODO\b(?:\s*:)?",
-        r"(?i)\bTBD\b(?:\s*:)?",
-        r"(?i)\bFIXME\b(?:\s*:)?",
-        r"(?i)\[insert .+?\]",
-        r"(?i)\betc\.?(?:\s|$)",
-        r"(?i)\band so on\b",
-        r"\.{3,}\s*$",
-    ]
-    .iter()
-    .map(|p| Regex::new(p).unwrap())
-    .collect()
+static PLACEHOLDER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)(?:",
+        r"\bTODO\b(?:\s*:)?",
+        r"|\bTBD\b(?:\s*:)?",
+        r"|\bFIXME\b(?:\s*:)?",
+        r"|\[insert .+?\]",
+        r"|\betc\.?(?:\s|$)",
+        r"|\band so on\b",
+        r"|\.{3,}\s*$",
+        r")",
+    ))
+    .unwrap()
 });
 
 /// Matches a proper enumeration before "etc." — 2+ comma-separated items.
@@ -45,6 +44,19 @@ static ENUMERATION_BEFORE_ETC: LazyLock<Regex> =
 /// Matches "or"-separated enumerations: "X or Y or Z etc"
 static OR_ENUMERATION_BEFORE_ETC: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)(?:\w+\s+or\s+){2,}\w+\s+etc\.?").unwrap());
+
+/// Returns true if the match falls inside a file-path-like token (e.g. `tasks/todo.md`).
+fn is_inside_file_path(line: &str, match_start: usize, match_end: usize) -> bool {
+    let token_start = line[..match_start]
+        .rfind(char::is_whitespace)
+        .map_or(0, |i| i + 1);
+    let token_end = line[match_end..]
+        .find(char::is_whitespace)
+        .map_or(line.len(), |i| match_end + i);
+    let token =
+        line[token_start..token_end].trim_matches(|c: char| c == '`' || c == '"' || c == '\'');
+    token.contains('/') || token.contains('\\')
+}
 
 /// Returns true if this match is an "etc." that follows a proper enumeration.
 /// `prev_line` is used to detect enumerations that wrap across lines.
@@ -80,16 +92,15 @@ impl Checker for PlaceholderTextChecker {
                 continue;
             }
 
-            for (i, line) in non_code_lines(&file.raw_lines) {
+            for (i, line) in file.non_code_lines() {
                 let prev_line = i
                     .checked_sub(1)
                     .and_then(|idx| file.raw_lines.get(idx))
                     .map(|s| s.as_str());
-                for pat in PLACEHOLDER_PATTERNS.iter() {
-                    if let Some(m) = pat.find(line) {
-                        if is_etc_after_enumeration(line, m.as_str(), prev_line) {
-                            continue;
-                        }
+                if let Some(m) = PLACEHOLDER_PATTERN.find(line) {
+                    if !is_etc_after_enumeration(line, m.as_str(), prev_line)
+                        && !is_inside_file_path(line, m.start(), m.end())
+                    {
                         emit!(
                             result,
                             file.path,
@@ -100,7 +111,6 @@ impl Checker for PlaceholderTextChecker {
                             "Placeholder text found: \"{}\"",
                             m.as_str().trim()
                         );
-                        break;
                     }
                 }
             }
@@ -245,6 +255,40 @@ mod tests {
     #[test]
     fn test_ellipsis_detected() {
         let result = run_check(&["Do something..."]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_todo_in_file_path_skipped() {
+        let result = run_check(&["Write plan to `tasks/todo.md` with checkable items"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "TODO inside a file path should not flag"
+        );
+    }
+
+    #[test]
+    fn test_fixme_in_file_path_skipped() {
+        let result = run_check(&["See docs/fixme.txt for details"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "FIXME inside a file path should not flag"
+        );
+    }
+
+    #[test]
+    fn test_tbd_in_file_path_skipped() {
+        let result = run_check(&["Update `notes/tbd.md` when decided"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "TBD inside a file path should not flag"
+        );
+    }
+
+    #[test]
+    fn test_todo_standalone_still_detected() {
+        // "TODO" not inside a path — should still flag
+        let result = run_check(&["TODO: update tasks/todo.md"]);
         assert_eq!(result.diagnostics.len(), 1);
     }
 

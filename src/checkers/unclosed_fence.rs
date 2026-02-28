@@ -31,10 +31,8 @@ impl Checker for UnclosedFenceChecker {
 
             for (idx, line) in file.raw_lines.iter().enumerate() {
                 if line.trim_start().starts_with("```") {
+                    in_code_block = !in_code_block;
                     if in_code_block {
-                        in_code_block = false;
-                    } else {
-                        in_code_block = true;
                         fence_open_line = idx + 1;
                     }
                 }

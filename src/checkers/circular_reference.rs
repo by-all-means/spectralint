@@ -20,7 +20,6 @@ impl CircularReferenceChecker {
     }
 }
 
-/// Try to resolve a file ref path to an index in `path_to_idx`.
 fn resolve_ref(
     ref_path: &str,
     source_file: &Path,
@@ -29,7 +28,6 @@ fn resolve_ref(
 ) -> Option<usize> {
     let source_dir = source_file.parent().unwrap_or(project_root);
 
-    // Try relative to source file first, then project root
     [source_dir, project_root].into_iter().find_map(|base| {
         base.join(ref_path)
             .canonicalize()
@@ -49,7 +47,6 @@ impl Checker for CircularReferenceChecker {
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
-        // Build canonical path -> index map
         let path_to_idx: HashMap<PathBuf, usize> = ctx
             .files
             .iter()
@@ -63,7 +60,6 @@ impl Checker for CircularReferenceChecker {
             })
             .collect();
 
-        // Build adjacency list: adj[src] = [(target, ref_idx), ...]
         let n = ctx.files.len();
         let mut adj: Vec<Vec<(usize, usize)>> = vec![vec![]; n];
 
@@ -78,9 +74,6 @@ impl Checker for CircularReferenceChecker {
                     &ctx.project_root,
                     &path_to_idx,
                 ) {
-                    // Skip self-references — a file mentioning its own name
-                    // (e.g. "# CLAUDE.md" or "Update CLAUDE.md when:") is not
-                    // a circular dependency.
                     if target_idx == src_idx {
                         continue;
                     }
@@ -89,86 +82,77 @@ impl Checker for CircularReferenceChecker {
             }
         }
 
-        // DFS cycle detection
         let mut state = vec![DfsState::Unvisited; n];
-        let mut stack: Vec<usize> = Vec::new();
+        let mut path: Vec<usize> = Vec::new();
+        let mut call_stack: Vec<(usize, usize)> = Vec::new();
 
         for start in 0..n {
             if state[start] != DfsState::Unvisited {
                 continue;
             }
-            dfs_detect_cycles(
-                start,
-                &adj,
-                &mut state,
-                &mut stack,
-                ctx,
-                &self.scope,
-                &mut result,
-            );
+
+            state[start] = DfsState::InProgress;
+            path.push(start);
+            call_stack.push((start, 0));
+
+            while let Some((node, next_idx)) = call_stack.last_mut() {
+                let node = *node;
+                if *next_idx >= adj[node].len() {
+                    call_stack.pop();
+                    path.pop();
+                    state[node] = DfsState::Done;
+                    continue;
+                }
+
+                let (target, ref_idx) = adj[node][*next_idx];
+                *next_idx += 1;
+
+                match state[target] {
+                    DfsState::InProgress => {
+                        let file = &ctx.files[node];
+                        if !self.scope.includes(&file.path, &ctx.project_root) {
+                            continue;
+                        }
+                        let file_ref = &file.file_refs[ref_idx];
+
+                        let cycle_start = path.iter().position(|&n| n == target).unwrap();
+                        let cycle_nodes: Vec<String> = path[cycle_start..]
+                            .iter()
+                            .map(|&i| {
+                                ctx.files[i]
+                                    .path
+                                    .file_name()
+                                    .unwrap_or_default()
+                                    .to_string_lossy()
+                                    .to_string()
+                            })
+                            .collect();
+                        let cycle_desc =
+                            format!("{} → {}", cycle_nodes.join(" → "), cycle_nodes[0]);
+
+                        emit!(
+                            result,
+                            file_ref.source_file,
+                            file_ref.line,
+                            Severity::Warning,
+                            Category::CircularReference,
+                            suggest: "Break the cycle by removing or restructuring one of the references",
+                            "Circular reference chain: {}",
+                            cycle_desc
+                        );
+                    }
+                    DfsState::Unvisited => {
+                        state[target] = DfsState::InProgress;
+                        path.push(target);
+                        call_stack.push((target, 0));
+                    }
+                    DfsState::Done => {}
+                }
+            }
         }
 
         result
     }
-}
-
-fn dfs_detect_cycles(
-    node: usize,
-    adj: &[Vec<(usize, usize)>],
-    state: &mut [DfsState],
-    stack: &mut Vec<usize>,
-    ctx: &CheckerContext,
-    scope: &ScopeFilter,
-    result: &mut CheckResult,
-) {
-    state[node] = DfsState::InProgress;
-    stack.push(node);
-
-    for &(target, ref_idx) in &adj[node] {
-        match state[target] {
-            DfsState::InProgress => {
-                // Found a cycle! Report on the file that closes the cycle.
-                let file = &ctx.files[node];
-                if !scope.includes(&file.path, &ctx.project_root) {
-                    continue;
-                }
-                let file_ref = &file.file_refs[ref_idx];
-
-                // Build cycle description
-                let cycle_start = stack.iter().position(|&n| n == target).unwrap();
-                let cycle_nodes: Vec<String> = stack[cycle_start..]
-                    .iter()
-                    .map(|&i| {
-                        ctx.files[i]
-                            .path
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string()
-                    })
-                    .collect();
-                let cycle_desc = format!("{} → {}", cycle_nodes.join(" → "), cycle_nodes[0]);
-
-                emit!(
-                    result,
-                    file_ref.source_file,
-                    file_ref.line,
-                    Severity::Warning,
-                    Category::CircularReference,
-                    suggest: "Break the cycle by removing or restructuring one of the references",
-                    "Circular reference chain: {}",
-                    cycle_desc
-                );
-            }
-            DfsState::Unvisited => {
-                dfs_detect_cycles(target, adj, state, stack, ctx, scope, result);
-            }
-            DfsState::Done => {}
-        }
-    }
-
-    stack.pop();
-    state[node] = DfsState::Done;
 }
 
 #[cfg(test)]
@@ -195,6 +179,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         }
     }
 
@@ -214,6 +199,8 @@ mod tests {
         let ctx = CheckerContext {
             files,
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -246,6 +233,8 @@ mod tests {
         let ctx = CheckerContext {
             files,
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -274,6 +263,8 @@ mod tests {
         let ctx = CheckerContext {
             files,
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -298,6 +289,8 @@ mod tests {
         let ctx = CheckerContext {
             files,
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -322,6 +315,8 @@ mod tests {
         let ctx = CheckerContext {
             files,
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -350,6 +345,8 @@ mod tests {
         let ctx = CheckerContext {
             files,
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 

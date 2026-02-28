@@ -5,7 +5,6 @@ use std::sync::LazyLock;
 use crate::config::MissingEssentialSectionsConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::{code_block_lines, non_code_lines};
 use crate::types::{Category, CheckResult, Severity};
 
 use super::utils::{is_instruction_file, ScopeFilter};
@@ -25,10 +24,12 @@ impl MissingEssentialSectionsChecker {
     }
 }
 
+/// Shared command-name alternation used by both CODE_BLOCK_COMMAND and INLINE_COMMAND.
+const COMMAND_NAMES: &str = r"cargo|bun|uvx?|npm|npx|yarn|pnpm|pytest|make|go\s+(?:build|test|run)|docker|pip|poetry|gradle|mvn|bundle|rake|mix|dotnet|cmake";
+
 /// Command patterns commonly found in code blocks.
-static CODE_BLOCK_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?:cargo|bun|uvx?|npm|npx|yarn|pnpm|pytest|make|go\s+(?:build|test|run)|docker|pip|poetry|gradle|mvn|bundle|rake|mix|dotnet|cmake)\b").unwrap()
-});
+static CODE_BLOCK_COMMAND: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(&format!(r"(?i)\b(?:{COMMAND_NAMES})\b")).unwrap());
 
 /// Section headings that indicate build/test/setup content.
 static SECTION_HEADING: LazyLock<Regex> = LazyLock::new(|| {
@@ -36,9 +37,8 @@ static SECTION_HEADING: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Inline backtick commands.
-static INLINE_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"`[^`]*\b(?:cargo|bun|uvx?|npm|npx|yarn|pnpm|pytest|make|go\s+(?:build|test|run)|docker|pip|poetry|gradle|mvn|bundle|rake|mix|dotnet|cmake)\b[^`]*`").unwrap()
-});
+static INLINE_COMMAND: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(&format!(r"`[^`]*\b(?:{COMMAND_NAMES})\b[^`]*`")).unwrap());
 
 /// Specialized subdirectories whose files serve specific purposes (commands,
 /// agent definitions, skills, etc.) and are not expected to contain build/test
@@ -88,12 +88,13 @@ impl Checker for MissingEssentialSectionsChecker {
             // Skip reference/context files that don't contain imperative instructions.
             // Files like activity logs, curated lists, and context dumps don't need
             // build/test commands because they aren't telling the agent what to do.
-            if !is_instruction_file(&file.raw_lines) {
+            if !is_instruction_file(&file.raw_lines, &file.in_code_block) {
                 continue;
             }
 
             // Signal 1: Code blocks containing command patterns
-            let has_code_block_command = code_block_lines(&file.raw_lines)
+            let has_code_block_command = file
+                .code_block_lines()
                 .any(|(_, line)| CODE_BLOCK_COMMAND.is_match(line));
 
             // Signal 2: Section headings matching command/build/test patterns
@@ -103,8 +104,9 @@ impl Checker for MissingEssentialSectionsChecker {
                 .any(|s| SECTION_HEADING.is_match(&s.title));
 
             // Signal 3: Inline backtick commands
-            let has_inline_command =
-                non_code_lines(&file.raw_lines).any(|(_, line)| INLINE_COMMAND.is_match(line));
+            let has_inline_command = file
+                .non_code_lines()
+                .any(|(_, line)| INLINE_COMMAND.is_match(line));
 
             if has_code_block_command || has_command_section || has_inline_command {
                 continue;
@@ -233,22 +235,7 @@ mod tests {
 
     #[test]
     fn test_short_file_skipped() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-        let file = ParsedFile {
-            path: root.join("CLAUDE.md"),
-            sections: vec![],
-            tables: vec![],
-            file_refs: vec![],
-            directives: vec![],
-            suppress_comments: vec![],
-            raw_lines: vec!["# Short".to_string(), "Just one thing.".to_string()],
-        };
-        let ctx = CheckerContext {
-            files: vec![file],
-            project_root: root.to_path_buf(),
-            historical_indices: HashSet::new(),
-        };
+        let (_dir, ctx) = single_file_ctx_with_sections(&["# Short", "Just one thing."], vec![]);
         let config = MissingEssentialSectionsConfig {
             enabled: true,
             min_lines: 10,
@@ -280,10 +267,13 @@ mod tests {
                 "".to_string(),
                 "Check for issues.".to_string(),
             ],
+            in_code_block: vec![],
         };
         let ctx = CheckerContext {
             files: vec![file],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
         let config = MissingEssentialSectionsConfig {

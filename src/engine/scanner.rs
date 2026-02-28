@@ -1,24 +1,44 @@
 use globset::GlobSet;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use super::cross_ref::build_glob_set;
+use crate::checkers::utils::SKIP_DIRS;
 use crate::config::Config;
 
-pub(crate) fn scan(root: &Path, config: &Config) -> Vec<PathBuf> {
-    let ignore_set = build_glob_set(&config.ignore);
-    let ignore_files_set = build_glob_set(&config.ignore_files);
-    let include_set = build_glob_set(&config.include);
+const MAX_WALK_DEPTH: usize = 256;
+
+/// Result of scanning a project tree: matched `.md` files plus a filename index.
+pub(crate) struct ScanResult {
+    pub files: Vec<PathBuf>,
+    pub filename_index: HashSet<String>,
+}
+
+/// Immutable configuration for a single walk pass.
+struct WalkConfig {
+    root: PathBuf,
+    canonical_root: Option<PathBuf>,
+    ignore: GlobSet,
+    ignore_files: GlobSet,
+    include: GlobSet,
+}
+
+pub(crate) fn scan(root: &Path, config: &Config) -> ScanResult {
+    let walk = WalkConfig {
+        root: root.to_path_buf(),
+        canonical_root: root.canonicalize().ok(),
+        ignore: build_glob_set(&config.ignore),
+        ignore_files: build_glob_set(&config.ignore_files),
+        include: build_glob_set(&config.include),
+    };
     let mut files = Vec::new();
-    walk_dir(
-        root,
-        root,
-        &ignore_set,
-        &ignore_files_set,
-        &include_set,
-        &mut files,
-    );
+    let mut filename_index = HashSet::new();
+    walk_dir(root, &walk, &mut files, &mut filename_index, 0);
     files.sort();
-    files
+    ScanResult {
+        files,
+        filename_index,
+    }
 }
 
 pub(crate) fn matches_glob(path: &Path, root: &Path, set: &GlobSet) -> bool {
@@ -30,12 +50,14 @@ pub(crate) fn matches_glob(path: &Path, root: &Path, set: &GlobSet) -> bool {
 
 fn walk_dir(
     dir: &Path,
-    root: &Path,
-    ignore: &GlobSet,
-    ignore_files: &GlobSet,
-    include: &GlobSet,
+    cfg: &WalkConfig,
     files: &mut Vec<PathBuf>,
+    filename_index: &mut HashSet<String>,
+    depth: usize,
 ) {
+    if depth >= MAX_WALK_DEPTH {
+        return;
+    }
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -43,17 +65,43 @@ fn walk_dir(
     for entry in entries.flatten() {
         let path = entry.path();
 
-        if matches_glob(&path, root, ignore) {
+        let Ok(ft) = entry.file_type() else {
+            continue;
+        };
+
+        // Symlinked directories are skipped to prevent cycles.
+        // Symlinked files are allowed only when they resolve within the project.
+        if ft.is_symlink() {
+            let within_root = !path.is_dir()
+                && cfg.canonical_root.as_ref().is_some_and(|root| {
+                    path.canonicalize()
+                        .is_ok_and(|resolved| resolved.starts_with(root))
+                });
+            if !within_root {
+                continue;
+            }
+        }
+
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+
+        if matches_glob(&path, &cfg.root, &cfg.ignore) {
             continue;
         }
 
-        if path.is_dir() {
-            walk_dir(&path, root, ignore, ignore_files, include, files);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("md")
-            && !matches_glob(&path, root, ignore_files)
-            && matches_glob(&path, root, include)
-        {
-            files.push(path);
+        if ft.is_dir() {
+            if !SKIP_DIRS.contains(&name_str.as_ref()) {
+                walk_dir(&path, cfg, files, filename_index, depth + 1);
+            }
+        } else {
+            filename_index.insert(name_str.into_owned());
+
+            if path.extension().and_then(|e| e.to_str()) == Some("md")
+                && !matches_glob(&path, &cfg.root, &cfg.ignore_files)
+                && matches_glob(&path, &cfg.root, &cfg.include)
+            {
+                files.push(path);
+            }
         }
     }
 }
@@ -78,7 +126,7 @@ mod tests {
         fs::write(dir.path().join("AGENTS.md"), "# Agents").unwrap();
 
         let config = Config::default();
-        let files = scan(dir.path(), &config);
+        let files = scan(dir.path(), &config).files;
         assert_eq!(files.len(), 2);
         assert!(files.iter().all(|f| f.extension().unwrap() == "md"));
     }
@@ -91,7 +139,7 @@ mod tests {
         fs::write(dir.path().join("node_modules/bad.md"), "# Bad").unwrap();
 
         let config = Config::default();
-        let files = scan(dir.path(), &config);
+        let files = scan(dir.path(), &config).files;
         assert_eq!(files.len(), 1);
     }
 
@@ -108,7 +156,7 @@ mod tests {
 
         let mut config = all_md_config();
         config.ignore.push("build_*".to_string());
-        let files = scan(dir.path(), &config);
+        let files = scan(dir.path(), &config).files;
         assert_eq!(files.len(), 2);
         assert!(files.iter().all(|f| {
             let name = f.file_name().unwrap().to_str().unwrap();
@@ -127,9 +175,9 @@ mod tests {
         let mut config = all_md_config();
         config.ignore_files.push("changelog.md".to_string());
         config.ignore_files.push("docs/history.md".to_string());
-        let files = scan(dir.path(), &config);
+        let files = scan(dir.path(), &config).files;
         assert_eq!(files.len(), 1);
-        assert!(files[0].file_name().unwrap().to_str().unwrap() == "readme.md");
+        assert_eq!(files[0].file_name().unwrap().to_str().unwrap(), "readme.md");
     }
 
     #[test]
@@ -141,9 +189,9 @@ mod tests {
         fs::write(dir.path().join("reports/notes.md"), "# Notes").unwrap();
 
         let config = Config::default();
-        let files = scan(dir.path(), &config);
+        let files = scan(dir.path(), &config).files;
         assert_eq!(files.len(), 1);
-        assert!(files[0].file_name().unwrap().to_str().unwrap() == "CLAUDE.md");
+        assert_eq!(files[0].file_name().unwrap().to_str().unwrap(), "CLAUDE.md");
     }
 
     #[test]
@@ -155,7 +203,7 @@ mod tests {
         fs::write(dir.path().join("docs/guide.md"), "# Guide").unwrap();
 
         let config = all_md_config();
-        let files = scan(dir.path(), &config);
+        let files = scan(dir.path(), &config).files;
         assert_eq!(files.len(), 3);
     }
 
@@ -167,9 +215,31 @@ mod tests {
         fs::write(dir.path().join("readme.md"), "# Readme").unwrap();
 
         let config = Config::default();
-        let files = scan(dir.path(), &config);
+        let files = scan(dir.path(), &config).files;
         assert_eq!(files.len(), 1);
         assert!(files[0].to_str().unwrap().contains(".claude"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_scan_skips_symlinked_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("CLAUDE.md"), "# Root").unwrap();
+        fs::create_dir(dir.path().join("real")).unwrap();
+        fs::write(dir.path().join("real/CLAUDE.md"), "# Real").unwrap();
+
+        // Create a symlink pointing to `real/`
+        std::os::unix::fs::symlink(dir.path().join("real"), dir.path().join("linked")).unwrap();
+
+        let config = all_md_config();
+        let files = scan(dir.path(), &config).files;
+
+        // Only root and real/ should be scanned, not linked/
+        assert!(
+            !files.iter().any(|f| f.to_str().unwrap().contains("linked")),
+            "Symlinked directories should be skipped"
+        );
+        assert_eq!(files.len(), 2);
     }
 
     #[test]
@@ -182,7 +252,7 @@ mod tests {
             include: vec![],
             ..Config::default()
         };
-        let files = scan(dir.path(), &config);
+        let files = scan(dir.path(), &config).files;
         assert!(files.is_empty());
     }
 }

@@ -1,11 +1,11 @@
-use regex::Regex;
+use regex::RegexBuilder;
 
 use crate::config::CustomPattern;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::non_code_lines;
 use crate::types::{Category, CheckResult, Severity};
 
+use super::utils::REGEX_SIZE_LIMIT;
 use super::Checker;
 
 pub struct CustomPatternChecker {
@@ -14,7 +14,7 @@ pub struct CustomPatternChecker {
 
 struct CompiledPattern {
     name: String,
-    regex: Regex,
+    regex: regex::Regex,
     severity: Severity,
     message: String,
 }
@@ -23,19 +23,24 @@ impl CustomPatternChecker {
     pub fn new(configs: &[CustomPattern]) -> Self {
         let patterns = configs
             .iter()
-            .filter_map(|c| match Regex::new(&c.pattern) {
-                Ok(regex) => Some(CompiledPattern {
-                    name: c.name.clone(),
-                    regex,
-                    severity: c.severity,
-                    message: c.message.clone(),
-                }),
-                Err(e) => {
-                    eprintln!(
-                        "Warning: invalid regex pattern for custom rule '{}': {e}",
-                        c.name
-                    );
-                    None
+            .filter_map(|c| {
+                match RegexBuilder::new(&c.pattern)
+                    .size_limit(REGEX_SIZE_LIMIT)
+                    .build()
+                {
+                    Ok(regex) => Some(CompiledPattern {
+                        name: c.name.clone(),
+                        regex,
+                        severity: c.severity,
+                        message: c.message.clone(),
+                    }),
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: invalid regex pattern for custom rule '{}': {e}",
+                            c.name
+                        );
+                        None
+                    }
                 }
             })
             .collect();
@@ -48,7 +53,7 @@ impl Checker for CustomPatternChecker {
         let mut result = CheckResult::default();
 
         for file in &ctx.files {
-            for (i, line) in non_code_lines(&file.raw_lines) {
+            for (i, line) in file.non_code_lines() {
                 for pattern in &self.patterns {
                     if pattern.regex.is_match(line) {
                         emit!(
@@ -72,44 +77,24 @@ impl Checker for CustomPatternChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::CustomPattern;
-    use crate::parser::types::ParsedFile;
-    use std::collections::HashSet;
+    use crate::checkers::utils::test_helpers::single_file_ctx;
+
+    fn run_check(lines: &[&str], patterns: &[CustomPattern]) -> CheckResult {
+        let (_dir, ctx) = single_file_ctx(lines);
+        CustomPatternChecker::new(patterns).check(&ctx)
+    }
 
     #[test]
     fn test_custom_pattern_detection() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-
-        let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
-            sections: vec![],
-            tables: vec![],
-            file_refs: vec![],
-            directives: vec![],
-            suppress_comments: vec![],
-            raw_lines: vec![
-                "# Instructions".to_string(),
-                "TODO: fix this later".to_string(),
-                "This is fine".to_string(),
-            ],
-        };
-
-        let ctx = CheckerContext {
-            files: vec![parsed],
-            project_root: root.to_path_buf(),
-
-            historical_indices: HashSet::new(),
-        };
-
-        let checker = CustomPatternChecker::new(&[CustomPattern {
-            name: "todo-comment".to_string(),
-            pattern: r"(?i)\bTODO\b".to_string(),
-            severity: Severity::Warning,
-            message: "TODO comment found".to_string(),
-        }]);
-
-        let result = checker.check(&ctx);
+        let result = run_check(
+            &["# Instructions", "TODO: fix this later", "This is fine"],
+            &[CustomPattern {
+                name: "todo-comment".to_string(),
+                pattern: r"(?i)\bTODO\b".to_string(),
+                severity: Severity::Warning,
+                message: "TODO comment found".to_string(),
+            }],
+        );
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].line, 2);
         assert_eq!(result.diagnostics[0].severity, Severity::Warning);
@@ -121,38 +106,15 @@ mod tests {
 
     #[test]
     fn test_custom_pattern_skips_code_blocks() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-
-        let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
-            sections: vec![],
-            tables: vec![],
-            file_refs: vec![],
-            directives: vec![],
-            suppress_comments: vec![],
-            raw_lines: vec![
-                "```".to_string(),
-                "TODO: this is in code".to_string(),
-                "```".to_string(),
-            ],
-        };
-
-        let ctx = CheckerContext {
-            files: vec![parsed],
-            project_root: root.to_path_buf(),
-
-            historical_indices: HashSet::new(),
-        };
-
-        let checker = CustomPatternChecker::new(&[CustomPattern {
-            name: "todo".to_string(),
-            pattern: r"(?i)\bTODO\b".to_string(),
-            severity: Severity::Warning,
-            message: "TODO found".to_string(),
-        }]);
-
-        let result = checker.check(&ctx);
+        let result = run_check(
+            &["```", "TODO: this is in code", "```"],
+            &[CustomPattern {
+                name: "todo".to_string(),
+                pattern: r"(?i)\bTODO\b".to_string(),
+                severity: Severity::Warning,
+                message: "TODO found".to_string(),
+            }],
+        );
         assert_eq!(result.diagnostics.len(), 0);
     }
 
@@ -167,48 +129,25 @@ mod tests {
         assert!(checker.patterns.is_empty());
     }
 
-    // ── Item 10: Multiple custom patterns matching same line ─────────────
-
     #[test]
     fn test_multiple_patterns_same_line() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-
-        let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
-            sections: vec![],
-            tables: vec![],
-            file_refs: vec![],
-            directives: vec![],
-            suppress_comments: vec![],
-            raw_lines: vec![
-                "# Instructions".to_string(),
-                "TODO: FIXME: handle this".to_string(),
+        let result = run_check(
+            &["# Instructions", "TODO: FIXME: handle this"],
+            &[
+                CustomPattern {
+                    name: "todo".to_string(),
+                    pattern: r"(?i)\bTODO\b".to_string(),
+                    severity: Severity::Warning,
+                    message: "TODO found".to_string(),
+                },
+                CustomPattern {
+                    name: "fixme".to_string(),
+                    pattern: r"(?i)\bFIXME\b".to_string(),
+                    severity: Severity::Error,
+                    message: "FIXME found".to_string(),
+                },
             ],
-        };
-
-        let ctx = CheckerContext {
-            files: vec![parsed],
-            project_root: root.to_path_buf(),
-            historical_indices: HashSet::new(),
-        };
-
-        let checker = CustomPatternChecker::new(&[
-            CustomPattern {
-                name: "todo".to_string(),
-                pattern: r"(?i)\bTODO\b".to_string(),
-                severity: Severity::Warning,
-                message: "TODO found".to_string(),
-            },
-            CustomPattern {
-                name: "fixme".to_string(),
-                pattern: r"(?i)\bFIXME\b".to_string(),
-                severity: Severity::Error,
-                message: "FIXME found".to_string(),
-            },
-        ]);
-
-        let result = checker.check(&ctx);
+        );
         assert_eq!(
             result.diagnostics.len(),
             2,

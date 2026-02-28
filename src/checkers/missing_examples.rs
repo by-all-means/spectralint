@@ -71,28 +71,20 @@ impl Checker for MissingExamplesChecker {
                     continue;
                 }
 
-                let section_lines = &file.raw_lines[start..end];
-
                 let mut format_line = 0;
                 let mut has_code_block = false;
                 let mut has_example_signal = false;
-                let mut in_code_block = false;
 
-                for (offset, line) in section_lines.iter().enumerate() {
-                    let trimmed = line.trim();
-
-                    if trimmed.starts_with("```") {
-                        in_code_block = !in_code_block;
+                for idx in start..end {
+                    if file.is_code(idx) {
                         has_code_block = true;
                         continue;
                     }
 
-                    if in_code_block {
-                        continue;
-                    }
+                    let line = &file.raw_lines[idx];
 
                     if format_line == 0 && FORMAT_SPEC.is_match(line) {
-                        format_line = start + offset + 1;
+                        format_line = idx + 1;
                     }
 
                     if EXAMPLE_SIGNAL.is_match(line) {

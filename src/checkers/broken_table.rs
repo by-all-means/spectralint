@@ -54,7 +54,6 @@ impl Checker for BrokenTableChecker {
                 continue;
             }
 
-            let mut in_code_block = false;
             let mut table_region: Vec<(usize, &str)> = Vec::new();
 
             let check_region = |result: &mut CheckResult, region: &[(usize, &str)]| {
@@ -75,7 +74,7 @@ impl Checker for BrokenTableChecker {
                         suggest: "Fix the table formatting — agents may misread data from malformed tables",
                         "Table is missing a separator row (e.g., |---|---|)"
                     );
-                    return; // Don't also check column counts on malformed table
+                    return;
                 }
 
                 for &(line_idx, line) in &region[2..] {
@@ -100,17 +99,11 @@ impl Checker for BrokenTableChecker {
             };
 
             for (idx, line) in file.raw_lines.iter().enumerate() {
-                let trimmed = line.trim_start();
-                if trimmed.starts_with("```") {
-                    in_code_block = !in_code_block;
+                if file.is_code(idx) {
                     if !table_region.is_empty() {
                         check_region(&mut result, &table_region);
                         table_region.clear();
                     }
-                    continue;
-                }
-
-                if in_code_block {
                     continue;
                 }
 

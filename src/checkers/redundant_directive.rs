@@ -5,10 +5,10 @@ use std::sync::LazyLock;
 use crate::config::RedundantDirectiveConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::{is_directive_line, non_code_lines};
+use crate::parser::is_directive_line;
 use crate::types::{Category, CheckResult, Severity};
 
-use super::utils::ScopeFilter;
+use super::utils::{normalize_directive, ScopeFilter};
 use super::Checker;
 
 pub struct RedundantDirectiveChecker {
@@ -25,20 +25,6 @@ impl RedundantDirectiveChecker {
             min_line_length: config.min_line_length,
         }
     }
-}
-
-/// List markers: -, *, +, or numbered (1.).
-static LIST_MARKER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s*(?:[-*+]|\d+\.)\s+").unwrap());
-
-/// Strips list markers, collapses whitespace, lowercases.
-fn normalize_directive(line: &str) -> String {
-    LIST_MARKER
-        .replace(line, "")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
 }
 
 /// Lines that look like structural/reference content rather than directives:
@@ -76,7 +62,8 @@ impl Checker for RedundantDirectiveChecker {
                 continue;
             }
 
-            let directives: Vec<(usize, String)> = non_code_lines(&file.raw_lines)
+            let directives: Vec<(usize, String)> = file
+                .non_code_lines()
                 .filter(|(_, line)| {
                     let trimmed = line.trim();
                     is_directive_line(line)

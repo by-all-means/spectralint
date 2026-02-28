@@ -3,7 +3,6 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::non_code_lines;
 use crate::types::{Category, CheckResult, Severity};
 
 use super::utils::{is_heading, ScopeFilter};
@@ -21,17 +20,20 @@ impl OutdatedModelReferenceChecker {
     }
 }
 
-static OUTDATED_MODELS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    vec![
-        Regex::new(r"(?i)\bgpt[- ]?3\.5\b").unwrap(),
-        Regex::new(r"(?i)\bgpt[- ]?4[- ]?turbo\b").unwrap(),
-        Regex::new(r"\bclaude[- ]?2\b").unwrap(),
-        Regex::new(r"\bclaude[- ]?instant\b").unwrap(),
-        Regex::new(r"(?i)\bclaude[- ]?3[- ]?(?:haiku|sonnet|opus)\b").unwrap(),
-        Regex::new(r"(?i)\btext-davinci\b").unwrap(),
-        Regex::new(r"(?i)\bcode-davinci\b").unwrap(),
-        Regex::new(r"(?i)\bclaude-(?:v1|1)\b").unwrap(),
-    ]
+static OUTDATED_MODELS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)\b(?:",
+        r"gpt[- ]?3\.5",
+        r"|gpt[- ]?4[- ]?turbo",
+        r"|claude[- ]?2",
+        r"|claude[- ]?instant",
+        r"|claude[- ]?3[- ]?(?:haiku|sonnet|opus)",
+        r"|text-davinci",
+        r"|code-davinci",
+        r"|claude-(?:v1|1)",
+        r")\b",
+    ))
+    .unwrap()
 });
 
 /// Lines containing these words (case-insensitive) are self-documenting
@@ -49,28 +51,22 @@ impl Checker for OutdatedModelReferenceChecker {
                 continue;
             }
 
-            for (idx, line) in non_code_lines(&file.raw_lines) {
-                if is_heading(line) {
-                    continue;
-                }
-                if EXCLUSION_PATTERN.is_match(line) {
+            for (idx, line) in file.non_code_lines() {
+                if is_heading(line) || EXCLUSION_PATTERN.is_match(line) {
                     continue;
                 }
 
-                for pattern in OUTDATED_MODELS.iter() {
-                    if let Some(m) = pattern.find(line) {
-                        emit!(
-                            result,
-                            file.path,
-                            idx + 1,
-                            Severity::Info,
-                            Category::OutdatedModelReference,
-                            suggest: "Update to a current model name — outdated references may cause agent confusion or API errors",
-                            "Outdated model reference: {}",
-                            m.as_str()
-                        );
-                        break; // One diagnostic per line
-                    }
+                if let Some(m) = OUTDATED_MODELS.find(line) {
+                    emit!(
+                        result,
+                        file.path,
+                        idx + 1,
+                        Severity::Info,
+                        Category::OutdatedModelReference,
+                        suggest: "Update to a current model name — outdated references may cause agent confusion or API errors",
+                        "Outdated model reference: {}",
+                        m.as_str()
+                    );
                 }
             }
         }

@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use crate::config::NegativeOnlyFramingConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::{is_directive_line, non_code_lines};
+use crate::parser::is_directive_line;
 use crate::types::{Category, CheckResult, Severity};
 
 use super::utils::ScopeFilter;
@@ -48,7 +48,7 @@ impl Checker for NegativeOnlyFramingChecker {
             let mut positive_count = 0;
             let mut negative_count = 0;
 
-            for (_, line) in non_code_lines(&file.raw_lines) {
+            for (_, line) in file.non_code_lines() {
                 if !is_directive_line(line) {
                     continue;
                 }

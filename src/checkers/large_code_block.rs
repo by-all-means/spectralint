@@ -78,7 +78,6 @@ impl Checker for LargeCodeBlockChecker {
 mod tests {
     use super::*;
     use crate::checkers::utils::test_helpers::single_file_ctx;
-    use crate::config::LargeCodeBlockConfig;
 
     fn checker_with_max(max_lines: usize) -> LargeCodeBlockChecker {
         LargeCodeBlockChecker::new(&LargeCodeBlockConfig {

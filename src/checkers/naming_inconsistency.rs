@@ -165,9 +165,9 @@ impl Checker for NamingInconsistencyChecker {
                 // Similar-name matching on section titles is noisy in real-world docs
                 // ("Related Files" vs "Related File List", etc.). Keep this pass focused
                 // on structured schema terms (table headers), where drift is actionable.
-                let has_table_a = group_a.iter().any(|o| o.kind == NameKind::TableHeader);
-                let has_table_b = group_b.iter().any(|o| o.kind == NameKind::TableHeader);
-                if !(has_table_a && has_table_b) {
+                let both_have_tables = group_a.iter().any(|o| o.kind == NameKind::TableHeader)
+                    && group_b.iter().any(|o| o.kind == NameKind::TableHeader);
+                if !both_have_tables {
                     continue;
                 }
 
@@ -204,16 +204,10 @@ impl Checker for NamingInconsistencyChecker {
                 // Skip if names differ only in digits/version numbers
                 // (e.g. "Output 1: Gate YAML" vs "Output 2: Gate YAML",
                 //  "Algorithm v6" vs "Algorithm v7")
-                let no_digits_a: String = group_a[0]
-                    .original
-                    .chars()
-                    .filter(|c| !c.is_ascii_digit())
-                    .collect();
-                let no_digits_b: String = group_b[0]
-                    .original
-                    .chars()
-                    .filter(|c| !c.is_ascii_digit())
-                    .collect();
+                let strip_digits =
+                    |s: &str| -> String { s.chars().filter(|c| !c.is_ascii_digit()).collect() };
+                let no_digits_a = strip_digits(&group_a[0].original);
+                let no_digits_b = strip_digits(&group_b[0].original);
                 if !no_digits_a.is_empty() && no_digits_a.eq_ignore_ascii_case(&no_digits_b) {
                     continue;
                 }
@@ -254,7 +248,7 @@ impl Checker for NamingInconsistencyChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::types::{ParsedFile, Table};
+    use crate::parser::types::{ParsedFile, Section, Table};
 
     #[test]
     fn test_naming_inconsistency_detected() {
@@ -274,6 +268,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -289,11 +284,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
 
             historical_indices: HashSet::new(),
         };
@@ -332,6 +330,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -347,11 +346,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -395,11 +397,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -437,6 +442,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -452,11 +458,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -497,6 +506,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -512,11 +522,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -553,6 +566,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -568,11 +582,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -589,7 +606,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
-        use crate::parser::types::Section;
         let file1 = ParsedFile {
             path: root.join("CLAUDE.md"),
             sections: vec![Section {
@@ -603,6 +619,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -618,11 +635,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -644,7 +664,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
-        use crate::parser::types::Section;
         let file1 = ParsedFile {
             path: root.join("CLAUDE.md"),
             sections: vec![Section {
@@ -658,6 +677,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -673,11 +693,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -699,7 +722,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
-        use crate::parser::types::Section;
         let file1 = ParsedFile {
             path: root.join("CLAUDE.md"),
             sections: vec![Section {
@@ -713,6 +735,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -728,11 +751,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -754,7 +780,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
-        use crate::parser::types::Section;
         let file1 = ParsedFile {
             path: root.join("CLAUDE.md"),
             sections: vec![Section {
@@ -768,6 +793,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -783,11 +809,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -822,6 +851,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -837,11 +867,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -863,7 +896,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
-        use crate::parser::types::Section;
         let file1 = ParsedFile {
             path: root.join("CLAUDE.md"),
             sections: vec![Section {
@@ -877,6 +909,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let file2 = ParsedFile {
@@ -892,11 +925,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![file1, file2],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 

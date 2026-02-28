@@ -20,19 +20,19 @@ impl CredentialExposureChecker {
     }
 }
 
-static CREDENTIAL_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    [
+static CREDENTIAL_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?:",
         r#"(?i)(?:password|secret|token|api[_-]?key)\s*[:=]\s*["'][^"']{8,}["']"#,
-        r"\b(?:sk|pk)[-_](?:live|test)[-_][A-Za-z0-9]{20,}",
-        r"\bAKIA[A-Z0-9]{16}\b",
-        r"\bghp_[A-Za-z0-9]{36}\b",
-        r"\bxox[bpas]-[A-Za-z0-9\-]{10,}",
-        r"\beyJ[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}",
-        r"Bearer\s+[A-Za-z0-9_\-.]{20,}",
-    ]
-    .iter()
-    .map(|p| Regex::new(p).unwrap())
-    .collect()
+        r"|\b(?:sk|pk)[-_](?:live|test)[-_][A-Za-z0-9]{20,}",
+        r"|\bAKIA[A-Z0-9]{16}\b",
+        r"|\bghp_[A-Za-z0-9]{36}\b",
+        r"|\bxox[bpas]-[A-Za-z0-9\-]{10,}",
+        r"|\beyJ[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}",
+        r"|Bearer\s+[A-Za-z0-9_\-.]{20,}",
+        r")",
+    ))
+    .unwrap()
 });
 
 /// Matches placeholder/example values that aren't real credentials.
@@ -64,45 +64,40 @@ impl Checker for CredentialExposureChecker {
 
             // Scan ALL lines including code blocks — secrets often live there
             for (i, line) in file.raw_lines.iter().enumerate() {
-                for pat in CREDENTIAL_PATTERNS.iter() {
-                    if let Some(m) = pat.find(line) {
-                        let matched = m.as_str();
+                if let Some(m) = CREDENTIAL_PATTERN.find(line) {
+                    let matched = m.as_str();
 
-                        // Skip placeholder/example values (your-api-key, xxx, etc.)
-                        if PLACEHOLDER_VALUE.is_match(matched) {
-                            continue;
-                        }
-
-                        // Skip credentials in test/example/fixture contexts
-                        if TEST_CONTEXT.is_match(line) {
-                            continue;
-                        }
-
-                        // Skip obviously fake credential values (test, example, abc, 123, etc.)
-                        // Extract the value portion after the = or : delimiter
-                        if let Some(eq_pos) = matched.find(['=', ':']) {
-                            let value_part = matched[eq_pos + 1..].trim_start();
-                            if TEST_CREDENTIAL_VALUE.is_match(value_part) {
-                                continue;
-                            }
-                        }
-
-                        let display = match matched.char_indices().nth(30) {
-                            Some((i, _)) => format!("{}...", &matched[..i]),
-                            None => matched.to_string(),
-                        };
-                        emit!(
-                            result,
-                            file.path,
-                            i + 1,
-                            Severity::Error,
-                            Category::CredentialExposure,
-                            suggest: "Remove the credential and use an environment variable reference instead",
-                            "Possible hardcoded credential: \"{}\"",
-                            display
-                        );
-                        break;
+                    if PLACEHOLDER_VALUE.is_match(matched) {
+                        continue;
                     }
+
+                    if TEST_CONTEXT.is_match(line) {
+                        continue;
+                    }
+
+                    // Extract value after the delimiter to check for fake credentials
+                    if let Some(eq_pos) = matched.find(['=', ':']) {
+                        let value_part = matched[eq_pos + 1..].trim_start();
+                        if TEST_CREDENTIAL_VALUE.is_match(value_part) {
+                            continue;
+                        }
+                    }
+
+                    // Redact to avoid leaking the credential value in output.
+                    let display = match matched.char_indices().nth(6) {
+                        Some((byte_pos, _)) => format!("{}***", &matched[..byte_pos]),
+                        None => matched.to_string(),
+                    };
+                    emit!(
+                        result,
+                        file.path,
+                        i + 1,
+                        Severity::Error,
+                        Category::CredentialExposure,
+                        suggest: "Remove the credential and use an environment variable reference instead",
+                        "Possible hardcoded credential: \"{}\"",
+                        display
+                    );
                 }
             }
         }

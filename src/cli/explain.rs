@@ -131,6 +131,50 @@ pub const AVAILABLE_RULES: &[(&str, &str)] = &[
     ),
     ("broken-table", "Flags malformed markdown tables"),
     ("placeholder-url", "Flags placeholder/example URLs in prose"),
+    (
+        "emphasis-overuse",
+        "Flags files with excessive emphasis markers creating alert fatigue",
+    ),
+    (
+        "boilerplate-template",
+        "Flags unchanged default template instruction files",
+    ),
+    (
+        "orphaned-section",
+        "Flags headings with no content before the next heading",
+    ),
+    (
+        "excessive-nesting",
+        "Flags lists nested too deeply for agents to parse",
+    ),
+    (
+        "context-window-waste",
+        "Flags decorative elements that waste context window tokens",
+    ),
+    (
+        "ambiguous-scope-reference",
+        "Flags vague scope references like 'the relevant files'",
+    ),
+    (
+        "instruction-without-context",
+        "Flags instruction files with no code blocks, file refs, or inline code",
+    ),
+    (
+        "cross-file-contradiction",
+        "Detects contradictory instructions across ancestor-descendant files",
+    ),
+    (
+        "stale-style-rule",
+        "Flags formatter-enforceable style prescriptions that waste context tokens",
+    ),
+    (
+        "hardcoded-file-structure",
+        "Flags references to non-.md source files that don't exist on disk",
+    ),
+    (
+        "unversioned-stack-reference",
+        "Flags tech stack mentions without version numbers",
+    ),
     ("custom", "User-defined regex patterns from config"),
 ];
 
@@ -386,8 +430,6 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              comments, dependencies, error handling, autonomy, commits, complexity, and git workflow.\n\
              When both members of a pair match on different lines, it emits.\n\
              \n\
-             Contradictions are always defects — enabled by --strict or config.\n\
-             \n\
              Severity: warning\n\
              Config: [checkers.conflicting_directives]",
         ),
@@ -415,7 +457,7 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              Lines shorter than 15 characters and headings are skipped. Capped at 200 directive\n\
              lines per file for performance.\n\
              \n\
-             Severity: info\n\
+             Severity: info (strict-only)\n\
              Config: [checkers.redundant_directive] (similarity_threshold, min_line_length)",
         ),
         "instruction-density" => Some(
@@ -521,7 +563,7 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              Lines with elaboration (followed by `:` or `—`) are excluded, since the generic\n\
              phrase is being used as a lead-in to specific guidance.\n\
              \n\
-             Severity: info (strict-only)\n\
+             Severity: info\n\
              Config: [checkers.generic_instruction]",
         ),
         "misordered-steps" => Some(
@@ -629,6 +671,160 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              \n\
              Severity: info\n\
              Config: [checkers.placeholder_url]",
+        ),
+        "emphasis-overuse" => Some(
+            "emphasis-overuse: Flags files with excessive emphasis markers.\n\
+             \n\
+             Files with 10+ IMPORTANT/CRITICAL/WARNING/CAUTION/NOTE markers create alert\n\
+             fatigue — agents can't prioritize when everything screams for attention. Bold\n\
+             markers (**IMPORTANT**) and standalone all-caps markers (IMPORTANT:) are both\n\
+             counted. Markers inside code blocks and headings are excluded.\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.emphasis_overuse] (max_emphasis, default: 10)",
+        ),
+        "boilerplate-template" => Some(
+            "boilerplate-template: Flags unchanged default template instruction files.\n\
+             \n\
+             54% of Claude Code repos use the unchanged default template (\"This file provides\n\
+             guidance to Claude Code\"). These provide minimal agent value and create a false\n\
+             sense of having project-specific instructions. Only flags files with < 20 non-empty\n\
+             lines — if substantial content was added on top of the template, that's fine.\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.boilerplate_template]",
+        ),
+        "orphaned-section" => Some(
+            "orphaned-section: Flags headings with no content before the next heading.\n\
+             \n\
+             A heading followed by another heading of equal or higher level with no content\n\
+             between them indicates unfinished structure. Agents see the heading but get no\n\
+             instructions. Parent-to-child transitions (## → ###) are not flagged since that's\n\
+             normal document hierarchy.\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.orphaned_section]",
+        ),
+        "excessive-nesting" => Some(
+            "excessive-nesting: Flags lists nested too deeply for agents to parse.\n\
+             \n\
+             Lists nested 4+ levels deep are hard for agents to parse correctly. Instructions\n\
+             buried at deep indentation levels get lost. The checker counts indent depth of\n\
+             list items and flags when nesting exceeds the configurable threshold.\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.excessive_nesting] (max_depth, default: 4)",
+        ),
+        "context-window-waste" => Some(
+            "context-window-waste: Flags decorative elements that waste context window tokens.\n\
+             \n\
+             Three sub-checks:\n\
+             \n\
+             1. Excessive blank lines — 3+ consecutive blank lines waste tokens. Reduce to one.\n\
+             \n\
+             2. Decorative dividers — Lines of repeated decoration characters (====, ****,\n\
+                ~~~~, ════, ────, etc.) outside code blocks. Standard markdown HRs (---)\n\
+                are excluded.\n\
+             \n\
+             3. Decorative HTML comments — Comments like <!-- ----- --> that are just\n\
+                visual decoration, not suppress directives.\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.context_window_waste]",
+        ),
+        "ambiguous-scope-reference" => Some(
+            "ambiguous-scope-reference: Flags vague scope references in directives.\n\
+             \n\
+             Phrases like \"the relevant files\", \"appropriate tests\", \"necessary configuration\",\n\
+             and \"related modules\" tell the agent to act on something without specifying what.\n\
+             The agent must guess which files, tests, or modules are \"relevant\" — and different\n\
+             models will guess differently. Replace with concrete references: specific file paths,\n\
+             test commands, or module names.\n\
+             \n\
+             Lines containing inline code (backticks), file extensions, or elaboration after a\n\
+             colon are excluded, since the ambiguous phrase is being disambiguated.\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.ambiguous_scope_reference]",
+        ),
+        "instruction-without-context" => Some(
+            "instruction-without-context: Flags instruction files with no concrete context.\n\
+             \n\
+             Files with 10+ directive lines but zero code blocks, zero file path references,\n\
+             and zero inline code spans are entirely abstract — all prose, no specifics. Agents\n\
+             following these files get general guidance but no anchoring in the actual codebase.\n\
+             Add concrete examples: code blocks with commands, file paths, or inline code\n\
+             references to make instructions actionable.\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.instruction_without_context]",
+        ),
+        "cross-file-contradiction" => Some(
+            "cross-file-contradiction: Detects contradictory instructions across files.\n\
+             \n\
+             When a root CLAUDE.md says \"always write tests\" and backend/CLAUDE.md says \"skip\n\
+             tests\", the agent in backend/ sees conflicting inherited instructions. This checker\n\
+             reuses the same conflict pairs as conflicting-directives but compares files in\n\
+             ancestor-descendant directory relationships.\n\
+             \n\
+             Only ancestor-descendant pairs are compared (CLAUDE.md vs backend/CLAUDE.md).\n\
+             Sibling directories (frontend/ vs backend/) are skipped — they represent\n\
+             intentionally different contexts.\n\
+             \n\
+             Severity: warning (strict-only)\n\
+             Config: [checkers.cross_file_contradiction]",
+        ),
+        "stale-style-rule" => Some(
+            "stale-style-rule: Flags formatter-enforceable style prescriptions.\n\
+             \n\
+             Rules like \"use 2 spaces for indentation\", \"always use semicolons\", or\n\
+             \"prefer single quotes\" waste context window tokens. Your formatter (Prettier,\n\
+             Black, rustfmt, etc.) already enforces these — the agent doesn't need to be told.\n\
+             \n\
+             Three sub-patterns:\n\
+             1. Imperative formatting rules — indentation, semicolons, quotes, trailing commas,\n\
+                brace style, import sorting\n\
+             2. Line length limits — \"max line length of 80\" etc.\n\
+             3. Naming style prescriptions — \"use camelCase for variables\" etc.\n\
+             \n\
+             Lines with backticks are excluded (project-specific tool references).\n\
+             Headings and code blocks are excluded.\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.stale_style_rule]",
+        ),
+        "hardcoded-file-structure" => Some(
+            "hardcoded-file-structure: Flags references to non-.md source files that don't exist.\n\
+             \n\
+             When an instruction file says \"auth logic lives in `src/auth/handler.ts`\" but that\n\
+             file was renamed or deleted, the agent operates with a false mental model of the\n\
+             codebase. Unlike dead-reference (which handles .md files), this checker targets\n\
+             source code paths (.ts, .py, .rs, .go, etc.).\n\
+             \n\
+             Path resolution: source-relative → root-relative → tree search by basename.\n\
+             \n\
+             Excluded: creation verbs (\"create `src/foo.ts`\"), example context, headings,\n\
+             code blocks, markdown links, template/glob refs.\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.hardcoded_file_structure]",
+        ),
+        "unversioned-stack-reference" => Some(
+            "unversioned-stack-reference: Flags tech stack mentions without version numbers.\n\
+             \n\
+             \"Built with React\" (flagged) vs \"Built with React 18\" (clean). When instruction\n\
+             files declare a tech stack without versions, agents can't make version-specific\n\
+             decisions. \"Use the React hooks API\" is fine for React 16.8+ but wrong for\n\
+             React 15. Pinning versions prevents drift.\n\
+             \n\
+             Dual-pattern approach: only flags when BOTH a well-known framework name (~40\n\
+             frameworks) AND a stack-description context (\"built with\", \"written in\",\n\
+             \"stack:\", etc.) are present on the same line, AND no version number is found.\n\
+             \n\
+             Prose mentions without stack context (\"check the React docs\") are not flagged.\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.unversioned_stack_reference]",
         ),
         "custom" => Some(
             "custom:<name>: User-defined regex patterns from config.\n\

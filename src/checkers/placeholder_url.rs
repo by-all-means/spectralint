@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::{is_directive_line, non_code_lines};
+use crate::parser::is_directive_line;
 use crate::types::{Category, CheckResult, Severity};
 
 use super::utils::{is_heading, ScopeFilter};
@@ -21,15 +21,20 @@ impl PlaceholderUrlChecker {
     }
 }
 
-static PLACEHOLDER_URLS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    vec![
+static PLACEHOLDER_URLS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"https?://(?:",
         // Well-known placeholder domains
-        Regex::new(r"https?://(?:example\.com|example\.org|placeholder\.com|your-domain\.com|localhost:\d+|127\.0\.0\.1)").unwrap(),
+        r"(?:example\.com|example\.org|placeholder\.com|your-domain\.com|localhost:\d+|127\.0\.0\.1)",
+        r"|",
         // Placeholder API subdomains
-        Regex::new(r"https?://(?:api\.example|your-api|my-api|test-api)\.").unwrap(),
+        r"(?:api\.example|your-api|my-api|test-api)\.",
+        r"|",
         // Template URLs with {placeholders}
-        Regex::new(r"https?://\S*\{[^}]+\}\S*").unwrap(),
-    ]
+        r"\S*\{[^}]+\}\S*",
+        r")",
+    ))
+    .unwrap()
 });
 
 impl Checker for PlaceholderUrlChecker {
@@ -41,28 +46,22 @@ impl Checker for PlaceholderUrlChecker {
                 continue;
             }
 
-            for (idx, line) in non_code_lines(&file.raw_lines) {
-                if is_heading(line) {
-                    continue;
-                }
-                if !is_directive_line(line) {
+            for (idx, line) in file.non_code_lines() {
+                if is_heading(line) || !is_directive_line(line) {
                     continue;
                 }
 
-                for pattern in PLACEHOLDER_URLS.iter() {
-                    if let Some(m) = pattern.find(line) {
-                        emit!(
-                            result,
-                            file.path,
-                            idx + 1,
-                            Severity::Info,
-                            Category::PlaceholderUrl,
-                            suggest: "Replace placeholder URL with the actual endpoint or remove it",
-                            "Placeholder URL: {}",
-                            m.as_str()
-                        );
-                        break; // One diagnostic per line
-                    }
+                if let Some(m) = PLACEHOLDER_URLS.find(line) {
+                    emit!(
+                        result,
+                        file.path,
+                        idx + 1,
+                        Severity::Info,
+                        Category::PlaceholderUrl,
+                        suggest: "Replace placeholder URL with the actual endpoint or remove it",
+                        "Placeholder URL: {}",
+                        m.as_str()
+                    );
                 }
             }
         }

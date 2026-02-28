@@ -6,107 +6,50 @@ use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::types::{Category, CheckResult, Severity};
 
-use super::utils::is_template_ref;
+use super::utils::{is_template_ref, is_within_project};
 use super::Checker;
 
-/// Lines containing these verbs indicate the referenced file is being
-/// created, written, or deleted as part of a workflow — not a dependency
-/// that should already exist on disk.
+/// Lines where the file is being created/written/deleted, not a dependency.
 static ACTION_VERB_LINE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:create|write|generate|save|output|delete|remove|adding)\b").unwrap()
 });
 
-/// "a file called X.md" or "a file named X.md" — the file is being created.
+/// "a file called X.md" / "a file named X.md" — file is being created.
 static FILE_CALLED_NAMED: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"(?i)\b(?:called|named)\s+["'`]?[\w./-]+\.md"#).unwrap());
 
-/// Lines that indicate the reference is an example, not a real dependency.
+/// Example/illustrative context — not a real dependency.
 static EXAMPLE_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:examples|example|e\.g\.(?:\s|,)|such as|for instance|for example)")
         .unwrap()
 });
 
-/// Lines containing arrow mappings (→, ->, =>) are routing/mapping tables,
-/// not actual file dependencies. e.g. "src/commands/init.ts → cli/init.md"
+/// Arrow mappings (→, ->, =>) indicate routing tables, not dependencies.
 static ARROW_MAPPING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"→|->|=>").unwrap());
 
-/// Lines in exclusion/out-of-scope sections — files listed as things NOT to
-/// touch, not dependencies.
+/// Exclusion context — files listed as things NOT to touch.
 static EXCLUSION_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:out[- ]of[- ]scope|do not modify|do not edit|do not touch|don't modify|don't edit|don't touch|excluded?|ignore)\b").unwrap()
 });
 
-/// Naming convention / documentation list context — the reference is listing
-/// file formats or supported filenames, not actual dependencies.
-/// e.g., "Zed recognizes these files (in priority order):"
+/// Convention/documentation list context — listing file formats, not dependencies.
 static CONVENTION_LIST_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:recognizes?\s+(?:these|the(?:se)?\s+)?files?|supported\s+files?|file\s+(?:formats?|types?|naming|names?)|naming\s+conventions?|instruction\s+files?|in\s+priority\s+order)\b").unwrap()
 });
 
-/// Backtick-delimited directory path (ending with `/`).
-/// Used to detect "directory context" in preceding lines, e.g.:
-///   `src/templates/`:  — sub-items are relative to this directory
+/// Backtick-delimited directory path (e.g. `` `src/templates/` ``).
 static DIR_CONTEXT_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"`([^`]+/)`").unwrap());
 
-/// Lines describing naming conventions or file-type conventions — the filename
-/// is an example or category being prescribed, not a real dependency.
-/// e.g., "**Naming**: Use kebab-case: `optimize-images.md`"
-///       "Every SKILL.md must include YAML frontmatter:"
-///       "you SHOULD read the corresponding SKILL.md"
-///       "### SKILL.md Requirements"
+/// Naming convention lines — the filename is prescribed, not a dependency.
 static CONVENTION_LINE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:kebab[- ]?case|camel[- ]?case|snake[- ]?case|pascal[- ]?case|naming\s*:)|\b(?:every|each)\b.*\b(?:must|should)\b|\b(?:the\s+)?corresponding\b|^#+\s+\S+\.md\s+(?:requirements|format|structure|template|conventions?|guidelines?|standards?)")
         .unwrap()
 });
 
-/// Generic placeholder filenames that are clearly not real files.
 static PLACEHOLDER_FILENAME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^(?:FILE\.(?:md|zh\.md)|filename\.md|ref\d+\.md)$").unwrap());
 
-/// Directories to skip when searching for convention references.
-const SKIP_DIRS: &[&str] = &[
-    ".git",
-    "node_modules",
-    "target",
-    "build",
-    "dist",
-    ".next",
-    "vendor",
-    "__pycache__",
-    ".venv",
-    "venv",
-];
-
-/// Check if a file with the given name exists anywhere under `root`,
-/// skipping common non-source directories. Used to detect convention
-/// references like `SKILL.md` that exist in many subdirectories.
-fn file_exists_in_tree(root: &Path, filename: &str) -> bool {
-    fn walk(dir: &Path, target: &str) -> bool {
-        let entries = match std::fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(_) => return false,
-        };
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                if SKIP_DIRS.contains(&name_str.as_ref()) {
-                    continue;
-                }
-                if walk(&entry.path(), target) {
-                    return true;
-                }
-            } else if name_str == target {
-                return true;
-            }
-        }
-        false
-    }
-    walk(root, filename)
-}
-
 /// Check if any line within a window around `line_idx` (0-based) matches `pattern`.
-/// Includes `before` lines before and `after` lines after `line_idx`.
 fn has_nearby_match(
     lines: &[String],
     line_idx: usize,
@@ -119,29 +62,24 @@ fn has_nearby_match(
     start < end && lines[start..end].iter().any(|l| pattern.is_match(l))
 }
 
-/// Check if a preceding line establishes a directory context and the file
-/// reference resolves relative to that directory.
-/// e.g., line N says "Edit in `src/templates/`:" and line N+1 lists `base/foo.md`
-/// → try resolving `src/templates/base/foo.md` from the project root.
+/// Check if a preceding line establishes a directory context (e.g.
+/// `` `src/templates/` ``) and the file reference resolves relative to it.
 fn resolves_via_dir_context(
     lines: &[String],
     line_idx: usize,
     ref_path: &str,
+    canonical_root: Option<&Path>,
     project_root: &Path,
 ) -> bool {
     let start = line_idx.saturating_sub(3);
-    for i in start..line_idx {
-        if let Some(line) = lines.get(i) {
-            for caps in DIR_CONTEXT_PATH.captures_iter(line) {
-                let dir = &caps[1];
-                let resolved = project_root.join(dir).join(ref_path);
-                if resolved.exists() {
-                    return true;
-                }
-            }
-        }
-    }
-    false
+    let end = line_idx.min(lines.len());
+    start <= end
+        && lines[start..end].iter().any(|line| {
+            DIR_CONTEXT_PATH.captures_iter(line).any(|caps| {
+                let resolved = project_root.join(&caps[1]).join(ref_path);
+                resolved.exists() && is_within_project(&resolved, canonical_root, project_root)
+            })
+        })
 }
 
 pub struct DeadReferenceChecker;
@@ -160,14 +98,11 @@ impl Checker for DeadReferenceChecker {
                     continue;
                 }
 
-                // Skip generic placeholder filenames (FILE.md, filename.md, ref1.md)
                 let basename = file_ref.path.rsplit('/').next().unwrap_or(&file_ref.path);
                 if PLACEHOLDER_FILENAME.is_match(basename) {
                     continue;
                 }
 
-                // Skip files inside templates/ directories — paths are meant
-                // to be resolved after the template is instantiated elsewhere.
                 if file_ref
                     .source_file
                     .components()
@@ -176,30 +111,35 @@ impl Checker for DeadReferenceChecker {
                     continue;
                 }
 
-                // Try relative to source file's directory first, then project root
+                // Resolve relative to source dir first, then project root.
+                // Reject paths that escape the project root (path traversal).
                 let source_dir = file_ref.source_file.parent().unwrap_or(&ctx.project_root);
                 let resolved_local = source_dir.join(&file_ref.path);
                 let resolved_root = ctx.project_root.join(&file_ref.path);
-                if resolved_local.exists() || resolved_root.exists() {
+                if (resolved_local.exists()
+                    && is_within_project(
+                        &resolved_local,
+                        ctx.canonical_root.as_deref(),
+                        &ctx.project_root,
+                    ))
+                    || (resolved_root.exists()
+                        && is_within_project(
+                            &resolved_root,
+                            ctx.canonical_root.as_deref(),
+                            &ctx.project_root,
+                        ))
+                {
                     continue;
                 }
 
-                // For bare filenames (no directory component), check if the file
-                // exists anywhere in the project tree. If so, it's a convention
-                // reference (e.g., `SKILL.md` mentioned generically when the file
-                // exists in many subdirectories).
-                if !file_ref.path.contains('/')
-                    && file_exists_in_tree(&ctx.project_root, &file_ref.path)
-                {
+                // Bare filenames that exist somewhere in the tree are convention refs.
+                if !file_ref.path.contains('/') && ctx.filename_index.contains(&file_ref.path) {
                     continue;
                 }
 
                 let line_idx = file_ref.line.saturating_sub(1);
 
                 if let Some(line_content) = file.raw_lines.get(line_idx) {
-                    // Skip procedural references — lines where the file is being
-                    // created, written, or deleted as part of a workflow instruction.
-                    // Also skip example/illustrative references and arrow mappings.
                     if ACTION_VERB_LINE.is_match(line_content)
                         || FILE_CALLED_NAMED.is_match(line_content)
                         || EXAMPLE_CONTEXT.is_match(line_content)
@@ -209,19 +149,16 @@ impl Checker for DeadReferenceChecker {
                         continue;
                     }
 
-                    // Skip references inside quoted strings — these are illustrative
-                    // examples of what output should look like, not real dependencies.
+                    // Skip references inside quoted strings (illustrative examples).
                     if let Some(pos) = line_content.find(&file_ref.path) {
                         let before = &line_content[..pos];
                         if before.chars().filter(|&c| c == '"').count() % 2 == 1 {
                             continue;
                         }
 
-                        // Skip references inside backtick-delimited inline code that
-                        // demonstrate markdown link syntax, not real dependencies.
-                        // e.g., `[Agent Panel](./agent-panel.md)`
-                        // BUT: don't skip plain backtick-quoted file references like
-                        // `agent.md` which are legitimate references in markdown.
+                        // Skip backtick-delimited markdown link syntax examples
+                        // like `[Agent Panel](./agent-panel.md)`, but not plain
+                        // backtick-quoted file refs like `agent.md`.
                         let after = &line_content[pos + file_ref.path.len()..];
                         if before.contains('`') && after.contains('`') {
                             let backticks_before = before.chars().filter(|&c| c == '`').count();
@@ -232,33 +169,23 @@ impl Checker for DeadReferenceChecker {
                     }
                 }
 
-                // Check a ±3 line window for example context (headings like
-                // "**Examples**:" often appear a line or two before the references).
                 if has_nearby_match(&file.raw_lines, line_idx, 3, 3, &EXAMPLE_CONTEXT) {
                     continue;
                 }
 
-                // Check a window (-5/+2) for exclusion context (headings like
-                // "Out-of-Scope", "Do Not Modify") — files listed as things to
-                // avoid, not dependencies.
                 if has_nearby_match(&file.raw_lines, line_idx, 5, 2, &EXCLUSION_CONTEXT) {
                     continue;
                 }
 
-                // Check a window (-10/+3) for naming convention / documentation
-                // list context — e.g., "Zed recognizes these files".
                 if has_nearby_match(&file.raw_lines, line_idx, 10, 3, &CONVENTION_LIST_CONTEXT) {
                     continue;
                 }
 
-                // Check if a preceding line establishes a directory context
-                // and the reference resolves relative to that directory.
-                // e.g., "Edit in `src/templates/`:" → `base/foo.md` resolves
-                // to `src/templates/base/foo.md`.
                 if resolves_via_dir_context(
                     &file.raw_lines,
                     line_idx,
                     &file_ref.path,
+                    ctx.canonical_root.as_deref(),
                     &ctx.project_root,
                 ) {
                     continue;
@@ -305,11 +232,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
 
             historical_indices: HashSet::new(),
         };
@@ -346,11 +276,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
 
             historical_indices: HashSet::new(),
         };
@@ -385,11 +318,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -418,6 +354,7 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let mut historical = HashSet::new();
@@ -426,6 +363,8 @@ mod tests {
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: historical,
         };
 
@@ -457,11 +396,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -470,8 +412,6 @@ mod tests {
 
         assert_eq!(result.diagnostics.len(), 0);
     }
-
-    // ── Item 4: Dead reference edge cases ────────────────────────────────
 
     #[test]
     fn test_parent_relative_reference() {
@@ -495,11 +435,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -529,11 +472,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -563,11 +509,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -596,11 +545,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -629,11 +581,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -662,11 +617,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -695,11 +653,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -735,11 +696,16 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
+        let canonical_root = root.canonicalize().ok();
+        let filename_index = crate::engine::cross_ref::build_filename_index(root);
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root,
+            filename_index,
             historical_indices: HashSet::new(),
         };
 
@@ -769,11 +735,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -808,11 +777,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -842,11 +814,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec!["Write up a summary in a file called webkit-changes.md".to_string()],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -875,11 +850,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec!["delete the webkit-changes.md file".to_string()],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -908,11 +886,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -948,11 +929,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -998,11 +982,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -1034,11 +1021,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -1069,11 +1059,14 @@ mod tests {
             raw_lines: vec![
                 "**Examples**: `drafts/srs-sso-authentication-2024-01-15.md`".to_string(),
             ],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -1105,11 +1098,14 @@ mod tests {
                 "Use lowercase words separated by hyphens (e.g., `fix-parser-edge-case.md`)"
                     .to_string(),
             ],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -1148,11 +1144,14 @@ mod tests {
                 "- Relative links: `[Agent Panel](./agent-panel.md)`".to_string(),
                 "- Parent directory: `[Telemetry](../telemetry.md)`".to_string(),
             ],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -1193,11 +1192,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines,
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -1226,11 +1228,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec!["- **Naming**: Use kebab-case: `optimize-images.md`".to_string()],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -1267,11 +1272,14 @@ mod tests {
                 "2. **Templates** - Edit in `src/templates/`:".to_string(),
                 "   - `base/skill-content.md` - Common content".to_string(),
             ],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -1305,11 +1313,14 @@ mod tests {
                 "Edit in `src/templates/`:".to_string(),
                 "   - `base/nonexistent.md`".to_string(),
             ],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -1339,11 +1350,14 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec!["Load config/setup.md for configuration details.".to_string()],
+            in_code_block: vec![],
         };
 
         let ctx = CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
 
@@ -1373,10 +1387,13 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![raw_line.to_string()],
+            in_code_block: vec![],
         };
         CheckerContext {
             files: vec![parsed],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         }
     }

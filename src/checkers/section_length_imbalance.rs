@@ -24,8 +24,10 @@ impl SectionLengthImbalanceChecker {
 
 /// Sections that are inherently long by nature and should be excluded.
 fn is_toc_section(title: &str) -> bool {
-    let lower = title.to_lowercase();
-    lower == "table of contents" || lower == "toc" || lower == "index" || lower == "contents"
+    matches!(
+        title.to_lowercase().as_str(),
+        "table of contents" | "toc" | "index" | "contents"
+    )
 }
 
 /// Minimum median below which ratio comparisons become meaningless.
@@ -58,7 +60,7 @@ impl Checker for SectionLengthImbalanceChecker {
                 })
                 .collect();
 
-            let mut sorted_counts: Vec<usize> = line_counts.iter().map(|&(_, c, _)| c).collect();
+            let mut sorted_counts: Vec<_> = line_counts.iter().map(|&(_, c, _)| c).collect();
             sorted_counts.sort_unstable();
             let median = sorted_counts[sorted_counts.len() / 2];
 
@@ -96,18 +98,10 @@ impl Checker for SectionLengthImbalanceChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::checkers::utils::test_helpers::single_file_ctx_with_sections;
-    use crate::config::SectionLengthImbalanceConfig;
+    use crate::checkers::utils::test_helpers::{
+        section_with_end as section, single_file_ctx_with_sections,
+    };
     use crate::parser::types::Section;
-
-    fn section(title: &str, level: u8, line: usize, end_line: usize) -> Section {
-        Section {
-            level,
-            title: title.to_string(),
-            line,
-            end_line,
-        }
-    }
 
     fn checker_with(min_lines: usize, ratio: f64) -> SectionLengthImbalanceChecker {
         SectionLengthImbalanceChecker::new(&SectionLengthImbalanceConfig {

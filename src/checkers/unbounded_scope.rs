@@ -3,7 +3,6 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::non_code_lines;
 use crate::types::{Category, CheckResult, Severity};
 
 use super::utils::{count_directive_lines, ScopeFilter, MIN_DIRECTIVE_LINES};
@@ -66,14 +65,14 @@ impl Checker for UnboundedScopeChecker {
                 continue;
             }
 
-            if count_directive_lines(&file.raw_lines) < MIN_DIRECTIVE_LINES {
+            if count_directive_lines(&file.raw_lines, &file.in_code_block) < MIN_DIRECTIVE_LINES {
                 continue;
             }
 
             let mut has_capability = false;
             let mut has_boundary = false;
 
-            for (_, line) in non_code_lines(&file.raw_lines) {
+            for (_, line) in file.non_code_lines() {
                 if CAPABILITY_GRANT.is_match(line) {
                     has_capability = true;
                 }

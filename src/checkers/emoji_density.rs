@@ -4,7 +4,6 @@ use std::sync::LazyLock;
 use crate::config::EmojiDensityConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::non_code_lines;
 use crate::types::{Category, CheckResult, Severity};
 
 use super::Checker;
@@ -55,7 +54,7 @@ impl Checker for EmojiDensityChecker {
             let mut total = 0;
             let mut functional = 0;
 
-            for (_, line) in non_code_lines(&file.raw_lines) {
+            for (_, line) in file.non_code_lines() {
                 let line_emoji = EMOJI_PATTERN.find_iter(line).count();
                 total += line_emoji;
 

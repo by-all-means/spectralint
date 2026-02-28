@@ -3,7 +3,6 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::parser::non_code_lines;
 use crate::types::{Category, CheckResult, Severity};
 
 use super::utils::{count_directive_lines, is_instruction_file, ScopeFilter};
@@ -112,12 +111,12 @@ impl Checker for MissingRoleDefinitionChecker {
             } else {
                 ROLE_MIN_DIRECTIVE_LINES
             };
-            if count_directive_lines(&file.raw_lines) < min_directives {
+            if count_directive_lines(&file.raw_lines, &file.in_code_block) < min_directives {
                 continue;
             }
 
             // Skip reference/context files without imperative instructions.
-            if !is_instruction_file(&file.raw_lines) {
+            if !is_instruction_file(&file.raw_lines, &file.in_code_block) {
                 continue;
             }
 
@@ -126,8 +125,9 @@ impl Checker for MissingRoleDefinitionChecker {
                 continue;
             }
 
-            let has_role_pattern =
-                non_code_lines(&file.raw_lines).any(|(_, line)| ROLE_PATTERN.is_match(line));
+            let has_role_pattern = file
+                .non_code_lines()
+                .any(|(_, line)| ROLE_PATTERN.is_match(line));
 
             if has_role_pattern
                 || file
@@ -318,10 +318,13 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: lines.iter().map(|s| s.to_string()).collect(),
+            in_code_block: vec![],
         };
         let ctx = CheckerContext {
             files: vec![file],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
         let result = MissingRoleDefinitionChecker::new(&[]).check(&ctx);

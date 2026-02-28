@@ -88,10 +88,13 @@ mod tests {
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: lines,
+            in_code_block: vec![],
         };
         let ctx = CheckerContext {
             files: vec![file],
             project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         };
         let config = FileSizeConfig::default();

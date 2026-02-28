@@ -8,48 +8,58 @@ use std::sync::LazyLock;
 
 use types::{Directive, FileRef, InlineSuppress, ParsedFile, Section, SuppressKind, Table};
 
-/// Iterate over non-code-block lines, yielding `(zero_based_index, line)` pairs.
-/// Fenced code blocks (lines starting with ```) are skipped entirely.
+/// Build a pre-computed mask of which lines are inside fenced code blocks.
+/// Fence markers themselves are marked `true` (excluded from non-code iteration).
+pub(crate) fn build_code_block_mask(lines: &[String]) -> Vec<bool> {
+    let mut mask = vec![false; lines.len()];
+    let mut in_code_block = false;
+    for (i, line) in lines.iter().enumerate() {
+        if line.trim_start().starts_with("```") {
+            mask[i] = true; // fence marker — excluded from both code and non-code
+            in_code_block = !in_code_block;
+        } else {
+            mask[i] = in_code_block;
+        }
+    }
+    mask
+}
+
+/// Iterate non-code lines using a pre-computed mask (O(1) per line, no fence tracking).
+pub(crate) fn non_code_lines_masked<'a>(
+    lines: &'a [String],
+    mask: &'a [bool],
+) -> impl Iterator<Item = (usize, &'a str)> {
+    lines
+        .iter()
+        .zip(mask.iter())
+        .enumerate()
+        .filter_map(|(i, (line, &in_code))| (!in_code).then_some((i, line.as_str())))
+}
+
+/// Filter lines by their code-block context (legacy, computes fence state on the fly).
+/// Used only during parsing before the mask is built.
+fn filter_by_fence(lines: &[String], want_code: bool) -> impl Iterator<Item = (usize, &str)> {
+    let mut in_code_block = false;
+    lines.iter().enumerate().filter_map(move |(i, line)| {
+        if line.trim_start().starts_with("```") {
+            in_code_block = !in_code_block;
+            return None;
+        }
+        (in_code_block == want_code).then_some((i, line.as_str()))
+    })
+}
+
 pub(crate) fn non_code_lines(lines: &[String]) -> impl Iterator<Item = (usize, &str)> {
-    let mut in_code_block = false;
-    lines.iter().enumerate().filter_map(move |(i, line)| {
-        if line.trim().starts_with("```") {
-            in_code_block = !in_code_block;
-            return None;
-        }
-        if in_code_block {
-            return None;
-        }
-        Some((i, line.as_str()))
-    })
+    filter_by_fence(lines, false)
 }
 
-/// Iterate over lines inside fenced code blocks, yielding `(zero_based_index, line)` pairs.
-/// Only lines within ``` fences are yielded (fence markers themselves are excluded).
-pub(crate) fn code_block_lines(lines: &[String]) -> impl Iterator<Item = (usize, &str)> {
-    let mut in_code_block = false;
-    lines.iter().enumerate().filter_map(move |(i, line)| {
-        if line.trim().starts_with("```") {
-            in_code_block = !in_code_block;
-            return None;
-        }
-        if in_code_block {
-            return Some((i, line.as_str()));
-        }
-        None
-    })
-}
-
-/// Returns true if a line (already outside fenced code blocks) should be
-/// scanned for directives. Skips indented code blocks, blockquotes, and
-/// table rows, which are content rather than instructions.
+/// Returns true if the line should be scanned for directives.
+/// Skips indented code blocks, blockquotes, and table rows.
 pub(crate) fn is_directive_line(line: &str) -> bool {
     let trimmed = line.trim();
-    // Skip indented code blocks (but not list items)
     if line.starts_with("    ") && !trimmed.starts_with('-') && !trimmed.starts_with('*') {
         return false;
     }
-    // Skip blockquotes and table rows
     if trimmed.starts_with('>') || trimmed.starts_with('|') {
         return false;
     }
@@ -69,39 +79,51 @@ static SUPPRESS_COMMENT: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Lines matching these patterns are descriptive or first-person discussion,
 /// not directives to the agent. Skip vague-directive detection on them.
-pub(crate) static NON_DIRECTIVE_CONTEXTS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    [
-        r"(?i)\bcan\s+be\b",                         // capability: "Can be helpful"
-        r"(?i)\bmay\s+be\b",                         // possibility: "May be useful"
-        r"(?i)\bwe\s+(?:need|should|could|might)\b", // first person: "we need to consider"
-    ]
-    .iter()
-    .map(|p| Regex::new(p).unwrap())
-    .collect()
+pub(crate) static NON_DIRECTIVE_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)\b(?:",
+        r"can\s+be",                          // capability: "Can be helpful"
+        r"|may\s+be",                         // possibility: "May be useful"
+        r"|we\s+(?:need|should|could|might)", // first person: "we need to consider"
+        r")\b",
+    ))
+    .unwrap()
 });
 
-static VAGUE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    // Only flag patterns that are genuinely non-deterministic for agents.
-    // Removed: "when possible", "when needed", "as needed", "when necessary",
-    // "consider" — these are normal conditionals and suggestions that agents
-    // handle fine. No prompt engineering guide specifically calls these out.
-    let patterns = [
-        r"(?i)\btry to\b",
-        r"(?i)\buse your judgm?ent\b",
-        r"(?i)\bif appropriate\b",
-        r"(?i)\bbe helpful\b",
-        r"(?i)\bas appropriate\b",
-    ];
-    patterns.iter().map(|p| Regex::new(p).unwrap()).collect()
+static VAGUE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)\b(?:",
+        r"try to",
+        r"|use your judgm?ent",
+        r"|if appropriate",
+        r"|be helpful",
+        r"|as appropriate",
+        r")\b",
+    ))
+    .unwrap()
 });
 
-// "Do not try to ..." and "try to avoid ..." are deterministic prohibitions, not vague guidance.
+/// "Do not try to ..." and "try to avoid ..." are prohibitions, not vague guidance.
 static NEGATED_TRY_TO: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?:\b(?:do\s+not|don't|never|avoid)\s+try\s+to\b|\btry\s+to\s+avoid\b)")
         .unwrap()
 });
 
+/// Maximum file size (10 MiB) that the parser will accept.
+const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
+
+/// Maximum AST traversal depth to prevent stack overflow on crafted inputs.
+const MAX_AST_DEPTH: usize = 128;
+
 pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
+    let meta = std::fs::metadata(path)?;
+    if meta.len() > MAX_FILE_SIZE {
+        anyhow::bail!(
+            "{}: file too large ({:.1} MiB, limit is 10 MiB)",
+            path.display(),
+            meta.len() as f64 / (1024.0 * 1024.0)
+        );
+    }
     let content = std::fs::read_to_string(path)?;
     let raw_lines: Vec<String> = content.lines().map(String::from).collect();
 
@@ -116,12 +138,14 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
     let mut directives = Vec::new();
     let mut suppress_comments = Vec::new();
 
-    extract_sections(root, &mut sections);
+    extract_sections(root, &mut sections, 0);
     assign_section_end_lines(&mut sections, raw_lines.len());
-    extract_tables(root, &mut tables, &sections);
+    extract_tables(root, &mut tables, &sections, 0);
     extract_file_refs(&raw_lines, path, &mut file_refs);
     extract_directives(&raw_lines, &mut directives);
     extract_suppress_comments(&raw_lines, &mut suppress_comments);
+
+    let in_code_block = build_code_block_mask(&raw_lines);
 
     Ok(ParsedFile {
         path: path.to_path_buf(),
@@ -131,32 +155,43 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
         directives,
         suppress_comments,
         raw_lines,
+        in_code_block,
     })
 }
 
-fn extract_sections<'a>(node: &'a comrak::nodes::AstNode<'a>, sections: &mut Vec<Section>) {
+fn extract_sections<'a>(
+    node: &'a comrak::nodes::AstNode<'a>,
+    sections: &mut Vec<Section>,
+    depth: usize,
+) {
+    if depth > MAX_AST_DEPTH {
+        return;
+    }
     for child in node.children() {
-        {
-            let data = child.data.borrow();
-            if let NodeValue::Heading(heading) = &data.value {
-                let title = collect_text(child);
-                sections.push(Section {
-                    level: heading.level,
-                    title,
-                    line: data.sourcepos.start.line,
-                    end_line: 0,
-                });
-            }
+        let data = child.data.borrow();
+        if let NodeValue::Heading(heading) = &data.value {
+            let title = collect_text(child, depth + 1);
+            sections.push(Section {
+                level: heading.level,
+                title,
+                line: data.sourcepos.start.line,
+                end_line: 0,
+            });
         }
-        extract_sections(child, sections);
+        drop(data);
+        extract_sections(child, sections, depth + 1);
     }
 }
 
 fn assign_section_end_lines(sections: &mut [Section], total_lines: usize) {
-    for i in 0..sections.len() {
-        sections[i].end_line = sections
-            .get(i + 1)
-            .map_or(total_lines, |next| next.line.saturating_sub(1));
+    let next_starts: Vec<usize> = sections
+        .iter()
+        .skip(1)
+        .map(|s| s.line.saturating_sub(1))
+        .chain(std::iter::once(total_lines))
+        .collect();
+    for (section, end) in sections.iter_mut().zip(next_starts) {
+        section.end_line = end;
     }
 }
 
@@ -164,54 +199,69 @@ fn extract_tables<'a>(
     node: &'a comrak::nodes::AstNode<'a>,
     tables: &mut Vec<Table>,
     sections: &[Section],
+    depth: usize,
 ) {
+    if depth > MAX_AST_DEPTH {
+        return;
+    }
     for child in node.children() {
-        {
-            let data = child.data.borrow();
-            if let NodeValue::Table(_) = &data.value {
-                let line = data.sourcepos.start.line;
-                let mut rows: Vec<Vec<String>> = Vec::new();
+        let data = child.data.borrow();
+        if let NodeValue::Table(_) = &data.value {
+            let line = data.sourcepos.start.line;
+            let mut rows: Vec<Vec<String>> = Vec::new();
 
-                for row_node in child.children() {
-                    rows.push(row_node.children().map(collect_text).collect());
-                }
-
-                let mut rows_iter = rows.into_iter();
-                let headers = rows_iter.next().unwrap_or_default();
-                let data_rows: Vec<Vec<String>> = rows_iter.collect();
-
-                let parent_section = sections
-                    .iter()
-                    .rev()
-                    .find(|s| s.line < line)
-                    .map(|s| s.title.clone());
-
-                tables.push(Table {
-                    headers,
-                    rows: data_rows,
-                    line,
-                    parent_section,
-                });
+            for row_node in child.children() {
+                rows.push(
+                    row_node
+                        .children()
+                        .map(|c| collect_text(c, depth + 1))
+                        .collect(),
+                );
             }
+
+            let mut rows_iter = rows.into_iter();
+            let headers = rows_iter.next().unwrap_or_default();
+            let data_rows: Vec<Vec<String>> = rows_iter.collect();
+
+            let parent_section = sections
+                .iter()
+                .rev()
+                .find(|s| s.line < line)
+                .map(|s| s.title.clone());
+
+            tables.push(Table {
+                headers,
+                rows: data_rows,
+                line,
+                parent_section,
+            });
         }
-        extract_tables(child, tables, sections);
+        drop(data);
+        extract_tables(child, tables, sections, depth + 1);
     }
 }
 
-fn collect_text<'a>(node: &'a comrak::nodes::AstNode<'a>) -> String {
+fn collect_text<'a>(node: &'a comrak::nodes::AstNode<'a>, depth: usize) -> String {
     let mut buf = String::new();
-    fn inner<'a>(node: &'a comrak::nodes::AstNode<'a>, buf: &mut String) {
+    fn inner<'a>(node: &'a comrak::nodes::AstNode<'a>, buf: &mut String, depth: usize) {
+        if depth > MAX_AST_DEPTH {
+            return;
+        }
         match &node.data.borrow().value {
             NodeValue::Text(t) => buf.push_str(t),
             NodeValue::Code(c) => buf.push_str(&c.literal),
             _ => {}
         }
         for child in node.children() {
-            inner(child, buf);
+            inner(child, buf, depth + 1);
         }
     }
-    inner(node, &mut buf);
+    inner(node, &mut buf, depth);
     buf
+}
+
+fn is_url(path: &str) -> bool {
+    path.starts_with("http://") || path.starts_with("https://")
 }
 
 fn extract_file_refs(lines: &[String], source_path: &Path, refs: &mut Vec<FileRef>) {
@@ -230,29 +280,23 @@ fn extract_file_refs(lines: &[String], source_path: &Path, refs: &mut Vec<FileRe
 
         for cap in FILE_REF_BACKTICK.captures_iter(line) {
             let path = &cap[1];
-            // Skip backtick captures containing whitespace (commands like `wc -c CLAUDE.md`)
-            if path.contains(' ') {
-                continue;
+            if !path.contains(' ') {
+                push_unique(refs, path.to_string(), line_num);
             }
-            push_unique(refs, path.to_string(), line_num);
         }
 
         for cap in FILE_REF_LINK.captures_iter(line) {
             let path = &cap[2];
-            // Skip URLs — they're not local file references
-            if path.starts_with("http://") || path.starts_with("https://") {
-                continue;
+            if !is_url(path) {
+                push_unique(refs, path.to_string(), line_num);
             }
-            push_unique(refs, path.to_string(), line_num);
         }
 
         for cap in FILE_REF_BARE.captures_iter(line) {
             let path = &cap[1];
-            // Skip URLs in bare references too
-            if path.starts_with("http://") || path.starts_with("https://") {
-                continue;
+            if !is_url(path) {
+                push_unique(refs, path.to_string(), line_num);
             }
-            push_unique(refs, path.to_string(), line_num);
         }
     }
 }
@@ -263,23 +307,18 @@ fn extract_directives(lines: &[String], directives: &mut Vec<Directive>) {
             continue;
         }
 
-        // Skip lines that are descriptive/discussion rather than directives
-        if NON_DIRECTIVE_CONTEXTS.iter().any(|p| p.is_match(line)) {
+        if NON_DIRECTIVE_CONTEXT.is_match(line) {
             continue;
         }
 
-        for pattern in VAGUE_PATTERNS.iter() {
-            if let Some(m) = pattern.find(line) {
-                // Skip negated forms like "Do not try to fix this automatically".
-                if m.as_str().eq_ignore_ascii_case("try to") && NEGATED_TRY_TO.is_match(line) {
-                    continue;
-                }
-                directives.push(Directive {
-                    line: i + 1,
-                    pattern_matched: m.as_str().to_string(),
-                });
-                break;
+        if let Some(m) = VAGUE_PATTERN.find(line) {
+            if m.as_str().eq_ignore_ascii_case("try to") && NEGATED_TRY_TO.is_match(line) {
+                continue;
             }
+            directives.push(Directive {
+                line: i + 1,
+                pattern_matched: m.as_str().to_string(),
+            });
         }
     }
 }

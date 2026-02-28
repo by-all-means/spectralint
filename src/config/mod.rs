@@ -57,6 +57,17 @@ pub struct CheckersConfig {
     pub outdated_model_reference: ScopedCheckerConfig,
     pub broken_table: ScopedCheckerConfig,
     pub placeholder_url: ScopedCheckerConfig,
+    pub emphasis_overuse: EmphasisOveruseConfig,
+    pub boilerplate_template: ScopedCheckerConfig,
+    pub orphaned_section: ScopedCheckerConfig,
+    pub excessive_nesting: ExcessiveNestingConfig,
+    pub context_window_waste: ScopedCheckerConfig,
+    pub ambiguous_scope_reference: ScopedCheckerConfig,
+    pub instruction_without_context: ScopedCheckerConfig,
+    pub cross_file_contradiction: ScopedCheckerConfig,
+    pub stale_style_rule: ScopedCheckerConfig,
+    pub hardcoded_file_structure: ScopedCheckerConfig,
+    pub unversioned_stack_reference: ScopedCheckerConfig,
     pub custom_patterns: Vec<CustomPattern>,
 }
 
@@ -81,7 +92,7 @@ impl Default for CheckersConfig {
             prompt_injection_vector: ScopedCheckerConfig::default(),
             missing_verification: MissingVerificationConfig::default(),
             negative_only_framing: NegativeOnlyFramingConfig::default(),
-            conflicting_directives: ScopedCheckerConfig::disabled(),
+            conflicting_directives: ScopedCheckerConfig::default(),
             missing_role_definition: ScopedCheckerConfig::disabled(),
             redundant_directive: RedundantDirectiveConfig::default(),
             instruction_density: InstructionDensityConfig::default(),
@@ -91,7 +102,7 @@ impl Default for CheckersConfig {
             large_code_block: LargeCodeBlockConfig::default(),
             duplicate_section: ScopedCheckerConfig::default(),
             absolute_path: ScopedCheckerConfig::default(),
-            generic_instruction: ScopedCheckerConfig::disabled(),
+            generic_instruction: ScopedCheckerConfig::default(),
             misordered_steps: ScopedCheckerConfig::default(),
             section_length_imbalance: SectionLengthImbalanceConfig::default(),
             unclosed_fence: ScopedCheckerConfig::default(),
@@ -100,6 +111,17 @@ impl Default for CheckersConfig {
             outdated_model_reference: ScopedCheckerConfig::default(),
             broken_table: ScopedCheckerConfig::default(),
             placeholder_url: ScopedCheckerConfig::default(),
+            emphasis_overuse: EmphasisOveruseConfig::default(),
+            boilerplate_template: ScopedCheckerConfig::default(),
+            orphaned_section: ScopedCheckerConfig::default(),
+            excessive_nesting: ExcessiveNestingConfig::default(),
+            context_window_waste: ScopedCheckerConfig::default(),
+            ambiguous_scope_reference: ScopedCheckerConfig::default(),
+            instruction_without_context: ScopedCheckerConfig::default(),
+            cross_file_contradiction: ScopedCheckerConfig::disabled(),
+            stale_style_rule: ScopedCheckerConfig::default(),
+            hardcoded_file_structure: ScopedCheckerConfig::default(),
+            unversioned_stack_reference: ScopedCheckerConfig::disabled(),
             custom_patterns: Vec::new(),
         }
     }
@@ -189,7 +211,7 @@ pub struct RedundantDirectiveConfig {
 impl Default for RedundantDirectiveConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             similarity_threshold: 0.95,
             min_line_length: 15,
             scope: Vec::new(),
@@ -248,6 +270,42 @@ impl Default for SectionLengthImbalanceConfig {
             enabled: false,
             min_section_lines: 50,
             imbalance_ratio: 4.0,
+            scope: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct EmphasisOveruseConfig {
+    pub enabled: bool,
+    pub max_emphasis: usize,
+    pub scope: Vec<String>,
+}
+
+impl Default for EmphasisOveruseConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_emphasis: 10,
+            scope: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct ExcessiveNestingConfig {
+    pub enabled: bool,
+    pub max_depth: usize,
+    pub scope: Vec<String>,
+}
+
+impl Default for ExcessiveNestingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_depth: 4,
             scope: Vec::new(),
         }
     }
@@ -357,17 +415,22 @@ impl Default for ScopedCheckerConfig {
 
 impl Config {
     pub fn load(config_path: Option<&Path>, project_root: &Path) -> Result<Self> {
-        let path = config_path.map(Path::to_path_buf).or_else(|| {
-            let default = project_root.join(".spectralintrc.toml");
-            default.exists().then_some(default)
-        });
+        // When an explicit --config path is given, any read error is fatal.
+        if let Some(path) = config_path {
+            let content = std::fs::read_to_string(path)?;
+            return toml::from_str(&content)
+                .map_err(|e| anyhow::anyhow!("Config parse error: {e}"));
+        }
 
-        match path {
-            Some(path) => {
-                let content = std::fs::read_to_string(&path)?;
+        // Auto-discover: try to read the default path directly (avoids TOCTOU
+        // race between exists() and read_to_string()).
+        let default = project_root.join(".spectralintrc.toml");
+        match std::fs::read_to_string(&default) {
+            Ok(content) => {
                 toml::from_str(&content).map_err(|e| anyhow::anyhow!("Config parse error: {e}"))
             }
-            None => Ok(Config::default()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -462,14 +525,14 @@ enabled = true
 
 # ── Prompt-quality checks ──
 
-# [checkers.conflicting_directives]
-# enabled = true
+[checkers.conflicting_directives]
+enabled = true
 
 # [checkers.missing_role_definition]
 # enabled = true
 
-[checkers.redundant_directive]
-enabled = true
+# [checkers.redundant_directive]
+# enabled = true
 # similarity_threshold = 0.95
 # min_line_length = 15
 
@@ -501,8 +564,8 @@ enabled = true
 
 # ── New strict-only checks ──
 
-# [checkers.generic_instruction]
-# enabled = true
+[checkers.generic_instruction]
+enabled = true
 
 # [checkers.section_length_imbalance]
 # enabled = true
@@ -524,7 +587,42 @@ enabled = true
 [checkers.placeholder_url]
 enabled = true
 
+[checkers.boilerplate_template]
+enabled = true
+
+# [checkers.emphasis_overuse]
+# enabled = true
+# max_emphasis = 10
+
+[checkers.orphaned_section]
+enabled = true
+
+# [checkers.excessive_nesting]
+# enabled = true
+# max_depth = 4
+
+[checkers.context_window_waste]
+enabled = true
+
+[checkers.ambiguous_scope_reference]
+enabled = true
+
+[checkers.instruction_without_context]
+enabled = true
+
+# [checkers.cross_file_contradiction]
+# enabled = true
+
 # [checkers.untagged_code_block]
+# enabled = true
+
+[checkers.stale_style_rule]
+enabled = true
+
+[checkers.hardcoded_file_structure]
+enabled = true
+
+# [checkers.unversioned_stack_reference]
 # enabled = true
 
 # Custom regex patterns:
@@ -693,8 +791,6 @@ enabled = true
         assert_eq!(config.include.len(), 4);
     }
 
-    // ── Item 2: Config loading with malformed TOML ───────────────────────
-
     #[test]
     fn test_config_invalid_toml() {
         let dir = tempfile::tempdir().unwrap();
@@ -728,8 +824,6 @@ enabled = true
         assert_eq!(config.include, Config::default().include);
         assert!(config.checkers.dead_reference.enabled);
     }
-
-    // ── Item 24: Default template validity ───────────────────────────────
 
     #[test]
     fn test_default_toml_template_is_parseable() {
