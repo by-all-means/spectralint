@@ -9,12 +9,12 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{has_elaboration_after, is_heading, ScopeFilter};
 use super::Checker;
 
-pub struct GenericInstructionChecker {
+pub(crate) struct GenericInstructionChecker {
     scope: ScopeFilter,
 }
 
 impl GenericInstructionChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }

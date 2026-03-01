@@ -5,12 +5,12 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::ScopeFilter;
 use super::Checker;
 
-pub struct UntaggedCodeBlockChecker {
+pub(crate) struct UntaggedCodeBlockChecker {
     scope: ScopeFilter,
 }
 
 impl UntaggedCodeBlockChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }

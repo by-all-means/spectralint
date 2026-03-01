@@ -9,12 +9,12 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{is_heading, ScopeFilter};
 use super::Checker;
 
-pub struct StaleStyleRuleChecker {
+pub(crate) struct StaleStyleRuleChecker {
     scope: ScopeFilter,
 }
 
 impl StaleStyleRuleChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }

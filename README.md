@@ -53,7 +53,7 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 
 **40% of repos had errors or warnings** — dead references to files that genuinely don't exist, duplicate instruction files, dangerous commands, placeholder text, and hardcoded paths. Every finding manually verified against the actual repo.
 
-## 48 Built-in Rules
+## 60 Built-in Rules
 
 | Rule | Severity | What it catches |
 |------|----------|-----------------|
@@ -104,18 +104,32 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 | `emphasis-overuse` | info | Excessive bold/italic/caps formatting *(strict)* |
 | `excessive-nesting` | info | Deeply nested list structures *(strict)* |
 | `unversioned-stack-reference` | info | "Built with React" without version pinning *(strict)* |
+| `missing-standard-file` | info | Projects missing CLAUDE.md or settings.json *(strict)* |
+| `bare-url` | info | Raw URLs not wrapped in `[text](url)` syntax *(strict)* |
+| `repeated-word` | info | Accidental consecutive duplicate words ("the the") *(strict)* |
+| `undocumented-env-var` | info | `$ENV_VAR` references without nearby explanation *(strict)* |
+| `empty-code-block` | info | Code blocks with no content *(strict)* |
+| `click-here-link` | info | Opaque link text like "[click here](url)" *(strict)* |
+| `double-negation` | info | "never don't", "not fail to" — confusing phrasing *(strict)* |
+| `imperative-heading` | info | Headings that are instructions, not topics *(strict)* |
+| `inconsistent-command-prefix` | info | Mixed `$` prefix styles in shell code blocks *(strict)* |
+| `empty-heading` | info | Headings with no title text (`## `) *(strict)* |
+| `copied-meta-instructions` | warning | AI boilerplate like "You are a helpful assistant" *(strict)* |
+| `xml-document-wrapper` | warning | XML declarations and wrapper tags in markdown *(strict)* |
+| `invalid-suppression` | warning | Unrecognized rule names in suppress comments |
+| `unused-suppression` | info | Suppress comments that didn't suppress anything |
 | `custom` | configurable | Your own regex patterns |
 
 ## Features
 
-- **48 built-in rules** covering security, consistency, content quality, and agent best practices
+- **60 built-in rules** covering security, consistency, content quality, and agent best practices
 <!-- spectralint-disable-next-line vague-directive -->
 - **Vague directive detection** — finds non-deterministic language ("try to", "when possible")
 - **Cross-file analysis** — naming inconsistency and enum drift across multiple files
 - **Prompt injection detection** — social engineering, invisible Unicode, base64 payloads
 - **Custom regex patterns** — define your own lint rules in config
-- **Inline suppression** — disable rules with `<!-- spectralint-disable -->` comments
-- **Multiple output formats** — text (colored), JSON, and GitHub Actions annotations
+- **Inline suppression** — disable rules with `<!-- spectralint-disable -->` comments; validates rule names and flags unused suppressions
+- **Multiple output formats** — text (colored), JSON, SARIF, and GitHub Actions annotations
 - **Fast** — parallel parsing via rayon, scans hundreds of files in milliseconds
 
 ## Install
@@ -143,6 +157,8 @@ cargo install spectralint
 ```sh
 # Initialize config
 spectralint init
+spectralint init --preset minimal    # dead-reference + credential-exposure only
+spectralint init --preset strict     # all checkers enabled
 
 # Lint your project
 spectralint check .
@@ -150,11 +166,16 @@ spectralint check .
 # Enable strict mode (opinionated checks)
 spectralint check . --strict
 
-# JSON output
-spectralint check . --format json
+# Output formats
+spectralint check . --format json    # structured JSON
+spectralint check . --format sarif   # SARIF for IDE/CI integration
+spectralint check . --format github  # GitHub Actions annotations
 
-# GitHub Actions annotations
-spectralint check . --format github
+# Filter and control output
+spectralint check . --rule dead-reference  # only show specific rules
+spectralint check . --count               # summary counts only
+spectralint check . --quiet               # exit code only, no output
+spectralint check . --no-color            # disable colored output (also respects NO_COLOR env var)
 
 # List all available rules
 spectralint explain
@@ -228,11 +249,19 @@ enabled = true
 [checkers.prompt_injection_vector]
 enabled = true
 
+# Per-checker severity override (promote info to warning, etc.)
+# [checkers.vague_directive]
+# severity = "error"
+
 # Strict-only checkers (disabled by default, enabled by --strict or strict = true):
 # enum_drift, agent_guidelines, heading_hierarchy, emoji_density,
 # missing_verification, negative_only_framing, conflicting_directives,
 # missing_role_definition, redundant_directive, instruction_density,
-# missing_examples, unbounded_scope
+# missing_examples, unbounded_scope, bare_url, repeated_word,
+# undocumented_env_var, missing_standard_file, empty_code_block,
+# click_here_link, double_negation, imperative_heading,
+# inconsistent_command_prefix, empty_heading,
+# copied_meta_instructions, xml_document_wrapper
 
 # Custom regex patterns
 [[checkers.custom_patterns]]
@@ -296,6 +325,10 @@ Everything in this block is ignored.
 <!-- spectralint-enable -->
 ```
 
+Suppression comments are validated automatically:
+- **`invalid-suppression`** — warns if you reference a rule name that doesn't exist (catches typos)
+- **`unused-suppression`** — flags suppress comments that didn't actually suppress any diagnostic
+
 ## CI Integration
 
 ### GitHub Actions
@@ -315,7 +348,7 @@ Add to your workflow:
 
 ## Strict Mode
 
-Enable 17 additional opinionated checkers (enum-drift, agent-guidelines, heading-hierarchy, emoji-density, missing-verification, negative-only-framing, cross-file-contradiction, missing-role-definition, redundant-directive, instruction-density, missing-examples, unbounded-scope, section-length-imbalance, untagged-code-block, emphasis-overuse, excessive-nesting, unversioned-stack-reference):
+Enable 29 additional opinionated checkers (enum-drift, agent-guidelines, heading-hierarchy, emoji-density, missing-verification, negative-only-framing, cross-file-contradiction, missing-role-definition, redundant-directive, instruction-density, missing-examples, unbounded-scope, section-length-imbalance, untagged-code-block, emphasis-overuse, excessive-nesting, unversioned-stack-reference, missing-standard-file, bare-url, repeated-word, undocumented-env-var, empty-code-block, click-here-link, double-negation, imperative-heading, inconsistent-command-prefix, empty-heading, copied-meta-instructions, xml-document-wrapper):
 
 ```sh
 # Via CLI flag

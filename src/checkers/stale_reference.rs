@@ -5,20 +5,89 @@ use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::types::{Category, CheckResult, Severity};
 
-use super::utils::ScopeFilter;
+use super::utils::{inside_inline_code, ScopeFilter};
 use super::Checker;
 
-/// Check whether byte offset `pos` falls inside an inline backtick span.
-fn inside_inline_code(line: &str, pos: usize) -> bool {
-    line[..pos].chars().filter(|&c| c == '`').count() % 2 == 1
+/// Pattern to extract month + year from stale reference matches.
+static MONTH_YEAR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(january|february|march|april|may|june|july|august|september|october|november|december)\s+(20\d{2})").unwrap()
+});
+
+/// Pattern to extract bare year from stale reference matches.
+static BARE_YEAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(20\d{2})\b").unwrap());
+
+fn month_to_number(month: &str) -> Option<u32> {
+    match month.to_lowercase().as_str() {
+        "january" => Some(1),
+        "february" => Some(2),
+        "march" => Some(3),
+        "april" => Some(4),
+        "may" => Some(5),
+        "june" => Some(6),
+        "july" => Some(7),
+        "august" => Some(8),
+        "september" => Some(9),
+        "october" => Some(10),
+        "november" => Some(11),
+        "december" => Some(12),
+        _ => None,
+    }
 }
 
-pub struct StaleReferenceChecker {
+/// Returns true if the referenced date is in the past (with 30-day grace period).
+/// If no date can be parsed, returns true (flag anyway as before).
+fn is_date_in_past(matched_text: &str) -> bool {
+    // Current date: compile-time fallback, or use env var for testing
+    let (now_year, now_month) = current_year_month();
+
+    // Try month + year first
+    if let Some(caps) = MONTH_YEAR.captures(matched_text) {
+        if let (Some(month), Ok(year)) = (month_to_number(&caps[1]), caps[2].parse::<u32>()) {
+            // Add 1 month grace period
+            let grace_month = if month == 12 {
+                (year + 1, 1)
+            } else {
+                (year, month + 1)
+            };
+            return (now_year, now_month) >= grace_month;
+        }
+    }
+
+    // Try bare year
+    if let Some(caps) = BARE_YEAR.captures(matched_text) {
+        if let Ok(year) = caps[1].parse::<u32>() {
+            // Flag if current year is past the referenced year
+            return now_year > year;
+        }
+    }
+
+    // Can't parse a date — flag anyway (legacy behavior)
+    true
+}
+
+static CURRENT_DATE: LazyLock<(u32, u32)> = LazyLock::new(|| {
+    if let Ok(val) = std::env::var("SPECTRALINT_CURRENT_DATE") {
+        let parts: Vec<&str> = val.split('-').collect();
+        if parts.len() >= 2 {
+            if let (Ok(y), Ok(m)) = (parts[0].parse(), parts[1].parse()) {
+                return (y, m);
+            }
+        }
+    }
+    // Default: 2026-03 (current date from system context)
+    (2026, 3)
+});
+
+fn current_year_month() -> (u32, u32) {
+    *CURRENT_DATE
+}
+
+pub(crate) struct StaleReferenceChecker {
     scope: ScopeFilter,
 }
 
 impl StaleReferenceChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }
@@ -74,7 +143,7 @@ impl Checker for StaleReferenceChecker {
 
                 if let Some(m) = STALE_PATTERN.find(line) {
                     // Skip matches inside inline backtick code (e.g., `--since 2024-01-01`)
-                    if !inside_inline_code(line, m.start()) {
+                    if !inside_inline_code(line, m.start()) && is_date_in_past(line) {
                         emit!(
                             result,
                             file.path,

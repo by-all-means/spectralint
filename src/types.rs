@@ -69,6 +69,20 @@ pub enum Category {
     StaleStyleRule,
     HardcodedFileStructure,
     UnversionedStackReference,
+    MissingStandardFile,
+    BareUrl,
+    RepeatedWord,
+    UndocumentedEnvVar,
+    EmptyCodeBlock,
+    ClickHereLink,
+    DoubleNegation,
+    ImperativeHeading,
+    InconsistentCommandPrefix,
+    EmptyHeading,
+    CopiedMetaInstructions,
+    XmlDocumentWrapper,
+    InvalidSuppression,
+    UnusedSuppression,
     CustomPattern(String),
 }
 
@@ -128,6 +142,20 @@ impl std::fmt::Display for Category {
             Category::StaleStyleRule => f.write_str("stale-style-rule"),
             Category::HardcodedFileStructure => f.write_str("hardcoded-file-structure"),
             Category::UnversionedStackReference => f.write_str("unversioned-stack-reference"),
+            Category::MissingStandardFile => f.write_str("missing-standard-file"),
+            Category::BareUrl => f.write_str("bare-url"),
+            Category::RepeatedWord => f.write_str("repeated-word"),
+            Category::UndocumentedEnvVar => f.write_str("undocumented-env-var"),
+            Category::EmptyCodeBlock => f.write_str("empty-code-block"),
+            Category::ClickHereLink => f.write_str("click-here-link"),
+            Category::DoubleNegation => f.write_str("double-negation"),
+            Category::ImperativeHeading => f.write_str("imperative-heading"),
+            Category::InconsistentCommandPrefix => f.write_str("inconsistent-command-prefix"),
+            Category::EmptyHeading => f.write_str("empty-heading"),
+            Category::CopiedMetaInstructions => f.write_str("copied-meta-instructions"),
+            Category::XmlDocumentWrapper => f.write_str("xml-document-wrapper"),
+            Category::InvalidSuppression => f.write_str("invalid-suppression"),
+            Category::UnusedSuppression => f.write_str("unused-suppression"),
             Category::CustomPattern(name) => write!(f, "custom:{name}"),
         }
     }
@@ -167,6 +195,21 @@ impl CheckResult {
 
     pub fn info_count(&self) -> usize {
         self.count_severity(Severity::Info)
+    }
+
+    /// Returns (errors, warnings, info) in a single pass.
+    pub fn severity_counts(&self) -> (usize, usize, usize) {
+        let mut e = 0;
+        let mut w = 0;
+        let mut i = 0;
+        for d in &self.diagnostics {
+            match d.severity {
+                Severity::Error => e += 1,
+                Severity::Warning => w += 1,
+                Severity::Info => i += 1,
+            }
+        }
+        (e, w, i)
     }
 
     pub fn has_severity_at_least(&self, threshold: Severity) -> bool {
@@ -366,6 +409,44 @@ mod tests {
         assert_eq!(
             Category::UnversionedStackReference.to_string(),
             "unversioned-stack-reference"
+        );
+        assert_eq!(
+            Category::MissingStandardFile.to_string(),
+            "missing-standard-file"
+        );
+        assert_eq!(Category::BareUrl.to_string(), "bare-url");
+        assert_eq!(Category::RepeatedWord.to_string(), "repeated-word");
+        assert_eq!(
+            Category::UndocumentedEnvVar.to_string(),
+            "undocumented-env-var"
+        );
+        assert_eq!(Category::EmptyCodeBlock.to_string(), "empty-code-block");
+        assert_eq!(Category::ClickHereLink.to_string(), "click-here-link");
+        assert_eq!(Category::DoubleNegation.to_string(), "double-negation");
+        assert_eq!(
+            Category::ImperativeHeading.to_string(),
+            "imperative-heading"
+        );
+        assert_eq!(
+            Category::InconsistentCommandPrefix.to_string(),
+            "inconsistent-command-prefix"
+        );
+        assert_eq!(Category::EmptyHeading.to_string(), "empty-heading");
+        assert_eq!(
+            Category::CopiedMetaInstructions.to_string(),
+            "copied-meta-instructions"
+        );
+        assert_eq!(
+            Category::XmlDocumentWrapper.to_string(),
+            "xml-document-wrapper"
+        );
+        assert_eq!(
+            Category::InvalidSuppression.to_string(),
+            "invalid-suppression"
+        );
+        assert_eq!(
+            Category::UnusedSuppression.to_string(),
+            "unused-suppression"
         );
         assert_eq!(
             Category::CustomPattern("todo".to_string()).to_string(),

@@ -10,13 +10,13 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::ScopeFilter;
 use super::Checker;
 
-pub struct MissingVerificationChecker {
+pub(crate) struct MissingVerificationChecker {
     scope: ScopeFilter,
     min_action_verbs: usize,
 }
 
 impl MissingVerificationChecker {
-    pub fn new(config: &MissingVerificationConfig) -> Self {
+    pub(crate) fn new(config: &MissingVerificationConfig) -> Self {
         Self {
             scope: ScopeFilter::new(&config.scope),
             min_action_verbs: config.min_action_verbs,
@@ -173,6 +173,7 @@ mod tests {
             enabled: true,
             min_action_verbs: 4,
             scope: Vec::new(),
+            severity: None,
         };
         MissingVerificationChecker::new(&config).check(&ctx)
     }

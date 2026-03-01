@@ -5,14 +5,14 @@ use crate::types::{Category, CheckResult, Severity};
 
 use super::Checker;
 
-pub struct FileSizeChecker {
+pub(crate) struct FileSizeChecker {
     warn_lines: usize,
     max_lines: usize,
     strict: bool,
 }
 
 impl FileSizeChecker {
-    pub fn new(config: &FileSizeConfig, strict: bool) -> Self {
+    pub(crate) fn new(config: &FileSizeConfig, strict: bool) -> Self {
         Self {
             warn_lines: config.warn_lines,
             max_lines: config.max_lines,

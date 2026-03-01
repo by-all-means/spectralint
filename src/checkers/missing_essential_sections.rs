@@ -10,13 +10,13 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{is_instruction_file, ScopeFilter};
 use super::Checker;
 
-pub struct MissingEssentialSectionsChecker {
+pub(crate) struct MissingEssentialSectionsChecker {
     scope: ScopeFilter,
     min_lines: usize,
 }
 
 impl MissingEssentialSectionsChecker {
-    pub fn new(config: &MissingEssentialSectionsConfig) -> Self {
+    pub(crate) fn new(config: &MissingEssentialSectionsConfig) -> Self {
         Self {
             scope: ScopeFilter::new(&config.scope),
             min_lines: config.min_lines,
@@ -145,6 +145,7 @@ mod tests {
             enabled: true,
             min_lines: 3,
             scope: Vec::new(),
+            severity: None,
         };
         MissingEssentialSectionsChecker::new(&config).check(&ctx)
     }
@@ -240,6 +241,7 @@ mod tests {
             enabled: true,
             min_lines: 10,
             scope: Vec::new(),
+            severity: None,
         };
         let result = MissingEssentialSectionsChecker::new(&config).check(&ctx);
         assert!(
@@ -280,6 +282,7 @@ mod tests {
             enabled: true,
             min_lines: 3,
             scope: Vec::new(),
+            severity: None,
         };
         let result = MissingEssentialSectionsChecker::new(&config).check(&ctx);
         assert!(

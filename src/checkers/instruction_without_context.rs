@@ -6,12 +6,12 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{count_directive_lines, is_instruction_file, ScopeFilter};
 use super::Checker;
 
-pub struct InstructionWithoutContextChecker {
+pub(crate) struct InstructionWithoutContextChecker {
     scope: ScopeFilter,
 }
 
 impl InstructionWithoutContextChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }

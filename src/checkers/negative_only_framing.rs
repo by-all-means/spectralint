@@ -10,14 +10,14 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::ScopeFilter;
 use super::Checker;
 
-pub struct NegativeOnlyFramingChecker {
+pub(crate) struct NegativeOnlyFramingChecker {
     scope: ScopeFilter,
     threshold: f64,
     min_negative_count: usize,
 }
 
 impl NegativeOnlyFramingChecker {
-    pub fn new(config: &NegativeOnlyFramingConfig) -> Self {
+    pub(crate) fn new(config: &NegativeOnlyFramingConfig) -> Self {
         Self {
             scope: ScopeFilter::new(&config.scope),
             threshold: config.threshold,
@@ -111,6 +111,7 @@ mod tests {
             threshold,
             min_negative_count,
             scope: Vec::new(),
+            severity: None,
         };
         NegativeOnlyFramingChecker::new(&config).check(&ctx)
     }

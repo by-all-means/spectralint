@@ -6,13 +6,13 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::ScopeFilter;
 use super::Checker;
 
-pub struct ExcessiveNestingChecker {
+pub(crate) struct ExcessiveNestingChecker {
     max_depth: usize,
     scope: ScopeFilter,
 }
 
 impl ExcessiveNestingChecker {
-    pub fn new(config: &ExcessiveNestingConfig) -> Self {
+    pub(crate) fn new(config: &ExcessiveNestingConfig) -> Self {
         Self {
             max_depth: config.max_depth,
             scope: ScopeFilter::new(&config.scope),
@@ -85,6 +85,7 @@ mod tests {
             enabled: true,
             max_depth,
             scope: Vec::new(),
+            severity: None,
         };
         ExcessiveNestingChecker::new(&config).check(&ctx)
     }

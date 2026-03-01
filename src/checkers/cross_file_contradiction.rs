@@ -5,12 +5,12 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{ScopeFilter, CONFLICT_PAIRS};
 use super::Checker;
 
-pub struct CrossFileContradictionChecker {
+pub(crate) struct CrossFileContradictionChecker {
     scope: ScopeFilter,
 }
 
 impl CrossFileContradictionChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }
@@ -48,6 +48,34 @@ impl Checker for CrossFileContradictionChecker {
             .map(|f| f.non_code_lines().map(|(i, line)| (i + 1, line)).collect())
             .collect();
 
+        // Pre-compute bitmasks: for each file, which conflict pair patterns it matches.
+        // Bit (2*N) = matches pair[N].a, bit (2*N+1) = matches pair[N].b.
+        let file_masks: Vec<u64> = file_lines
+            .iter()
+            .map(|lines| {
+                let mut mask: u64 = 0;
+                for (pair_idx, pair) in CONFLICT_PAIRS.iter().enumerate() {
+                    if (2 * pair_idx + 1) >= 64 {
+                        break;
+                    }
+                    let a_bit = 1u64 << (2 * pair_idx);
+                    let b_bit = 1u64 << (2 * pair_idx + 1);
+                    for (_, line) in lines {
+                        if mask & a_bit == 0 && pair.a.is_match(line) {
+                            mask |= a_bit;
+                        }
+                        if mask & b_bit == 0 && pair.b.is_match(line) {
+                            mask |= b_bit;
+                        }
+                        if mask & a_bit != 0 && mask & b_bit != 0 {
+                            break;
+                        }
+                    }
+                }
+                mask
+            })
+            .collect();
+
         for i in 0..ctx.files.len() {
             if !self.scope.includes(&ctx.files[i].path, &ctx.project_root) {
                 continue;
@@ -58,15 +86,40 @@ impl Checker for CrossFileContradictionChecker {
                 }
 
                 // Only compare ancestor-descendant pairs
-                let is_pair = is_ancestor_descendant(&ctx.files[i].path, &ctx.files[j].path)
-                    || is_ancestor_descendant(&ctx.files[j].path, &ctx.files[i].path);
-                if !is_pair {
+                if !is_ancestor_descendant(&ctx.files[i].path, &ctx.files[j].path)
+                    && !is_ancestor_descendant(&ctx.files[j].path, &ctx.files[i].path)
+                {
                     continue;
                 }
 
-                for pair in CONFLICT_PAIRS.iter() {
+                // Skip if no overlapping conflict patterns between the two files.
+                // Files need i.a&j.b or i.b&j.a for any pair to contradict.
+                let has_overlap = (0..CONFLICT_PAIRS.len().min(32)).any(|pair_idx| {
+                    let a_bit = 1u64 << (2 * pair_idx);
+                    let b_bit = 1u64 << (2 * pair_idx + 1);
+                    (file_masks[i] & a_bit != 0 && file_masks[j] & b_bit != 0)
+                        || (file_masks[i] & b_bit != 0 && file_masks[j] & a_bit != 0)
+                });
+                if !has_overlap {
+                    continue;
+                }
+
+                for (pair_idx, pair) in CONFLICT_PAIRS.iter().enumerate() {
+                    if pair_idx >= 32 {
+                        break;
+                    }
+                    let a_bit = 1u64 << (2 * pair_idx);
+                    let b_bit = 1u64 << (2 * pair_idx + 1);
+
                     // Check both directions: (i=A, j=B) and (i=B, j=A)
-                    for (side_i, side_j) in [(&pair.a, &pair.b), (&pair.b, &pair.a)] {
+                    for (side_i_bit, side_j_bit, side_i, side_j) in [
+                        (a_bit, b_bit, &pair.a, &pair.b),
+                        (b_bit, a_bit, &pair.b, &pair.a),
+                    ] {
+                        if file_masks[i] & side_i_bit == 0 || file_masks[j] & side_j_bit == 0 {
+                            continue;
+                        }
+
                         let i_match = file_lines[i].iter().find(|(_, line)| side_i.is_match(line));
                         let j_match = file_lines[j].iter().find(|(_, line)| side_j.is_match(line));
 

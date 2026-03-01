@@ -23,14 +23,14 @@ static STRICT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-pub struct VagueDirectiveChecker {
+pub(crate) struct VagueDirectiveChecker {
     strict: bool,
     extra_patterns: Vec<Regex>,
     scope: ScopeFilter,
 }
 
 impl VagueDirectiveChecker {
-    pub fn new(strict: bool, extra_patterns: &[String], scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(strict: bool, extra_patterns: &[String], scope_patterns: &[String]) -> Self {
         let extra_patterns = extra_patterns
             .iter()
             .filter_map(

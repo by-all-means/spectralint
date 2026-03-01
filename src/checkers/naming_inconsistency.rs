@@ -33,12 +33,12 @@ fn strip_numbered_prefix(name: &str) -> &str {
     }
 }
 
-pub struct NamingInconsistencyChecker {
+pub(crate) struct NamingInconsistencyChecker {
     scope: ScopeFilter,
 }
 
 impl NamingInconsistencyChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }
@@ -59,13 +59,16 @@ enum NameKind {
     SectionTitle,
 }
 
+/// Maximum number of unique names to extract. Prevents quadratic blowup on large repos.
+const MAX_NAMES: usize = 500;
+
 impl Checker for NamingInconsistencyChecker {
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
         let mut occurrences = Vec::new();
 
-        for (file_idx, file) in ctx.files.iter().enumerate() {
+        'outer: for (file_idx, file) in ctx.files.iter().enumerate() {
             if !self.scope.includes(&file.path, &ctx.project_root) {
                 continue;
             }
@@ -79,6 +82,9 @@ impl Checker for NamingInconsistencyChecker {
                             line: table.line,
                             kind: NameKind::TableHeader,
                         });
+                        if occurrences.len() >= MAX_NAMES {
+                            break 'outer;
+                        }
                     }
                 }
             }
@@ -91,6 +97,9 @@ impl Checker for NamingInconsistencyChecker {
                         line: section.line,
                         kind: NameKind::SectionTitle,
                     });
+                    if occurrences.len() >= MAX_NAMES {
+                        break 'outer;
+                    }
                 }
             }
         }

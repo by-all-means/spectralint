@@ -5,12 +5,12 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::ScopeFilter;
 use super::Checker;
 
-pub struct BoilerplateTemplateChecker {
+pub(crate) struct BoilerplateTemplateChecker {
     scope: ScopeFilter,
 }
 
 impl BoilerplateTemplateChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }

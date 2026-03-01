@@ -8,7 +8,7 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::REGEX_SIZE_LIMIT;
 use super::Checker;
 
-pub struct CustomPatternChecker {
+pub(crate) struct CustomPatternChecker {
     patterns: Vec<CompiledPattern>,
 }
 
@@ -20,7 +20,7 @@ struct CompiledPattern {
 }
 
 impl CustomPatternChecker {
-    pub fn new(configs: &[CustomPattern]) -> Self {
+    pub(crate) fn new(configs: &[CustomPattern]) -> Self {
         let patterns = configs
             .iter()
             .filter_map(|c| {

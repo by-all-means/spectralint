@@ -10,12 +10,12 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{is_instruction_file, normalize, ScopeFilter};
 use super::Checker;
 
-pub struct EnumDriftChecker {
+pub(crate) struct EnumDriftChecker {
     scope: ScopeFilter,
 }
 
 impl EnumDriftChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }

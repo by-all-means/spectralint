@@ -25,7 +25,9 @@ static EXAMPLE_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Arrow mappings (→, ->, =>) indicate routing tables, not dependencies.
-static ARROW_MAPPING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"→|->|=>").unwrap());
+fn has_arrow_mapping(line: &str) -> bool {
+    line.contains("→") || line.contains("->") || line.contains("=>")
+}
 
 /// Exclusion context — files listed as things NOT to touch.
 static EXCLUSION_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
@@ -82,7 +84,7 @@ fn resolves_via_dir_context(
         })
 }
 
-pub struct DeadReferenceChecker;
+pub(crate) struct DeadReferenceChecker;
 
 impl Checker for DeadReferenceChecker {
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
@@ -143,7 +145,7 @@ impl Checker for DeadReferenceChecker {
                     if ACTION_VERB_LINE.is_match(line_content)
                         || FILE_CALLED_NAMED.is_match(line_content)
                         || EXAMPLE_CONTEXT.is_match(line_content)
-                        || ARROW_MAPPING.is_match(line_content)
+                        || has_arrow_mapping(line_content)
                         || CONVENTION_LINE.is_match(line_content)
                     {
                         continue;

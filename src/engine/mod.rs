@@ -29,6 +29,10 @@ pub fn run(project_root: &Path, config: &Config) -> Result<CheckResult> {
         })
         .collect();
 
+    // Validate suppress comment rule names
+    let known_rules = suppress::all_known_rule_names(&config.checkers.custom_patterns);
+    let mut invalid_suppress_diags = suppress::validate_suppress_rules(&parsed, &known_rules);
+
     let suppressions = suppress::build_suppression_set(&parsed);
     let context = CheckerContext::build(
         parsed,
@@ -44,6 +48,12 @@ pub fn run(project_root: &Path, config: &Config) -> Result<CheckResult> {
         .collect();
 
     diagnostics.retain(|d| !suppress::is_suppressed(&suppressions, &d.file, d.line, &d.category));
+
+    // Detect unused suppressions (must run after suppression filtering)
+    let mut unused_suppress_diags = suppress::find_unused_suppressions(&suppressions);
+
+    diagnostics.append(&mut invalid_suppress_diags);
+    diagnostics.append(&mut unused_suppress_diags);
 
     diagnostics.sort_by(|a, b| {
         (&a.file, a.line, &a.category, &a.message).cmp(&(&b.file, b.line, &b.category, &b.message))

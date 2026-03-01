@@ -9,13 +9,13 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{is_bullet_line, ScopeFilter};
 use super::Checker;
 
-pub struct InstructionDensityChecker {
+pub(crate) struct InstructionDensityChecker {
     scope: ScopeFilter,
     max_consecutive_bullets: usize,
 }
 
 impl InstructionDensityChecker {
-    pub fn new(config: &InstructionDensityConfig) -> Self {
+    pub(crate) fn new(config: &InstructionDensityConfig) -> Self {
         Self {
             scope: ScopeFilter::new(&config.scope),
             max_consecutive_bullets: config.max_consecutive_bullets,
@@ -136,6 +136,7 @@ mod tests {
             enabled: true,
             max_consecutive_bullets: 3,
             scope: Vec::new(),
+            severity: None,
         };
         InstructionDensityChecker::new(&config).check(&ctx)
     }
@@ -223,6 +224,7 @@ mod tests {
             enabled: true,
             max_consecutive_bullets: 3,
             scope: Vec::new(),
+            severity: None,
         };
         let result = InstructionDensityChecker::new(&config).check(&ctx);
         assert!(

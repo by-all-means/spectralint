@@ -2604,3 +2604,461 @@ fn explain_negative_only_framing() {
         .stdout(predicate::str::contains("negative-only-framing"))
         .stdout(predicate::str::contains("Severity:"));
 }
+
+// ── v0.3.0 CLI flag integration tests ──────────────────────────────────────
+
+#[test]
+fn rule_filter_only_matching() {
+    let json = json_output(&[
+        "check",
+        "tests/fixtures/dead_refs",
+        "--format",
+        "json",
+        "--rule",
+        "dead-reference",
+    ]);
+    let diagnostics = json["diagnostics"].as_array().unwrap();
+    assert!(
+        !diagnostics.is_empty(),
+        "Should have dead-reference diagnostics"
+    );
+    for d in diagnostics {
+        assert_eq!(
+            d["category"].as_str().unwrap(),
+            "dead-reference",
+            "All diagnostics should be dead-reference when filtered"
+        );
+    }
+}
+
+#[test]
+fn rule_filter_underscore() {
+    // Underscore in rule name should be normalized to hyphen
+    let json = json_output(&[
+        "check",
+        "tests/fixtures/dead_refs",
+        "--format",
+        "json",
+        "--rule",
+        "dead_reference",
+    ]);
+    let diagnostics = json["diagnostics"].as_array().unwrap();
+    assert!(!diagnostics.is_empty(), "Underscore variant should match");
+    for d in diagnostics {
+        assert_eq!(d["category"].as_str().unwrap(), "dead-reference");
+    }
+}
+
+#[test]
+fn quiet_suppresses_stdout() {
+    let output = cmd()
+        .args(["check", "tests/fixtures/dead_refs", "--quiet"])
+        .output()
+        .unwrap();
+    assert!(
+        output.stdout.is_empty(),
+        "stdout should be empty with --quiet"
+    );
+}
+
+#[test]
+fn quiet_still_exits_1() {
+    cmd()
+        .args(["check", "tests/fixtures/dead_refs", "--quiet"])
+        .assert()
+        .failure()
+        .code(1);
+}
+
+#[test]
+fn no_color_no_ansi() {
+    let output = cmd()
+        .args(["check", "tests/fixtures/dead_refs", "--no-color"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        !stdout.contains('\x1b'),
+        "stdout should not contain ANSI escape codes with --no-color"
+    );
+}
+
+#[test]
+fn sarif_valid_structure() {
+    let json = json_output(&["check", "tests/fixtures/dead_refs", "--format", "sarif"]);
+    assert_eq!(json["version"].as_str().unwrap(), "2.1.0");
+    assert!(json["$schema"].as_str().is_some());
+    let runs = json["runs"].as_array().unwrap();
+    assert!(!runs.is_empty());
+    assert!(runs[0]["tool"]["driver"]["name"].as_str().is_some());
+}
+
+#[test]
+fn init_preset_minimal() {
+    let dir = tempfile::tempdir().unwrap();
+    cmd()
+        .args(["init", "--preset", "minimal"])
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(dir.path().join(".spectralintrc.toml")).unwrap();
+    assert!(content.contains("dead_reference"));
+    assert!(content.contains("credential_exposure"));
+    // Minimal preset should NOT have all the other checkers
+    assert!(!content.contains("vague_directive"));
+}
+
+#[test]
+fn init_preset_strict() {
+    let dir = tempfile::tempdir().unwrap();
+    cmd()
+        .args(["init", "--preset", "strict"])
+        .current_dir(dir.path())
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(dir.path().join(".spectralintrc.toml")).unwrap();
+    assert!(content.contains("strict = true"));
+}
+
+#[test]
+fn count_shows_summary() {
+    let output = cmd()
+        .args(["check", "tests/fixtures/dead_refs", "--count"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("error"),
+        "count output should mention errors: got {stdout:?}"
+    );
+    // Should NOT contain full diagnostic lines (file paths with colons)
+    assert!(
+        !stdout.contains("CLAUDE.md:"),
+        "count output should not contain full diagnostic text"
+    );
+}
+
+#[test]
+fn count_no_issues() {
+    let output = cmd()
+        .args(["check", "tests/fixtures/clean", "--count"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "no issues found");
+}
+
+#[test]
+fn count_respects_fail_on() {
+    cmd()
+        .args(["check", "tests/fixtures/dead_refs", "--count"])
+        .assert()
+        .failure()
+        .code(1);
+}
+
+#[test]
+fn quiet_over_count() {
+    let output = cmd()
+        .args(["check", "tests/fixtures/dead_refs", "--count", "--quiet"])
+        .output()
+        .unwrap();
+    assert!(
+        output.stdout.is_empty(),
+        "stdout should be empty when --quiet overrides --count"
+    );
+}
+
+// ── SARIF output tests ──────────────────────────────────────────────────
+
+#[test]
+fn sarif_results_have_rule_id_and_message() {
+    let json = json_output(&["check", "tests/fixtures/dead_refs", "--format", "sarif"]);
+    let results = json["runs"][0]["results"].as_array().unwrap();
+    assert!(!results.is_empty());
+    for r in results {
+        assert_eq!(r["ruleId"].as_str().unwrap(), "dead-reference");
+        assert!(
+            r["message"]["text"]
+                .as_str()
+                .unwrap()
+                .contains("does not exist"),
+            "SARIF result should have a message"
+        );
+    }
+}
+
+#[test]
+fn sarif_results_have_locations() {
+    let json = json_output(&["check", "tests/fixtures/dead_refs", "--format", "sarif"]);
+    let results = json["runs"][0]["results"].as_array().unwrap();
+    for r in results {
+        let loc = &r["locations"][0]["physicalLocation"];
+        assert!(
+            loc["artifactLocation"]["uri"]
+                .as_str()
+                .unwrap()
+                .ends_with(".md"),
+            "SARIF location should have a URI"
+        );
+        assert!(
+            loc["region"]["startLine"].as_u64().unwrap() > 0,
+            "SARIF location should have a line number"
+        );
+    }
+}
+
+#[test]
+fn sarif_error_level_is_error() {
+    let json = json_output(&["check", "tests/fixtures/dead_refs", "--format", "sarif"]);
+    let results = json["runs"][0]["results"].as_array().unwrap();
+    for r in results {
+        assert_eq!(r["level"].as_str().unwrap(), "error");
+    }
+}
+
+#[test]
+fn sarif_info_level_is_note() {
+    let json = json_output(&[
+        "check",
+        "tests/fixtures/vague_directives",
+        "--format",
+        "sarif",
+    ]);
+    let results = json["runs"][0]["results"].as_array().unwrap();
+    assert!(!results.is_empty());
+    for r in results {
+        assert_eq!(
+            r["level"].as_str().unwrap(),
+            "note",
+            "Info severity should map to 'note' in SARIF"
+        );
+    }
+}
+
+#[test]
+fn sarif_warning_level_is_warning() {
+    let json = json_output(&[
+        "check",
+        "tests/fixtures/fail_on_warning",
+        "--format",
+        "sarif",
+    ]);
+    let results = json["runs"][0]["results"].as_array().unwrap();
+    let warnings: Vec<_> = results
+        .iter()
+        .filter(|r| r["level"].as_str() == Some("warning"))
+        .collect();
+    assert!(
+        !warnings.is_empty(),
+        "Warning severity should map to 'warning' in SARIF"
+    );
+}
+
+#[test]
+fn sarif_rules_array_populated() {
+    let json = json_output(&["check", "tests/fixtures/dead_refs", "--format", "sarif"]);
+    let rules = json["runs"][0]["tool"]["driver"]["rules"]
+        .as_array()
+        .unwrap();
+    assert!(!rules.is_empty(), "SARIF rules array should be populated");
+    for rule in rules {
+        assert!(
+            rule["id"].as_str().is_some(),
+            "Each SARIF rule should have an id"
+        );
+        assert!(
+            rule["shortDescription"]["text"].as_str().is_some(),
+            "Each SARIF rule should have a shortDescription"
+        );
+    }
+}
+
+#[test]
+fn sarif_tool_has_version() {
+    let json = json_output(&["check", "tests/fixtures/dead_refs", "--format", "sarif"]);
+    let version = json["runs"][0]["tool"]["driver"]["version"]
+        .as_str()
+        .unwrap();
+    assert!(
+        version.contains('.'),
+        "SARIF tool version should be a semver string"
+    );
+}
+
+// ── Severity override tests ─────────────────────────────────────────────
+
+#[test]
+fn severity_override_promotes_info_to_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Test\n\nTry to be helpful when possible.\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join(".spectralintrc.toml"),
+        "[checkers.vague_directive]\nenabled = true\nseverity = \"error\"\n",
+    )
+    .unwrap();
+
+    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+    let vague: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("vague-directive"))
+        .collect();
+    assert!(!vague.is_empty(), "Should find vague directives");
+    for d in &vague {
+        assert_eq!(
+            d["severity"].as_str().unwrap(),
+            "error",
+            "Severity should be promoted to error via config"
+        );
+    }
+}
+
+#[test]
+fn severity_override_affects_fail_on() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Test\n\nTry to be helpful when possible.\n",
+    )
+    .unwrap();
+    // Without override: vague-directive is info, so --fail-on error should pass
+    cmd()
+        .args(["check", &root.display().to_string()])
+        .assert()
+        .success();
+
+    // With override: promote to error, should now fail
+    fs::write(
+        root.join(".spectralintrc.toml"),
+        "[checkers.vague_directive]\nenabled = true\nseverity = \"error\"\n",
+    )
+    .unwrap();
+    cmd()
+        .args(["check", &root.display().to_string()])
+        .assert()
+        .failure()
+        .code(1);
+}
+
+#[test]
+fn severity_override_in_sarif_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Test\n\nTry to be helpful when possible.\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join(".spectralintrc.toml"),
+        "[checkers.vague_directive]\nenabled = true\nseverity = \"warning\"\n",
+    )
+    .unwrap();
+
+    let json = json_output(&["check", &root.display().to_string(), "--format", "sarif"]);
+    let results = json["runs"][0]["results"].as_array().unwrap();
+    let vague: Vec<_> = results
+        .iter()
+        .filter(|r| r["ruleId"].as_str() == Some("vague-directive"))
+        .collect();
+    assert!(!vague.is_empty());
+    for r in &vague {
+        assert_eq!(
+            r["level"].as_str().unwrap(),
+            "warning",
+            "Severity override should be reflected in SARIF"
+        );
+    }
+}
+
+// ── Suppression validation integration tests ────────────────────────────
+
+#[test]
+fn invalid_suppression_warns_on_bad_rule_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Test\n\n<!-- spectralint-disable-next-line nonexistent-rule -->\nSome content.\n",
+    )
+    .unwrap();
+
+    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+    let invalid: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("invalid-suppression"))
+        .collect();
+    assert_eq!(invalid.len(), 1, "Should warn about invalid rule name");
+    assert_eq!(invalid[0]["severity"].as_str().unwrap(), "warning");
+    assert!(invalid[0]["message"]
+        .as_str()
+        .unwrap()
+        .contains("nonexistent-rule"));
+}
+
+#[test]
+fn unused_suppression_flags_unnecessary_comment() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Test\n\n<!-- spectralint-disable-next-line dead-reference -->\nNo dead references here.\n",
+    )
+    .unwrap();
+
+    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+    let unused: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("unused-suppression"))
+        .collect();
+    assert_eq!(
+        unused.len(),
+        1,
+        "Should flag the unused suppression comment"
+    );
+    assert_eq!(unused[0]["severity"].as_str().unwrap(), "info");
+}
+
+#[test]
+fn valid_suppression_no_warnings() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Test\n\n<!-- spectralint-disable-next-line vague-directive -->\nTry to be helpful when possible.\n",
+    )
+    .unwrap();
+
+    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+
+    let suppression_issues: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| {
+            let cat = d["category"].as_str().unwrap_or("");
+            cat == "invalid-suppression" || cat == "unused-suppression"
+        })
+        .collect();
+    assert!(
+        suppression_issues.is_empty(),
+        "Valid, used suppression should not produce warnings: {:?}",
+        suppression_issues
+    );
+}

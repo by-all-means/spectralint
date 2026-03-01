@@ -8,12 +8,12 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{count_directive_lines, ScopeFilter, MIN_DIRECTIVE_LINES};
 use super::Checker;
 
-pub struct UnboundedScopeChecker {
+pub(crate) struct UnboundedScopeChecker {
     scope: ScopeFilter,
 }
 
 impl UnboundedScopeChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }

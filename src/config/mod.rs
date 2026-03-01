@@ -8,7 +8,6 @@ use crate::types::Severity;
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
-    #[serde(skip)]
     pub format: OutputFormat,
     pub strict: bool,
     pub include: Vec<String>,
@@ -68,6 +67,18 @@ pub struct CheckersConfig {
     pub stale_style_rule: ScopedCheckerConfig,
     pub hardcoded_file_structure: ScopedCheckerConfig,
     pub unversioned_stack_reference: ScopedCheckerConfig,
+    pub missing_standard_file: ScopedCheckerConfig,
+    pub bare_url: ScopedCheckerConfig,
+    pub repeated_word: ScopedCheckerConfig,
+    pub undocumented_env_var: ScopedCheckerConfig,
+    pub empty_code_block: ScopedCheckerConfig,
+    pub click_here_link: ScopedCheckerConfig,
+    pub double_negation: ScopedCheckerConfig,
+    pub imperative_heading: ScopedCheckerConfig,
+    pub inconsistent_command_prefix: ScopedCheckerConfig,
+    pub empty_heading: ScopedCheckerConfig,
+    pub copied_meta_instructions: ScopedCheckerConfig,
+    pub xml_document_wrapper: ScopedCheckerConfig,
     pub custom_patterns: Vec<CustomPattern>,
 }
 
@@ -122,6 +133,18 @@ impl Default for CheckersConfig {
             stale_style_rule: ScopedCheckerConfig::default(),
             hardcoded_file_structure: ScopedCheckerConfig::default(),
             unversioned_stack_reference: ScopedCheckerConfig::disabled(),
+            missing_standard_file: ScopedCheckerConfig::disabled(),
+            bare_url: ScopedCheckerConfig::disabled(),
+            repeated_word: ScopedCheckerConfig::disabled(),
+            undocumented_env_var: ScopedCheckerConfig::disabled(),
+            empty_code_block: ScopedCheckerConfig::disabled(),
+            click_here_link: ScopedCheckerConfig::disabled(),
+            double_negation: ScopedCheckerConfig::disabled(),
+            imperative_heading: ScopedCheckerConfig::disabled(),
+            inconsistent_command_prefix: ScopedCheckerConfig::disabled(),
+            empty_heading: ScopedCheckerConfig::disabled(),
+            copied_meta_instructions: ScopedCheckerConfig::disabled(),
+            xml_document_wrapper: ScopedCheckerConfig::disabled(),
             custom_patterns: Vec::new(),
         }
     }
@@ -132,6 +155,7 @@ impl Default for CheckersConfig {
 pub struct EmojiDensityConfig {
     pub enabled: bool,
     pub max_emoji: usize,
+    pub severity: Option<Severity>,
 }
 
 impl Default for EmojiDensityConfig {
@@ -139,6 +163,7 @@ impl Default for EmojiDensityConfig {
         Self {
             enabled: false,
             max_emoji: 20,
+            severity: None,
         }
     }
 }
@@ -149,6 +174,7 @@ pub struct MissingEssentialSectionsConfig {
     pub enabled: bool,
     pub min_lines: usize,
     pub scope: Vec<String>,
+    pub severity: Option<Severity>,
 }
 
 impl Default for MissingEssentialSectionsConfig {
@@ -157,6 +183,7 @@ impl Default for MissingEssentialSectionsConfig {
             enabled: true,
             min_lines: 10,
             scope: Vec::new(),
+            severity: None,
         }
     }
 }
@@ -167,6 +194,7 @@ pub struct MissingVerificationConfig {
     pub enabled: bool,
     pub min_action_verbs: usize,
     pub scope: Vec<String>,
+    pub severity: Option<Severity>,
 }
 
 impl Default for MissingVerificationConfig {
@@ -175,6 +203,7 @@ impl Default for MissingVerificationConfig {
             enabled: false,
             min_action_verbs: 4,
             scope: Vec::new(),
+            severity: None,
         }
     }
 }
@@ -186,6 +215,7 @@ pub struct NegativeOnlyFramingConfig {
     pub threshold: f64,
     pub min_negative_count: usize,
     pub scope: Vec<String>,
+    pub severity: Option<Severity>,
 }
 
 impl Default for NegativeOnlyFramingConfig {
@@ -195,6 +225,7 @@ impl Default for NegativeOnlyFramingConfig {
             threshold: 0.65,
             min_negative_count: 3,
             scope: Vec::new(),
+            severity: None,
         }
     }
 }
@@ -206,6 +237,7 @@ pub struct RedundantDirectiveConfig {
     pub similarity_threshold: f64,
     pub min_line_length: usize,
     pub scope: Vec<String>,
+    pub severity: Option<Severity>,
 }
 
 impl Default for RedundantDirectiveConfig {
@@ -215,6 +247,7 @@ impl Default for RedundantDirectiveConfig {
             similarity_threshold: 0.95,
             min_line_length: 15,
             scope: Vec::new(),
+            severity: None,
         }
     }
 }
@@ -225,6 +258,7 @@ pub struct InstructionDensityConfig {
     pub enabled: bool,
     pub max_consecutive_bullets: usize,
     pub scope: Vec<String>,
+    pub severity: Option<Severity>,
 }
 
 impl Default for InstructionDensityConfig {
@@ -233,6 +267,7 @@ impl Default for InstructionDensityConfig {
             enabled: false,
             max_consecutive_bullets: 15,
             scope: Vec::new(),
+            severity: None,
         }
     }
 }
@@ -243,6 +278,7 @@ pub struct LargeCodeBlockConfig {
     pub enabled: bool,
     pub max_lines: usize,
     pub scope: Vec<String>,
+    pub severity: Option<Severity>,
 }
 
 impl Default for LargeCodeBlockConfig {
@@ -251,6 +287,7 @@ impl Default for LargeCodeBlockConfig {
             enabled: true,
             max_lines: 40,
             scope: Vec::new(),
+            severity: None,
         }
     }
 }
@@ -262,6 +299,7 @@ pub struct SectionLengthImbalanceConfig {
     pub min_section_lines: usize,
     pub imbalance_ratio: f64,
     pub scope: Vec<String>,
+    pub severity: Option<Severity>,
 }
 
 impl Default for SectionLengthImbalanceConfig {
@@ -271,6 +309,7 @@ impl Default for SectionLengthImbalanceConfig {
             min_section_lines: 50,
             imbalance_ratio: 4.0,
             scope: Vec::new(),
+            severity: None,
         }
     }
 }
@@ -281,6 +320,7 @@ pub struct EmphasisOveruseConfig {
     pub enabled: bool,
     pub max_emphasis: usize,
     pub scope: Vec<String>,
+    pub severity: Option<Severity>,
 }
 
 impl Default for EmphasisOveruseConfig {
@@ -289,6 +329,7 @@ impl Default for EmphasisOveruseConfig {
             enabled: false,
             max_emphasis: 10,
             scope: Vec::new(),
+            severity: None,
         }
     }
 }
@@ -299,6 +340,7 @@ pub struct ExcessiveNestingConfig {
     pub enabled: bool,
     pub max_depth: usize,
     pub scope: Vec<String>,
+    pub severity: Option<Severity>,
 }
 
 impl Default for ExcessiveNestingConfig {
@@ -307,6 +349,7 @@ impl Default for ExcessiveNestingConfig {
             enabled: false,
             max_depth: 4,
             scope: Vec::new(),
+            severity: None,
         }
     }
 }
@@ -317,6 +360,7 @@ pub struct FileSizeConfig {
     pub enabled: bool,
     pub max_lines: usize,
     pub warn_lines: usize,
+    pub severity: Option<Severity>,
 }
 
 impl Default for FileSizeConfig {
@@ -325,6 +369,7 @@ impl Default for FileSizeConfig {
             enabled: true,
             max_lines: 750,
             warn_lines: 500,
+            severity: None,
         }
     }
 }
@@ -336,6 +381,7 @@ pub struct VagueDirectiveConfig {
     pub strict: bool,
     pub extra_patterns: Vec<String>,
     pub scope: Vec<String>,
+    pub severity: Option<Severity>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -343,6 +389,7 @@ pub struct VagueDirectiveConfig {
 pub struct ScopedCheckerConfig {
     pub enabled: bool,
     pub scope: Vec<String>,
+    pub severity: Option<Severity>,
 }
 
 fn default_severity() -> Severity {
@@ -390,6 +437,7 @@ impl Default for VagueDirectiveConfig {
             strict: false,
             extra_patterns: Vec::new(),
             scope: Vec::new(),
+            severity: None,
         }
     }
 }
@@ -400,6 +448,7 @@ impl ScopedCheckerConfig {
         Self {
             enabled: false,
             scope: Vec::new(),
+            severity: None,
         }
     }
 }
@@ -409,6 +458,7 @@ impl Default for ScopedCheckerConfig {
         Self {
             enabled: true,
             scope: Vec::new(),
+            severity: None,
         }
     }
 }
@@ -437,6 +487,9 @@ impl Config {
     pub const fn default_toml() -> &'static str {
         r#"# spectralint configuration
 
+# Output format: text, json, github, sarif
+# format = "text"
+
 # Which files to scan (glob patterns, case-insensitive).
 # Default: known AI instruction file patterns.
 # Set to ["**/*.md"] to scan all markdown files.
@@ -455,6 +508,10 @@ ignore = ["node_modules", ".git", "target"]
 # Strict mode enables opinionated checks that go beyond documented best practices.
 # These checks are off by default because they enforce opinions rather than catch bugs.
 # strict = true
+
+# Per-checker severity override example:
+# [checkers.vague_directive]
+# severity = "error"
 
 [checkers.dead_reference]
 enabled = true
@@ -625,6 +682,39 @@ enabled = true
 # [checkers.unversioned_stack_reference]
 # enabled = true
 
+# [checkers.bare_url]
+# enabled = true
+
+# [checkers.repeated_word]
+# enabled = true
+
+# [checkers.undocumented_env_var]
+# enabled = true
+
+# [checkers.empty_code_block]
+# enabled = true
+
+# [checkers.click_here_link]
+# enabled = true
+
+# [checkers.double_negation]
+# enabled = true
+
+# [checkers.imperative_heading]
+# enabled = true
+
+# [checkers.inconsistent_command_prefix]
+# enabled = true
+
+# [checkers.empty_heading]
+# enabled = true
+
+# [checkers.copied_meta_instructions]
+# enabled = true
+
+# [checkers.xml_document_wrapper]
+# enabled = true
+
 # Custom regex patterns:
 # [[checkers.custom_patterns]]
 # name = "todo-comment"
@@ -632,6 +722,105 @@ enabled = true
 # severity = "warning"
 # message = "TODO comment found"
 "#
+    }
+
+    pub const fn minimal_toml() -> &'static str {
+        r#"# spectralint configuration — minimal preset
+# Only the most critical checkers are enabled.
+
+include = ["CLAUDE.md", "AGENTS.md", ".claude/**", ".github/copilot-instructions.md"]
+ignore = ["node_modules", ".git", "target"]
+
+[checkers.dead_reference]
+enabled = true
+
+[checkers.credential_exposure]
+enabled = true
+"#
+    }
+
+    pub const fn strict_toml() -> &'static str {
+        r#"# spectralint configuration — strict preset
+# All checkers enabled, including opinionated ones.
+
+include = ["CLAUDE.md", "AGENTS.md", ".claude/**", ".github/copilot-instructions.md"]
+ignore = ["node_modules", ".git", "target"]
+strict = true
+"#
+    }
+
+    /// Look up the per-checker severity override for a given category.
+    pub fn severity_override(&self, category: &crate::types::Category) -> Option<Severity> {
+        use crate::types::Category;
+        match category {
+            Category::DeadReference => self.checkers.dead_reference.severity,
+            Category::VagueDirective => self.checkers.vague_directive.severity,
+            Category::NamingInconsistency => self.checkers.naming_inconsistency.severity,
+            Category::EnumDrift => self.checkers.enum_drift.severity,
+            Category::AgentGuidelines => self.checkers.agent_guidelines.severity,
+            Category::PlaceholderText => self.checkers.placeholder_text.severity,
+            Category::FileSize => self.checkers.file_size.severity,
+            Category::CredentialExposure => self.checkers.credential_exposure.severity,
+            Category::HeadingHierarchy => self.checkers.heading_hierarchy.severity,
+            Category::DangerousCommand => self.checkers.dangerous_command.severity,
+            Category::StaleReference => self.checkers.stale_reference.severity,
+            Category::EmojiDensity => self.checkers.emoji_density.severity,
+            Category::SessionJournal => self.checkers.session_journal.severity,
+            Category::MissingEssentialSections => self.checkers.missing_essential_sections.severity,
+            Category::PromptInjectionVector => self.checkers.prompt_injection_vector.severity,
+            Category::MissingVerification => self.checkers.missing_verification.severity,
+            Category::NegativeOnlyFraming => self.checkers.negative_only_framing.severity,
+            Category::ConflictingDirectives => self.checkers.conflicting_directives.severity,
+            Category::MissingRoleDefinition => self.checkers.missing_role_definition.severity,
+            Category::RedundantDirective => self.checkers.redundant_directive.severity,
+            Category::InstructionDensity => self.checkers.instruction_density.severity,
+            Category::MissingExamples => self.checkers.missing_examples.severity,
+            Category::UnboundedScope => self.checkers.unbounded_scope.severity,
+            Category::CircularReference => self.checkers.circular_reference.severity,
+            Category::LargeCodeBlock => self.checkers.large_code_block.severity,
+            Category::DuplicateSection => self.checkers.duplicate_section.severity,
+            Category::AbsolutePath => self.checkers.absolute_path.severity,
+            Category::GenericInstruction => self.checkers.generic_instruction.severity,
+            Category::MisorderedSteps => self.checkers.misordered_steps.severity,
+            Category::SectionLengthImbalance => self.checkers.section_length_imbalance.severity,
+            Category::UnclosedFence => self.checkers.unclosed_fence.severity,
+            Category::UntaggedCodeBlock => self.checkers.untagged_code_block.severity,
+            Category::DuplicateInstructionFile => self.checkers.duplicate_instruction_file.severity,
+            Category::OutdatedModelReference => self.checkers.outdated_model_reference.severity,
+            Category::BrokenTable => self.checkers.broken_table.severity,
+            Category::PlaceholderUrl => self.checkers.placeholder_url.severity,
+            Category::EmphasisOveruse => self.checkers.emphasis_overuse.severity,
+            Category::BoilerplateTemplate => self.checkers.boilerplate_template.severity,
+            Category::OrphanedSection => self.checkers.orphaned_section.severity,
+            Category::ExcessiveNesting => self.checkers.excessive_nesting.severity,
+            Category::ContextWindowWaste => self.checkers.context_window_waste.severity,
+            Category::AmbiguousScopeReference => self.checkers.ambiguous_scope_reference.severity,
+            Category::InstructionWithoutContext => {
+                self.checkers.instruction_without_context.severity
+            }
+            Category::CrossFileContradiction => self.checkers.cross_file_contradiction.severity,
+            Category::StaleStyleRule => self.checkers.stale_style_rule.severity,
+            Category::HardcodedFileStructure => self.checkers.hardcoded_file_structure.severity,
+            Category::UnversionedStackReference => {
+                self.checkers.unversioned_stack_reference.severity
+            }
+            Category::MissingStandardFile => self.checkers.missing_standard_file.severity,
+            Category::BareUrl => self.checkers.bare_url.severity,
+            Category::RepeatedWord => self.checkers.repeated_word.severity,
+            Category::UndocumentedEnvVar => self.checkers.undocumented_env_var.severity,
+            Category::EmptyCodeBlock => self.checkers.empty_code_block.severity,
+            Category::ClickHereLink => self.checkers.click_here_link.severity,
+            Category::DoubleNegation => self.checkers.double_negation.severity,
+            Category::ImperativeHeading => self.checkers.imperative_heading.severity,
+            Category::InconsistentCommandPrefix => {
+                self.checkers.inconsistent_command_prefix.severity
+            }
+            Category::EmptyHeading => self.checkers.empty_heading.severity,
+            Category::CopiedMetaInstructions => self.checkers.copied_meta_instructions.severity,
+            Category::XmlDocumentWrapper => self.checkers.xml_document_wrapper.severity,
+            Category::InvalidSuppression | Category::UnusedSuppression => None,
+            Category::CustomPattern(_) => None,
+        }
     }
 }
 

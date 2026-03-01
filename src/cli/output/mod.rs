@@ -1,5 +1,6 @@
 pub mod github;
 pub mod json;
+pub mod sarif;
 pub mod text;
 
 use std::path::Path;
@@ -12,6 +13,7 @@ pub fn render(result: &CheckResult, project_root: &Path, format: OutputFormat) {
         OutputFormat::Text => text::render(result, project_root),
         OutputFormat::Json => json::render(result, project_root),
         OutputFormat::Github => github::render(result, project_root),
+        OutputFormat::Sarif => sarif::render(result, project_root),
     }
 }
 

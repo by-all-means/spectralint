@@ -5,12 +5,12 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{ScopeFilter, CONFLICT_PAIRS};
 use super::Checker;
 
-pub struct ConflictingDirectivesChecker {
+pub(crate) struct ConflictingDirectivesChecker {
     scope: ScopeFilter,
 }
 
 impl ConflictingDirectivesChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }

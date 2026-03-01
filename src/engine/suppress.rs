@@ -1,6 +1,8 @@
-use std::collections::HashMap;
+use std::cell::Cell;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use crate::emit;
 use crate::parser::types::{InlineSuppress, ParsedFile, SuppressKind};
 use crate::types::Category;
 
@@ -9,6 +11,9 @@ pub(super) struct SuppressedRange {
     rule: Option<String>,
     start_line: usize,
     end_line: usize,
+    used: Cell<bool>,
+    /// The line where the disable comment appears (for unused suppression diagnostics).
+    pub(super) comment_line: usize,
 }
 
 pub(super) fn build_suppression_set(
@@ -42,6 +47,8 @@ fn build_ranges(comments: &[InlineSuppress], total_lines: usize) -> Vec<Suppress
                         rule,
                         start_line: start,
                         end_line: comment.line,
+                        used: Cell::new(false),
+                        comment_line: start,
                     });
                 }
             }
@@ -50,6 +57,8 @@ fn build_ranges(comments: &[InlineSuppress], total_lines: usize) -> Vec<Suppress
                     rule: comment.rule.clone(),
                     start_line: comment.line + 1,
                     end_line: comment.line + 1,
+                    used: Cell::new(false),
+                    comment_line: comment.line,
                 });
             }
         }
@@ -60,6 +69,8 @@ fn build_ranges(comments: &[InlineSuppress], total_lines: usize) -> Vec<Suppress
             rule,
             start_line: start,
             end_line: total_lines,
+            used: Cell::new(false),
+            comment_line: start,
         });
     }
 
@@ -75,12 +86,90 @@ pub(super) fn is_suppressed(
     let Some(ranges) = suppressions.get(file) else {
         return false;
     };
-    let cat_str = category.to_string();
-    ranges.iter().any(|range| {
-        line >= range.start_line
-            && line <= range.end_line
-            && range.rule.as_ref().map_or(true, |rule| cat_str == *rule)
-    })
+    let mut cat_str = None;
+    let mut matched = false;
+    for range in ranges {
+        if line >= range.start_line && line <= range.end_line {
+            let rule_matches = match range.rule.as_deref() {
+                None => true,
+                Some(rule) => cat_str.get_or_insert_with(|| category.to_string()) == rule,
+            };
+            if rule_matches {
+                range.used.set(true);
+                matched = true;
+            }
+        }
+    }
+    matched
+}
+
+/// Collect all known rule names from built-in categories and custom patterns.
+/// Derives from `AVAILABLE_RULES` in explain.rs to avoid maintaining a separate list.
+pub(super) fn all_known_rule_names(
+    custom_patterns: &[crate::config::CustomPattern],
+) -> HashSet<String> {
+    let mut names: HashSet<String> = crate::cli::explain::AVAILABLE_RULES
+        .iter()
+        .map(|(name, _)| name.to_string())
+        .collect();
+    for pat in custom_patterns {
+        names.insert(format!("custom:{}", pat.name));
+    }
+    names
+}
+
+/// Validate that all rule names used in suppress comments are recognized.
+/// Returns diagnostics for unrecognized rule names.
+pub(super) fn validate_suppress_rules(
+    files: &[ParsedFile],
+    known_rules: &HashSet<String>,
+) -> Vec<crate::types::Diagnostic> {
+    let mut result = crate::types::CheckResult::default();
+    for file in files {
+        for comment in &file.suppress_comments {
+            if let Some(ref rule) = comment.rule {
+                if !known_rules.contains(rule.as_str()) {
+                    emit!(
+                        result,
+                        file.path,
+                        comment.line,
+                        crate::types::Severity::Warning,
+                        Category::InvalidSuppression,
+                        suggest: "Check for typos — run `spectralint explain` to see all available rules",
+                        "Unrecognized rule name in suppress comment: \"{rule}\""
+                    );
+                }
+            }
+        }
+    }
+    result.diagnostics
+}
+
+/// Find suppression ranges that were never used (no diagnostic was suppressed by them).
+pub(super) fn find_unused_suppressions(
+    suppressions: &HashMap<PathBuf, Vec<SuppressedRange>>,
+) -> Vec<crate::types::Diagnostic> {
+    let mut result = crate::types::CheckResult::default();
+    for (file, ranges) in suppressions {
+        for range in ranges {
+            if !range.used.get() {
+                let rule_desc = match range.rule.as_deref() {
+                    Some(r) => format!("\"{r}\""),
+                    None => "all rules".to_string(),
+                };
+                emit!(
+                    result,
+                    file,
+                    range.comment_line,
+                    crate::types::Severity::Info,
+                    Category::UnusedSuppression,
+                    suggest: "Remove the unused suppress comment to keep the file clean",
+                    "Suppress comment for {rule_desc} did not suppress any diagnostic"
+                );
+            }
+        }
+    }
+    result.diagnostics
 }
 
 #[cfg(test)]
@@ -182,31 +271,24 @@ mod tests {
         let mut map = HashMap::new();
         map.insert(PathBuf::from("test.md"), ranges);
 
-        // dead-reference at line 5 should be suppressed
         assert!(is_suppressed(
             &map,
             Path::new("test.md"),
             5,
             &Category::DeadReference
         ));
-
-        // vague-directive at line 5 should NOT be suppressed
         assert!(!is_suppressed(
             &map,
             Path::new("test.md"),
             5,
             &Category::VagueDirective
         ));
-
-        // naming-inconsistency at line 5 should NOT be suppressed
         assert!(!is_suppressed(
             &map,
             Path::new("test.md"),
             5,
             &Category::NamingInconsistency
         ));
-
-        // dead-reference at line 9 (outside range) should NOT be suppressed
         assert!(!is_suppressed(
             &map,
             Path::new("test.md"),
@@ -227,7 +309,6 @@ mod tests {
         let mut map = HashMap::new();
         map.insert(PathBuf::from("test.md"), ranges);
 
-        // Line 6 should be suppressed for all rules
         assert!(is_suppressed(
             &map,
             Path::new("test.md"),
@@ -246,8 +327,6 @@ mod tests {
             6,
             &Category::EnumDrift,
         ));
-
-        // Line 7 should NOT be suppressed
         assert!(!is_suppressed(
             &map,
             Path::new("test.md"),
@@ -289,8 +368,6 @@ mod tests {
             },
         ];
         let ranges = build_ranges(&comments, 20);
-        // Inner disable at line 5 closed by enable at line 8
-        // Outer disable at line 3 remains open → extends to EOF
         assert_eq!(ranges.len(), 2);
     }
 
@@ -378,7 +455,6 @@ mod tests {
         let mut map = HashMap::new();
         map.insert(PathBuf::from("test.md"), ranges);
 
-        // Line 4 inside global disable: everything suppressed
         assert!(is_suppressed(
             &map,
             Path::new("test.md"),
@@ -422,26 +498,110 @@ mod tests {
         let mut map = HashMap::new();
         map.insert(PathBuf::from("test.md"), ranges);
 
-        // Line 6 suppressed by first disable-next-line
         assert!(is_suppressed(
             &map,
             Path::new("test.md"),
             6,
             &Category::DeadReference
         ));
-        // Line 7 suppressed by second disable-next-line
         assert!(is_suppressed(
             &map,
             Path::new("test.md"),
             7,
             &Category::DeadReference
         ));
-        // Line 8 not suppressed
         assert!(!is_suppressed(
             &map,
             Path::new("test.md"),
             8,
             &Category::DeadReference
         ));
+    }
+
+    #[test]
+    fn test_unused_suppression_detected() {
+        let comments = vec![InlineSuppress {
+            line: 5,
+            kind: SuppressKind::DisableNextLine,
+            rule: Some("dead-reference".to_string()),
+        }];
+        let ranges = build_ranges(&comments, 20);
+
+        let mut map = HashMap::new();
+        map.insert(PathBuf::from("test.md"), ranges);
+
+        // Don't suppress anything — range should remain unused
+        let unused = find_unused_suppressions(&map);
+        assert_eq!(unused.len(), 1);
+        assert_eq!(unused[0].category, Category::UnusedSuppression);
+    }
+
+    #[test]
+    fn test_used_suppression_not_flagged() {
+        let comments = vec![InlineSuppress {
+            line: 5,
+            kind: SuppressKind::DisableNextLine,
+            rule: Some("dead-reference".to_string()),
+        }];
+        let ranges = build_ranges(&comments, 20);
+
+        let mut map = HashMap::new();
+        map.insert(PathBuf::from("test.md"), ranges);
+
+        // Suppress a diagnostic — range should be marked used
+        assert!(is_suppressed(
+            &map,
+            Path::new("test.md"),
+            6,
+            &Category::DeadReference
+        ));
+
+        let unused = find_unused_suppressions(&map);
+        assert!(unused.is_empty());
+    }
+
+    #[test]
+    fn test_invalid_suppression_detected() {
+        let known = all_known_rule_names(&[]);
+        let file = ParsedFile {
+            path: PathBuf::from("test.md"),
+            sections: vec![],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![InlineSuppress {
+                line: 5,
+                kind: SuppressKind::DisableNextLine,
+                rule: Some("typo-rule-name".to_string()),
+            }],
+            raw_lines: vec!["test".to_string()],
+            in_code_block: vec![false],
+        };
+
+        let diags = validate_suppress_rules(&[file], &known);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].category, Category::InvalidSuppression);
+    }
+
+    #[test]
+    fn test_valid_suppression_not_flagged() {
+        let known = all_known_rule_names(&[]);
+        let file = ParsedFile {
+            path: PathBuf::from("test.md"),
+            sections: vec![],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![InlineSuppress {
+                line: 5,
+                kind: SuppressKind::DisableNextLine,
+                rule: Some("dead-reference".to_string()),
+            }],
+            raw_lines: vec!["test".to_string()],
+            in_code_block: vec![false],
+        };
+
+        let diags = validate_suppress_rules(&[file], &known);
+        assert!(diags.is_empty());
     }
 }

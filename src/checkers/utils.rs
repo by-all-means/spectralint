@@ -194,6 +194,12 @@ pub(crate) fn is_heading(line: &str) -> bool {
     line.trim_start().starts_with('#')
 }
 
+/// Returns `true` if byte offset `pos` falls inside an inline backtick span.
+/// Used by checkers that scan prose lines and need to skip inline code.
+pub(crate) fn inside_inline_code(line: &str, pos: usize) -> bool {
+    line[..pos].chars().filter(|&c| c == '`').count() % 2 == 1
+}
+
 /// Returns true if text after a regex match contains elaboration (colon, em dash, etc.),
 /// indicating the matched phrase is followed by a concrete explanation.
 /// Used by `generic_instruction` and `ambiguous_scope_reference`.

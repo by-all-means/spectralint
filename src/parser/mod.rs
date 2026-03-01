@@ -109,6 +109,41 @@ static NEGATED_TRY_TO: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
+/// Detect MediaWiki markup that is not standard markdown.
+/// Returns true if 3+ MediaWiki markers are found in the first 50 lines.
+pub(crate) fn is_mediawiki_content(content: &str) -> bool {
+    let mut count = 0;
+    for (i, line) in content.lines().enumerate() {
+        if i >= 50 {
+            break;
+        }
+        // {{template}} syntax
+        if line.contains("{{") && line.contains("}}") {
+            count += 1;
+        }
+        // [[internal link]] syntax
+        if line.contains("[[") && line.contains("]]") {
+            count += 1;
+        }
+        // <ref> tags
+        if line.contains("<ref>") || line.contains("<ref ") || line.contains("</ref>") {
+            count += 1;
+        }
+        // <nowiki> tags
+        if line.contains("<nowiki>") || line.contains("</nowiki>") {
+            count += 1;
+        }
+        // {| table syntax
+        if line.trim_start().starts_with("{|") {
+            count += 1;
+        }
+        if count >= 3 {
+            return true;
+        }
+    }
+    false
+}
+
 /// Maximum file size (10 MiB) that the parser will accept.
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
 
@@ -126,6 +161,21 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
     }
     let content = std::fs::read_to_string(path)?;
     let raw_lines: Vec<String> = content.lines().map(String::from).collect();
+
+    // Skip MediaWiki markup files (not standard markdown — causes false positives)
+    if is_mediawiki_content(&content) {
+        let in_code_block = build_code_block_mask(&raw_lines);
+        return Ok(ParsedFile {
+            path: path.to_path_buf(),
+            sections: vec![],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines,
+            in_code_block,
+        });
+    }
 
     let arena = Arena::new();
     let mut options = Options::default();

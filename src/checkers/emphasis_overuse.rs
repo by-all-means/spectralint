@@ -9,13 +9,13 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{is_heading, ScopeFilter};
 use super::Checker;
 
-pub struct EmphasisOveruseChecker {
+pub(crate) struct EmphasisOveruseChecker {
     max_emphasis: usize,
     scope: ScopeFilter,
 }
 
 impl EmphasisOveruseChecker {
-    pub fn new(config: &EmphasisOveruseConfig) -> Self {
+    pub(crate) fn new(config: &EmphasisOveruseConfig) -> Self {
         Self {
             max_emphasis: config.max_emphasis,
             scope: ScopeFilter::new(&config.scope),
@@ -90,6 +90,7 @@ mod tests {
             enabled: true,
             max_emphasis,
             scope: Vec::new(),
+            severity: None,
         };
         EmphasisOveruseChecker::new(&config).check(&ctx)
     }

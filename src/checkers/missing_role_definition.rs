@@ -22,12 +22,12 @@ const ROLE_MIN_DIRECTIVE_LINES_SECTIONLESS: usize = 25;
 /// preamble adds no value.
 const MIN_SECTIONS_IMPLICIT_ROLE: usize = 3;
 
-pub struct MissingRoleDefinitionChecker {
+pub(crate) struct MissingRoleDefinitionChecker {
     scope: ScopeFilter,
 }
 
 impl MissingRoleDefinitionChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }

@@ -10,12 +10,12 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{is_heading, is_template_ref, is_within_project, ScopeFilter};
 use super::Checker;
 
-pub struct HardcodedFileStructureChecker {
+pub(crate) struct HardcodedFileStructureChecker {
     scope: ScopeFilter,
 }
 
 impl HardcodedFileStructureChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }
@@ -109,14 +109,11 @@ static EXAMPLE_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:example|e\.g\.|such as|for instance|for example|like)\b").unwrap()
 });
 
-/// Markdown link pattern: [text](url)
-static MARKDOWN_LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[.*?\]\(.*?\)").unwrap());
-
 fn should_skip_line(line: &str) -> bool {
     is_heading(line)
         || CREATION_VERB.is_match(line)
         || EXAMPLE_CONTEXT.is_match(line)
-        || MARKDOWN_LINK.is_match(line)
+        || (line.contains("](") && line.contains('['))
 }
 
 /// Try to resolve a path to check if it exists on disk.

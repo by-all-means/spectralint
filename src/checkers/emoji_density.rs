@@ -8,12 +8,12 @@ use crate::types::{Category, CheckResult, Severity};
 
 use super::Checker;
 
-pub struct EmojiDensityChecker {
+pub(crate) struct EmojiDensityChecker {
     max_emoji: usize,
 }
 
 impl EmojiDensityChecker {
-    pub fn new(config: &EmojiDensityConfig) -> Self {
+    pub(crate) fn new(config: &EmojiDensityConfig) -> Self {
         Self {
             max_emoji: config.max_emoji,
         }
@@ -98,6 +98,7 @@ mod tests {
         let config = EmojiDensityConfig {
             enabled: true,
             max_emoji,
+            severity: None,
         };
         EmojiDensityChecker::new(&config).check(&ctx)
     }

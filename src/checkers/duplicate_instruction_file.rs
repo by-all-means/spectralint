@@ -9,12 +9,21 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{is_instruction_file, normalize_directive, ScopeFilter, MIN_DIRECTIVE_LINES};
 use super::Checker;
 
-pub struct DuplicateInstructionFileChecker {
+/// Collect normalized directive lines for a file as a pre-computed HashSet.
+fn collect_directive_set(file: &ParsedFile) -> HashSet<String> {
+    file.non_code_lines()
+        .filter(|(_, line)| is_directive_line(line) && !line.trim().is_empty())
+        .map(|(_, line)| normalize_directive(line))
+        .filter(|d| !d.is_empty())
+        .collect()
+}
+
+pub(crate) struct DuplicateInstructionFileChecker {
     scope: ScopeFilter,
 }
 
 impl DuplicateInstructionFileChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }
@@ -23,15 +32,6 @@ impl DuplicateInstructionFileChecker {
 
 /// Minimum overlap ratio to consider files as near-duplicates.
 const OVERLAP_THRESHOLD: f64 = 0.7;
-
-/// Collect normalized directive lines for a file.
-fn collect_directives(file: &ParsedFile) -> Vec<String> {
-    file.non_code_lines()
-        .filter(|(_, line)| is_directive_line(line) && !line.trim().is_empty())
-        .map(|(_, line)| normalize_directive(line))
-        .filter(|d| !d.is_empty())
-        .collect()
-}
 
 /// Check if file A references file B (parent/child relationship).
 fn references_other(file: &ParsedFile, other: &ParsedFile) -> bool {
@@ -49,7 +49,8 @@ impl Checker for DuplicateInstructionFileChecker {
             return result;
         }
 
-        let file_directives: Vec<Option<Vec<String>>> = ctx
+        // Pre-compute HashSets once per file (avoids re-hashing per pair).
+        let file_directives: Vec<Option<HashSet<String>>> = ctx
             .files
             .iter()
             .map(|f| {
@@ -59,20 +60,20 @@ impl Checker for DuplicateInstructionFileChecker {
                 if !is_instruction_file(&f.raw_lines, &f.in_code_block) {
                     return None;
                 }
-                let directives = collect_directives(f);
-                if directives.len() < MIN_DIRECTIVE_LINES {
+                let set = collect_directive_set(f);
+                if set.len() < MIN_DIRECTIVE_LINES {
                     return None;
                 }
-                Some(directives)
+                Some(set)
             })
             .collect();
 
-        for (i, directives_a_opt) in file_directives.iter().enumerate() {
-            let Some(ref directives_a) = directives_a_opt else {
+        for (i, set_a_opt) in file_directives.iter().enumerate() {
+            let Some(ref set_a) = set_a_opt else {
                 continue;
             };
-            for (j, directives_b_opt) in file_directives.iter().enumerate().skip(i + 1) {
-                let Some(ref directives_b) = directives_b_opt else {
+            for (j, set_b_opt) in file_directives.iter().enumerate().skip(i + 1) {
+                let Some(ref set_b) = set_b_opt else {
                     continue;
                 };
 
@@ -82,10 +83,7 @@ impl Checker for DuplicateInstructionFileChecker {
                     continue;
                 }
 
-                let set_a: HashSet<&str> = directives_a.iter().map(|s| s.as_str()).collect();
-                let set_b: HashSet<&str> = directives_b.iter().map(|s| s.as_str()).collect();
-
-                let intersection = set_a.intersection(&set_b).count();
+                let intersection = set_a.intersection(set_b).count();
                 let min_size = set_a.len().min(set_b.len());
 
                 if min_size == 0 {
@@ -95,7 +93,7 @@ impl Checker for DuplicateInstructionFileChecker {
                 let overlap = intersection as f64 / min_size as f64;
 
                 if overlap >= OVERLAP_THRESHOLD {
-                    let (emit_file, other_file) = if directives_a.len() <= directives_b.len() {
+                    let (emit_file, other_file) = if set_a.len() <= set_b.len() {
                         (&ctx.files[i], &ctx.files[j])
                     } else {
                         (&ctx.files[j], &ctx.files[i])

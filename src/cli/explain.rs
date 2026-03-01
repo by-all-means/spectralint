@@ -175,6 +175,56 @@ pub const AVAILABLE_RULES: &[(&str, &str)] = &[
         "unversioned-stack-reference",
         "Flags tech stack mentions without version numbers",
     ),
+    (
+        "missing-standard-file",
+        "Flags projects missing common instruction files like CLAUDE.md",
+    ),
+    (
+        "bare-url",
+        "Flags raw URLs not wrapped in markdown link syntax",
+    ),
+    (
+        "repeated-word",
+        "Flags accidental consecutive duplicate words",
+    ),
+    (
+        "undocumented-env-var",
+        "Flags env var references without nearby explanation",
+    ),
+    ("empty-code-block", "Flags code blocks with no content"),
+    (
+        "click-here-link",
+        "Flags opaque link text like [click here](url)",
+    ),
+    (
+        "double-negation",
+        "Flags double negatives that confuse agents",
+    ),
+    (
+        "imperative-heading",
+        "Flags headings that contain instructions instead of topics",
+    ),
+    (
+        "inconsistent-command-prefix",
+        "Flags mixed $ prefix styles in shell code blocks",
+    ),
+    ("empty-heading", "Flags headings with no title text"),
+    (
+        "copied-meta-instructions",
+        "Flags AI boilerplate like 'You are a helpful assistant'",
+    ),
+    (
+        "xml-document-wrapper",
+        "Flags XML declarations and wrapper tags in markdown",
+    ),
+    (
+        "invalid-suppression",
+        "Warns on unrecognized rule names in suppress comments",
+    ),
+    (
+        "unused-suppression",
+        "Reports suppress comments that didn't suppress any diagnostic",
+    ),
     ("custom", "User-defined regex patterns from config"),
 ];
 
@@ -825,6 +875,179 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              \n\
              Severity: info (strict-only)\n\
              Config: [checkers.unversioned_stack_reference]",
+        ),
+        "missing-standard-file" => Some(
+            "missing-standard-file: Flags projects missing common instruction files.\n\
+             \n\
+             If a project has instruction files but is missing a CLAUDE.md, this checker\n\
+             suggests creating one. If CLAUDE.md exists but .claude/settings.json is missing,\n\
+             it notes the absence at info severity.\n\
+             \n\
+             Helps ensure projects follow the standard instruction file layout.\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.missing_standard_file]",
+        ),
+        "bare-url" => Some(
+            "bare-url: Flags raw URLs not wrapped in markdown link syntax.\n\
+             \n\
+             Raw URLs like https://example.com/docs in prose are harder for agents to parse\n\
+             and don't carry descriptive context. Wrapping in markdown link syntax\n\
+             [descriptive text](url) gives agents both the URL and its purpose.\n\
+             \n\
+             Skips: URLs inside code blocks, inline backticks, headings, markdown links,\n\
+             and angle-bracket URLs (<https://...>).\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.bare_url]",
+        ),
+        "repeated-word" => Some(
+            "repeated-word: Flags accidental consecutive duplicate words.\n\
+             \n\
+             Typos like \"the the\", \"is is\", and \"to to\" are common copy-paste artifacts.\n\
+             While harmless to agents, they signal unproofed content and can confuse human\n\
+             reviewers. Grammatically valid constructs like \"that that\" and \"had had\" are\n\
+             allowlisted.\n\
+             \n\
+             Skips: table rows, inline backticks, code blocks.\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.repeated_word]",
+        ),
+        "undocumented-env-var" => Some(
+            "undocumented-env-var: Flags env var references without nearby explanation.\n\
+             \n\
+             References like $DATABASE_URL or process.env.API_KEY without context on the\n\
+             same or adjacent line leave agents guessing what the variable holds and how\n\
+             to set it. Adding a brief explanation (\"set\", \"configure\", \"defaults to\",\n\
+             or a colon/equals sign) provides the needed context.\n\
+             \n\
+             Skips: code blocks, inline backticks, headings, lines with explanation keywords.\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.undocumented_env_var]",
+        ),
+        "empty-code-block" => Some(
+            "empty-code-block: Flags code blocks with no content.\n\
+             \n\
+             An empty code block (two consecutive fence lines with nothing between them)\n\
+             is typically a template artifact or editing mistake. Agents encountering an\n\
+             empty code block expect a command or example and find nothing, which may cause\n\
+             them to skip the section or hallucinate content.\n\
+             \n\
+             Whitespace-only code blocks are also flagged.\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.empty_code_block]",
+        ),
+        "click-here-link" => Some(
+            "click-here-link: Flags opaque link text like [click here](url).\n\
+             \n\
+             Agents typically cannot follow URLs. The link text is their only context for\n\
+             understanding what a link points to. Text like \"click here\", \"here\",\n\
+             \"this link\", or \"this\" provides zero information about the destination.\n\
+             Replace with descriptive text: [API documentation](url).\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.click_here_link]",
+        ),
+        "double-negation" => Some(
+            "double-negation: Flags double negatives that confuse agents.\n\
+             \n\
+             Phrases like \"never don't validate\", \"do not fail to run tests\", and\n\
+             \"don't avoid error handling\" create logical ambiguity. LLMs sometimes\n\
+             interpret double negatives as single negatives, flipping the intended\n\
+             meaning. Rephrase as positive directives: \"always validate\",\n\
+             \"always run tests\", \"use error handling\".\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.double_negation]",
+        ),
+        "imperative-heading" => Some(
+            "imperative-heading: Flags headings that contain instructions instead of topics.\n\
+             \n\
+             Headings like \"## Always Run Tests Before Committing\" or \"## Never Use\n\
+             Global State\" bury instructions in the document's navigation structure.\n\
+             Agents use headings to navigate and scope — a heading should be a topic\n\
+             (\"## Testing\", \"## State Management\"), with the imperative rules in the\n\
+             section body. Legitimate patterns like \"## How to...\" are excluded.\n\
+             \n\
+             Only flags headings with 3+ words to avoid false positives on short titles.\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.imperative_heading]",
+        ),
+        "inconsistent-command-prefix" => Some(
+            "inconsistent-command-prefix: Flags mixed $ prefix styles in shell code blocks.\n\
+             \n\
+             When some commands in a bash/sh code block start with `$ ` and others don't,\n\
+             agents may include the `$` literally when copying commands, breaking execution.\n\
+             Pick one style: either all commands with `$ ` prefix (showing prompt context)\n\
+             or none (bare commands ready to copy-paste).\n\
+             \n\
+             Only checks code blocks tagged bash/sh/shell/zsh or untagged blocks.\n\
+             Requires 2+ command lines with at least one of each style to flag.\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.inconsistent_command_prefix]",
+        ),
+        "empty-heading" => Some(
+            "empty-heading: Flags headings with no title text.\n\
+             \n\
+             A heading line like `## ` or `###` with no text after the hash marks is always\n\
+             a mistake — either an editing artifact or incomplete template. Agents use headings\n\
+             for navigation and scoping, so an empty heading creates a broken section with no\n\
+             way to reference it.\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.empty_heading]",
+        ),
+        "copied-meta-instructions" => Some(
+            "copied-meta-instructions: Flags AI boilerplate left in instruction files.\n\
+             \n\
+             Patterns like \"You are a helpful assistant\", \"As an AI language model\",\n\
+             \"I cannot browse the internet\", and \"my training data\" are meta-instructions\n\
+             from AI systems, not project-specific directives. They typically appear when\n\
+             AI-generated content is pasted into instruction files without cleanup.\n\
+             \n\
+             These phrases waste context tokens and can confuse agents about their actual\n\
+             role and capabilities. Replace with project-specific role definitions.\n\
+             \n\
+             Severity: warning (strict-only)\n\
+             Config: [checkers.copied_meta_instructions]",
+        ),
+        "xml-document-wrapper" => Some(
+            "xml-document-wrapper: Flags XML declarations and wrapper tags in markdown.\n\
+             \n\
+             XML declarations (`<?xml ...?>`) and wrapper tags like `<Document>`, `<Content>`,\n\
+             `<Instructions>`, and `<Response>` in markdown files are AI output artifacts.\n\
+             They appear when AI-generated content is copied verbatim without removing the\n\
+             structural wrapper. These tags have no meaning in markdown and add noise.\n\
+             \n\
+             Tags inside code blocks are excluded (legitimate XML examples).\n\
+             \n\
+             Severity: warning (strict-only)\n\
+             Config: [checkers.xml_document_wrapper]",
+        ),
+        "invalid-suppression" => Some(
+            "invalid-suppression: Warns on unrecognized rule names in suppress comments.\n\
+             \n\
+             When you write <!-- spectralint-disable bad-rule-name -->, this checker verifies\n\
+             that \"bad-rule-name\" is a known rule. Catches typos in suppress comments that\n\
+             would otherwise silently fail to suppress anything.\n\
+             \n\
+             Severity: warning\n\
+             Config: always enabled (cannot be disabled)",
+        ),
+        "unused-suppression" => Some(
+            "unused-suppression: Reports suppress comments that didn't suppress any diagnostic.\n\
+             \n\
+             After all checkers run and suppressions are applied, any suppress comment that\n\
+             didn't actually suppress a diagnostic is flagged. This keeps suppress comments\n\
+             from accumulating as dead code when the underlying issue is fixed.\n\
+             \n\
+             Severity: info\n\
+             Config: always enabled (cannot be disabled)",
         ),
         "custom" => Some(
             "custom:<name>: User-defined regex patterns from config.\n\

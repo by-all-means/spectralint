@@ -11,14 +11,14 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{normalize_directive, ScopeFilter};
 use super::Checker;
 
-pub struct RedundantDirectiveChecker {
+pub(crate) struct RedundantDirectiveChecker {
     scope: ScopeFilter,
     similarity_threshold: f64,
     min_line_length: usize,
 }
 
 impl RedundantDirectiveChecker {
-    pub fn new(config: &RedundantDirectiveConfig) -> Self {
+    pub(crate) fn new(config: &RedundantDirectiveConfig) -> Self {
         Self {
             scope: ScopeFilter::new(&config.scope),
             similarity_threshold: config.similarity_threshold,
@@ -124,6 +124,7 @@ mod tests {
             similarity_threshold: 0.95,
             min_line_length: 15,
             scope: Vec::new(),
+            severity: None,
         };
         RedundantDirectiveChecker::new(&config).check(&ctx)
     }

@@ -8,12 +8,12 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::ScopeFilter;
 use super::Checker;
 
-pub struct SessionJournalChecker {
+pub(crate) struct SessionJournalChecker {
     scope: ScopeFilter,
 }
 
 impl SessionJournalChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }
@@ -66,7 +66,9 @@ static WEAK_MARKERS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     .collect()
 });
 
-static CHECKMARK_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[✅❌]").unwrap());
+fn count_checkmarks(line: &str) -> usize {
+    line.chars().filter(|&c| c == '✅' || c == '❌').count()
+}
 
 /// Minimum strong markers required. At least 2 strong markers must be present
 /// so generic markers alone cannot cause a false positive.
@@ -89,7 +91,7 @@ impl Checker for SessionJournalChecker {
             let mut checkmark_count = 0;
 
             for (_, line) in file.non_code_lines() {
-                checkmark_count += CHECKMARK_PATTERN.find_iter(line).count();
+                checkmark_count += count_checkmarks(line);
 
                 for (pat, label) in STRONG_MARKERS.iter() {
                     if pat.is_match(line) && !strong_markers.contains(label) {

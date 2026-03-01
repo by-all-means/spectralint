@@ -40,9 +40,29 @@ pub enum Commands {
         /// Enable strict mode (activates opinionated checkers)
         #[arg(long)]
         strict: bool,
+
+        /// Filter output to specific rules only (e.g., --rule dead-reference)
+        #[arg(long)]
+        rule: Vec<String>,
+
+        /// Suppress normal output, only set exit code
+        #[arg(short, long)]
+        quiet: bool,
+
+        /// Disable colored output (also respects NO_COLOR env var)
+        #[arg(long)]
+        no_color: bool,
+
+        /// Print only a summary count (e.g., "3 errors, 12 warnings, 5 info")
+        #[arg(long)]
+        count: bool,
     },
     /// Create a default .spectralintrc.toml
-    Init,
+    Init {
+        /// Configuration preset
+        #[arg(long)]
+        preset: Option<Preset>,
+    },
     /// Explain what a checker does and why it matters (omit rule to list all)
     Explain {
         /// Checker name (e.g., dead-reference, naming-inconsistency, agent-guidelines)
@@ -57,4 +77,15 @@ pub enum OutputFormat {
     Text,
     Json,
     Github,
+    Sarif,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum Preset {
+    /// Dead-reference + credential-exposure only
+    Minimal,
+    /// Current defaults
+    Standard,
+    /// Standard + strict = true
+    Strict,
 }

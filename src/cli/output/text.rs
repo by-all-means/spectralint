@@ -1,14 +1,21 @@
-use owo_colors::OwoColorize;
+use owo_colors::{OwoColorize, Stream};
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 use crate::types::{CheckResult, Severity};
 
+/// Conditionally apply styling, respecting `owo_colors::set_override()`.
+macro_rules! styled {
+    ($val:expr, $first:ident $(.$rest:ident)*) => {
+        $val.if_supports_color(Stream::Stdout, |v| v.$first()$(.$rest())*.to_string())
+    };
+}
+
 pub fn render(result: &CheckResult, project_root: &Path) {
     if result.diagnostics.is_empty() {
         println!();
-        println!("  {}", "\u{2501}".repeat(50).dimmed());
-        println!("  {}", "no issues found".green());
+        println!("  {}", styled!("\u{2501}".repeat(50), dimmed));
+        println!("  {}", styled!("no issues found", green));
         println!();
         return;
     }
@@ -26,16 +33,16 @@ pub fn render(result: &CheckResult, project_root: &Path) {
     let infos = result.info_count();
 
     println!();
-    println!("  {}", "\u{2501}".repeat(50).dimmed());
+    println!("  {}", styled!("\u{2501}".repeat(50), dimmed));
     let mut parts = Vec::new();
     if errors > 0 {
-        parts.push(format!("{errors} errors").red().bold().to_string());
+        parts.push(styled!(format!("{errors} errors"), red.bold).to_string());
     }
     if warnings > 0 {
-        parts.push(format!("{warnings} warnings").yellow().bold().to_string());
+        parts.push(styled!(format!("{warnings} warnings"), yellow.bold).to_string());
     }
     if infos > 0 {
-        parts.push(format!("{infos} info").blue().to_string());
+        parts.push(styled!(format!("{infos} info"), blue).to_string());
     }
     let file_count = result
         .diagnostics
@@ -43,8 +50,12 @@ pub fn render(result: &CheckResult, project_root: &Path) {
         .map(|d| &d.file)
         .collect::<HashSet<_>>()
         .len();
-    println!("  {} across {} files", parts.join(", "), file_count.bold());
-    println!("  {}", "\u{2501}".repeat(50).dimmed());
+    println!(
+        "  {} across {} files",
+        parts.join(", "),
+        styled!(file_count, bold)
+    );
+    println!("  {}", styled!("\u{2501}".repeat(50), dimmed));
 
     let max_severity = |cat: &str| -> Severity {
         by_category
@@ -63,21 +74,26 @@ pub fn render(result: &CheckResult, project_root: &Path) {
 
         let (icon, label) = match severity {
             Severity::Error => (
-                "\u{2717}".red().to_string(),
-                cat_name.red().bold().to_string(),
+                styled!("\u{2717}", red).to_string(),
+                styled!(cat_name.as_str(), red.bold).to_string(),
             ),
             Severity::Warning => (
-                "\u{26a0}".yellow().to_string(),
-                cat_name.yellow().bold().to_string(),
+                styled!("\u{26a0}", yellow).to_string(),
+                styled!(cat_name.as_str(), yellow.bold).to_string(),
             ),
             Severity::Info => (
-                "\u{2139}".blue().to_string(),
-                cat_name.blue().bold().to_string(),
+                styled!("\u{2139}", blue).to_string(),
+                styled!(cat_name.as_str(), blue.bold).to_string(),
             ),
         };
 
         println!();
-        println!("  {} {} {}", icon, label, format!("({count})").dimmed());
+        println!(
+            "  {} {} {}",
+            icon,
+            label,
+            styled!(format!("({count})"), dimmed)
+        );
 
         let mut by_file: BTreeMap<_, Vec<_>> = BTreeMap::new();
         for d in diags {
@@ -96,14 +112,14 @@ pub fn render(result: &CheckResult, project_root: &Path) {
             if shown >= limit {
                 break;
             }
-            println!("    {}", file.dimmed());
+            println!("    {}", styled!(file.as_str(), dimmed));
             for d in file_diags {
                 if shown >= limit {
                     break;
                 }
                 println!("      L{:<4} {}", d.line, d.message);
                 if let Some(suggestion) = &d.suggestion {
-                    println!("      {}", format!("help: {suggestion}").dimmed());
+                    println!("      {}", styled!(format!("help: {suggestion}"), dimmed));
                 }
                 shown += 1;
             }
@@ -111,11 +127,13 @@ pub fn render(result: &CheckResult, project_root: &Path) {
         if count > limit {
             println!(
                 "    {}",
-                format!(
-                    "... and {} more (use --format json for full list)",
-                    count - limit
+                styled!(
+                    format!(
+                        "... and {} more (use --format json for full list)",
+                        count - limit
+                    ),
+                    dimmed
                 )
-                .dimmed()
             );
         }
     }

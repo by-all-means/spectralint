@@ -6,14 +6,14 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::ScopeFilter;
 use super::Checker;
 
-pub struct SectionLengthImbalanceChecker {
+pub(crate) struct SectionLengthImbalanceChecker {
     scope: ScopeFilter,
     min_section_lines: usize,
     imbalance_ratio: f64,
 }
 
 impl SectionLengthImbalanceChecker {
-    pub fn new(config: &SectionLengthImbalanceConfig) -> Self {
+    pub(crate) fn new(config: &SectionLengthImbalanceConfig) -> Self {
         Self {
             scope: ScopeFilter::new(&config.scope),
             min_section_lines: config.min_section_lines,
@@ -109,6 +109,7 @@ mod tests {
             min_section_lines: min_lines,
             imbalance_ratio: ratio,
             scope: vec![],
+            severity: None,
         })
     }
 

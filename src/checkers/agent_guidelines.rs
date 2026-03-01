@@ -11,12 +11,12 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{is_instruction_file, ScopeFilter};
 use super::Checker;
 
-pub struct AgentGuidelinesChecker {
+pub(crate) struct AgentGuidelinesChecker {
     scope: ScopeFilter,
 }
 
 impl AgentGuidelinesChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }

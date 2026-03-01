@@ -8,12 +8,12 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::{is_template_ref, ScopeFilter};
 use super::Checker;
 
-pub struct CircularReferenceChecker {
+pub(crate) struct CircularReferenceChecker {
     scope: ScopeFilter,
 }
 
 impl CircularReferenceChecker {
-    pub fn new(scope_patterns: &[String]) -> Self {
+    pub(crate) fn new(scope_patterns: &[String]) -> Self {
         Self {
             scope: ScopeFilter::new(scope_patterns),
         }

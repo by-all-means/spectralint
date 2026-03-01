@@ -6,13 +6,13 @@ use crate::types::{Category, CheckResult, Severity};
 use super::utils::ScopeFilter;
 use super::Checker;
 
-pub struct LargeCodeBlockChecker {
+pub(crate) struct LargeCodeBlockChecker {
     scope: ScopeFilter,
     max_lines: usize,
 }
 
 impl LargeCodeBlockChecker {
-    pub fn new(config: &LargeCodeBlockConfig) -> Self {
+    pub(crate) fn new(config: &LargeCodeBlockConfig) -> Self {
         Self {
             scope: ScopeFilter::new(&config.scope),
             max_lines: config.max_lines,
@@ -84,6 +84,7 @@ mod tests {
             enabled: true,
             max_lines,
             scope: vec![],
+            severity: None,
         })
     }
 
