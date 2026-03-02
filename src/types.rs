@@ -81,6 +81,12 @@ pub enum Category {
     EmptyHeading,
     CopiedMetaInstructions,
     XmlDocumentWrapper,
+    GeneratedAttribution,
+    CommandWithoutCodeblock,
+    MissingVerificationStep,
+    BrokenAnchorLink,
+    LongParagraph,
+    HardcodedWindowsPath,
     InvalidSuppression,
     UnusedSuppression,
     CustomPattern(String),
@@ -154,6 +160,12 @@ impl std::fmt::Display for Category {
             Category::EmptyHeading => f.write_str("empty-heading"),
             Category::CopiedMetaInstructions => f.write_str("copied-meta-instructions"),
             Category::XmlDocumentWrapper => f.write_str("xml-document-wrapper"),
+            Category::GeneratedAttribution => f.write_str("generated-attribution"),
+            Category::CommandWithoutCodeblock => f.write_str("command-without-codeblock"),
+            Category::MissingVerificationStep => f.write_str("missing-verification-step"),
+            Category::BrokenAnchorLink => f.write_str("broken-anchor-link"),
+            Category::LongParagraph => f.write_str("long-paragraph"),
+            Category::HardcodedWindowsPath => f.write_str("hardcoded-windows-path"),
             Category::InvalidSuppression => f.write_str("invalid-suppression"),
             Category::UnusedSuppression => f.write_str("unused-suppression"),
             Category::CustomPattern(name) => write!(f, "custom:{name}"),
@@ -439,6 +451,24 @@ mod tests {
         assert_eq!(
             Category::XmlDocumentWrapper.to_string(),
             "xml-document-wrapper"
+        );
+        assert_eq!(
+            Category::GeneratedAttribution.to_string(),
+            "generated-attribution"
+        );
+        assert_eq!(
+            Category::CommandWithoutCodeblock.to_string(),
+            "command-without-codeblock"
+        );
+        assert_eq!(
+            Category::MissingVerificationStep.to_string(),
+            "missing-verification-step"
+        );
+        assert_eq!(Category::BrokenAnchorLink.to_string(), "broken-anchor-link");
+        assert_eq!(Category::LongParagraph.to_string(), "long-paragraph");
+        assert_eq!(
+            Category::HardcodedWindowsPath.to_string(),
+            "hardcoded-windows-path"
         );
         assert_eq!(
             Category::InvalidSuppression.to_string(),

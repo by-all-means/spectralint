@@ -211,7 +211,7 @@ pub(crate) fn has_elaboration_after(line: &str, match_end: usize) -> bool {
         || rest.starts_with("– ")
 }
 
-static LIST_MARKER: LazyLock<Regex> =
+pub(crate) static LIST_MARKER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*(?:[-*+]|\d+\.)\s+").unwrap());
 
 pub(crate) fn is_bullet_line(line: &str) -> bool {

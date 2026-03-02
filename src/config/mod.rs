@@ -54,10 +54,12 @@ pub struct CheckersConfig {
     pub untagged_code_block: ScopedCheckerConfig,
     pub duplicate_instruction_file: ScopedCheckerConfig,
     pub outdated_model_reference: ScopedCheckerConfig,
+    pub broken_anchor_link: ScopedCheckerConfig,
     pub broken_table: ScopedCheckerConfig,
     pub placeholder_url: ScopedCheckerConfig,
     pub emphasis_overuse: EmphasisOveruseConfig,
     pub boilerplate_template: ScopedCheckerConfig,
+    pub generated_attribution: ScopedCheckerConfig,
     pub orphaned_section: ScopedCheckerConfig,
     pub excessive_nesting: ExcessiveNestingConfig,
     pub context_window_waste: ScopedCheckerConfig,
@@ -65,6 +67,7 @@ pub struct CheckersConfig {
     pub instruction_without_context: ScopedCheckerConfig,
     pub cross_file_contradiction: ScopedCheckerConfig,
     pub stale_style_rule: ScopedCheckerConfig,
+    pub hardcoded_windows_path: ScopedCheckerConfig,
     pub hardcoded_file_structure: ScopedCheckerConfig,
     pub unversioned_stack_reference: ScopedCheckerConfig,
     pub missing_standard_file: ScopedCheckerConfig,
@@ -78,6 +81,9 @@ pub struct CheckersConfig {
     pub inconsistent_command_prefix: ScopedCheckerConfig,
     pub empty_heading: ScopedCheckerConfig,
     pub copied_meta_instructions: ScopedCheckerConfig,
+    pub long_paragraph: LongParagraphConfig,
+    pub command_without_codeblock: ScopedCheckerConfig,
+    pub missing_verification_step: ScopedCheckerConfig,
     pub xml_document_wrapper: ScopedCheckerConfig,
     pub custom_patterns: Vec<CustomPattern>,
 }
@@ -120,10 +126,12 @@ impl Default for CheckersConfig {
             untagged_code_block: ScopedCheckerConfig::disabled(),
             duplicate_instruction_file: ScopedCheckerConfig::default(),
             outdated_model_reference: ScopedCheckerConfig::default(),
+            broken_anchor_link: ScopedCheckerConfig::default(),
             broken_table: ScopedCheckerConfig::default(),
             placeholder_url: ScopedCheckerConfig::default(),
             emphasis_overuse: EmphasisOveruseConfig::default(),
             boilerplate_template: ScopedCheckerConfig::default(),
+            generated_attribution: ScopedCheckerConfig::default(),
             orphaned_section: ScopedCheckerConfig::default(),
             excessive_nesting: ExcessiveNestingConfig::default(),
             context_window_waste: ScopedCheckerConfig::default(),
@@ -131,6 +139,7 @@ impl Default for CheckersConfig {
             instruction_without_context: ScopedCheckerConfig::default(),
             cross_file_contradiction: ScopedCheckerConfig::disabled(),
             stale_style_rule: ScopedCheckerConfig::default(),
+            hardcoded_windows_path: ScopedCheckerConfig::default(),
             hardcoded_file_structure: ScopedCheckerConfig::default(),
             unversioned_stack_reference: ScopedCheckerConfig::disabled(),
             missing_standard_file: ScopedCheckerConfig::disabled(),
@@ -144,6 +153,9 @@ impl Default for CheckersConfig {
             inconsistent_command_prefix: ScopedCheckerConfig::disabled(),
             empty_heading: ScopedCheckerConfig::disabled(),
             copied_meta_instructions: ScopedCheckerConfig::disabled(),
+            long_paragraph: LongParagraphConfig::default(),
+            command_without_codeblock: ScopedCheckerConfig::disabled(),
+            missing_verification_step: ScopedCheckerConfig::disabled(),
             xml_document_wrapper: ScopedCheckerConfig::disabled(),
             custom_patterns: Vec::new(),
         }
@@ -328,6 +340,26 @@ impl Default for EmphasisOveruseConfig {
         Self {
             enabled: false,
             max_emphasis: 10,
+            scope: Vec::new(),
+            severity: None,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct LongParagraphConfig {
+    pub enabled: bool,
+    pub max_lines: usize,
+    pub scope: Vec<String>,
+    pub severity: Option<Severity>,
+}
+
+impl Default for LongParagraphConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_lines: 8,
             scope: Vec::new(),
             severity: None,
         }
@@ -791,6 +823,7 @@ strict = true
             Category::PlaceholderUrl => self.checkers.placeholder_url.severity,
             Category::EmphasisOveruse => self.checkers.emphasis_overuse.severity,
             Category::BoilerplateTemplate => self.checkers.boilerplate_template.severity,
+            Category::GeneratedAttribution => self.checkers.generated_attribution.severity,
             Category::OrphanedSection => self.checkers.orphaned_section.severity,
             Category::ExcessiveNesting => self.checkers.excessive_nesting.severity,
             Category::ContextWindowWaste => self.checkers.context_window_waste.severity,
@@ -800,6 +833,7 @@ strict = true
             }
             Category::CrossFileContradiction => self.checkers.cross_file_contradiction.severity,
             Category::StaleStyleRule => self.checkers.stale_style_rule.severity,
+            Category::HardcodedWindowsPath => self.checkers.hardcoded_windows_path.severity,
             Category::HardcodedFileStructure => self.checkers.hardcoded_file_structure.severity,
             Category::UnversionedStackReference => {
                 self.checkers.unversioned_stack_reference.severity
@@ -817,6 +851,10 @@ strict = true
             }
             Category::EmptyHeading => self.checkers.empty_heading.severity,
             Category::CopiedMetaInstructions => self.checkers.copied_meta_instructions.severity,
+            Category::CommandWithoutCodeblock => self.checkers.command_without_codeblock.severity,
+            Category::MissingVerificationStep => self.checkers.missing_verification_step.severity,
+            Category::BrokenAnchorLink => self.checkers.broken_anchor_link.severity,
+            Category::LongParagraph => self.checkers.long_paragraph.severity,
             Category::XmlDocumentWrapper => self.checkers.xml_document_wrapper.severity,
             Category::InvalidSuppression | Category::UnusedSuppression => None,
             Category::CustomPattern(_) => None,

@@ -53,7 +53,7 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 
 **40% of repos had errors or warnings** — dead references to files that genuinely don't exist, duplicate instruction files, dangerous commands, placeholder text, and hardcoded paths. Every finding manually verified against the actual repo.
 
-## 60 Built-in Rules
+## 66 Built-in Rules
 
 | Rule | Severity | What it catches |
 |------|----------|-----------------|
@@ -68,6 +68,8 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 | `circular-reference` | warning | A→B→C→A file reference cycles |
 | `broken-table` | warning | Malformed markdown tables |
 | `duplicate-section` | warning | Repeated section headings in same file |
+| `broken-anchor-link` | warning | In-file `[text](#anchor)` links that don't match any heading |
+| `hardcoded-windows-path` | warning | Backslash paths (`scripts\helper.py`) that break on non-Windows |
 | `unclosed-fence` | warning | Code blocks missing closing ` ``` ` |
 | `stale-reference` | warning | "After March 2025, use the new API" time bombs |
 | `file-size` | info/warn | Files exceeding 400/500 lines |
@@ -81,6 +83,7 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 | `context-window-waste` | info | 3+ consecutive blank lines wasting tokens |
 | `stale-style-rule` | info | Formatter-enforceable rules (indentation, quotes, semicolons) |
 | `ambiguous-scope-reference` | info | Unclear "this file", "the config" references |
+| `generated-attribution` | info | AI-tool attribution lines ("Generated with Claude Code") |
 | `boilerplate-template` | info | Unchanged template content |
 | `outdated-model-reference` | info | References to deprecated AI model names |
 | `missing-essential-sections` | info | No build/test commands for agents to verify work |
@@ -113,6 +116,9 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 | `double-negation` | info | "never don't", "not fail to" — confusing phrasing *(strict)* |
 | `imperative-heading` | info | Headings that are instructions, not topics *(strict)* |
 | `inconsistent-command-prefix` | info | Mixed `$` prefix styles in shell code blocks *(strict)* |
+| `command-without-codeblock` | info | Bare shell commands not in code blocks or backticks *(strict)* |
+| `missing-verification-step` | info | Files with workflow steps but no test/verify command *(strict)* |
+| `long-paragraph` | info | Dense text blocks (8+ consecutive prose lines) *(strict)* |
 | `empty-heading` | info | Headings with no title text (`## `) *(strict)* |
 | `copied-meta-instructions` | warning | AI boilerplate like "You are a helpful assistant" *(strict)* |
 | `xml-document-wrapper` | warning | XML declarations and wrapper tags in markdown *(strict)* |
@@ -122,7 +128,7 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 
 ## Features
 
-- **60 built-in rules** covering security, consistency, content quality, and agent best practices
+- **66 built-in rules** covering security, consistency, content quality, and agent best practices
 <!-- spectralint-disable-next-line vague-directive -->
 - **Vague directive detection** — finds non-deterministic language ("try to", "when possible")
 - **Cross-file analysis** — naming inconsistency and enum drift across multiple files

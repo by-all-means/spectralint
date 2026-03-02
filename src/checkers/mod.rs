@@ -3,9 +3,11 @@ mod agent_guidelines;
 mod ambiguous_scope_reference;
 mod bare_url;
 mod boilerplate_template;
+mod broken_anchor_link;
 mod broken_table;
 mod circular_reference;
 mod click_here_link;
+mod command_without_codeblock;
 mod conflicting_directives;
 mod context_window_waste;
 mod copied_meta_instructions;
@@ -24,14 +26,17 @@ mod empty_heading;
 mod enum_drift;
 mod excessive_nesting;
 mod file_size;
+mod generated_attribution;
 mod generic_instruction;
 mod hardcoded_file_structure;
+mod hardcoded_windows_path;
 mod heading_hierarchy;
 mod imperative_heading;
 mod inconsistent_command_prefix;
 mod instruction_density;
 mod instruction_without_context;
 mod large_code_block;
+mod long_paragraph;
 mod macros;
 mod misordered_steps;
 mod missing_essential_sections;
@@ -39,6 +44,7 @@ mod missing_examples;
 mod missing_role_definition;
 mod missing_standard_file;
 mod missing_verification;
+mod missing_verification_step;
 mod naming_inconsistency;
 mod negative_only_framing;
 mod orphaned_section;
@@ -273,6 +279,11 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
             ),
         ));
     }
+    if config.checkers.broken_anchor_link.enabled {
+        checkers.push(Box::new(broken_anchor_link::BrokenAnchorLinkChecker::new(
+            &config.checkers.broken_anchor_link.scope,
+        )));
+    }
     if config.checkers.broken_table.enabled {
         checkers.push(Box::new(broken_table::BrokenTableChecker::new(
             &config.checkers.broken_table.scope,
@@ -292,6 +303,13 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
         checkers.push(Box::new(
             boilerplate_template::BoilerplateTemplateChecker::new(
                 &config.checkers.boilerplate_template.scope,
+            ),
+        ));
+    }
+    if config.checkers.generated_attribution.enabled {
+        checkers.push(Box::new(
+            generated_attribution::GeneratedAttributionChecker::new(
+                &config.checkers.generated_attribution.scope,
             ),
         ));
     }
@@ -337,6 +355,13 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
         checkers.push(Box::new(stale_style_rule::StaleStyleRuleChecker::new(
             &config.checkers.stale_style_rule.scope,
         )));
+    }
+    if config.checkers.hardcoded_windows_path.enabled {
+        checkers.push(Box::new(
+            hardcoded_windows_path::HardcodedWindowsPathChecker::new(
+                &config.checkers.hardcoded_windows_path.scope,
+            ),
+        ));
     }
     if config.checkers.hardcoded_file_structure.enabled {
         checkers.push(Box::new(
@@ -408,6 +433,25 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
         checkers.push(Box::new(
             copied_meta_instructions::CopiedMetaInstructionsChecker::new(
                 &config.checkers.copied_meta_instructions.scope,
+            ),
+        ));
+    }
+    if config.strict || config.checkers.long_paragraph.enabled {
+        checkers.push(Box::new(long_paragraph::LongParagraphChecker::new(
+            &config.checkers.long_paragraph,
+        )));
+    }
+    if config.strict || config.checkers.command_without_codeblock.enabled {
+        checkers.push(Box::new(
+            command_without_codeblock::CommandWithoutCodeblockChecker::new(
+                &config.checkers.command_without_codeblock.scope,
+            ),
+        ));
+    }
+    if config.strict || config.checkers.missing_verification_step.enabled {
+        checkers.push(Box::new(
+            missing_verification_step::MissingVerificationStepChecker::new(
+                &config.checkers.missing_verification_step.scope,
             ),
         ));
     }

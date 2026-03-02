@@ -140,6 +140,30 @@ pub const AVAILABLE_RULES: &[(&str, &str)] = &[
         "Flags unchanged default template instruction files",
     ),
     (
+        "generated-attribution",
+        "Flags AI-tool attribution lines that waste context tokens",
+    ),
+    (
+        "command-without-codeblock",
+        "Flags bare shell commands not wrapped in code blocks or backticks",
+    ),
+    (
+        "missing-verification-step",
+        "Flags files with workflow steps but no verification or test command",
+    ),
+    (
+        "broken-anchor-link",
+        "Flags in-file anchor links that don't match any heading",
+    ),
+    (
+        "long-paragraph",
+        "Flags dense text blocks that are hard for agents to parse",
+    ),
+    (
+        "hardcoded-windows-path",
+        "Flags backslash file paths that break on non-Windows systems",
+    ),
+    (
         "orphaned-section",
         "Flags headings with no content before the next heading",
     ),
@@ -743,6 +767,104 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              \n\
              Severity: info\n\
              Config: [checkers.boilerplate_template]",
+        ),
+        "broken-anchor-link" => Some(
+            "broken-anchor-link: Flags in-file anchor links that don't match any heading.\n\
+             \n\
+             Links like `[see setup](#setup-guide)` resolve to a heading anchor within\n\
+             the same file. If no heading generates the anchor `setup-guide`, the link\n\
+             is broken — readers and agents following it will land nowhere.\n\
+             \n\
+             Anchor slugs are generated using GitHub-flavored markdown rules: lowercase,\n\
+             spaces become hyphens, punctuation is stripped. The checker converts all\n\
+             headings to slugs and validates every `[text](#anchor)` link against them.\n\
+             \n\
+             Links to external URLs and other files (`guide.md#section`) are ignored.\n\
+             Links inside code blocks and inline code are also excluded.\n\
+             \n\
+             Severity: warning\n\
+             Config: [checkers.broken_anchor_link]",
+        ),
+        "long-paragraph" => Some(
+            "long-paragraph: Flags dense text blocks that are hard for agents to parse.\n\
+             \n\
+             A paragraph of 8+ consecutive prose lines (outside code blocks, lists, and\n\
+             headings) creates a wall of text that agents struggle to extract structured\n\
+             information from. Breaking long paragraphs into shorter ones or using bullet\n\
+             points improves parseability.\n\
+             \n\
+             The threshold is configurable via `max_lines` (default: 8). Blank lines,\n\
+             headings, list items, blockquotes, tables, and code blocks all break\n\
+             paragraph tracking.\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.long_paragraph]\n\
+             Options: max_lines = 8",
+        ),
+        "command-without-codeblock" => Some(
+            "command-without-codeblock: Flags bare shell commands not wrapped in code blocks.\n\
+             \n\
+             When a command like `cargo test --release` or `npm install express` appears as\n\
+             plain text instead of inside a fenced code block (```) or inline backticks (`),\n\
+             it's harder for both humans and agents to identify and copy-paste.\n\
+             \n\
+             This checker detects lines that look like executable commands — starting with a\n\
+             known binary (cargo, npm, git, docker, kubectl, pip, etc.) followed by arguments —\n\
+             and are not inside code blocks or backticks. Prose sentences that mention commands\n\
+             in passing are excluded via heuristics (sentence structure, word count, etc.).\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.command_without_codeblock]",
+        ),
+        "missing-verification-step" => Some(
+            "missing-verification-step: Flags files with workflow steps but no verification.\n\
+             \n\
+             Instruction files that describe build, deploy, or setup workflows should include\n\
+             at least one verification step — a test command, expected output, or success\n\
+             criteria. Without verification, agents complete workflows without confirming\n\
+             they succeeded.\n\
+             \n\
+             This is a file-level check (complementing the section-level missing-verification).\n\
+             It fires when a file has 5+ workflow verbs (run, build, deploy, install, etc.)\n\
+             but zero verification signals anywhere in the file — no test commands in code\n\
+             blocks, no verify/check/ensure keywords, no \"should see\" phrases.\n\
+             \n\
+             Severity: info (strict-only)\n\
+             Config: [checkers.missing_verification_step]",
+        ),
+        "generated-attribution" => Some(
+            "generated-attribution: Flags AI-tool attribution lines that waste context tokens.\n\
+             \n\
+             Lines like \"Generated with Claude Code\", \"Built with Cursor\", or\n\
+             \"Co-Authored-By: Claude\" are tool-attribution boilerplate. They commonly\n\
+             appear when AI-generated content is pasted into instruction files, or when\n\
+             commit-message footers leak into documentation.\n\
+             \n\
+             These lines provide zero value to agents parsing the file — they waste context\n\
+             tokens and add noise. Remove them.\n\
+             \n\
+             Detected patterns include: \"Generated/Created/Built/Made/Written with/by/using\"\n\
+             followed by known AI tools (Claude, Copilot, ChatGPT, GPT-4, Cursor, Windsurf,\n\
+             Aider, Cody), plus \"Co-Authored-By\" lines referencing AI tools.\n\
+             \n\
+             Lines inside code blocks and inline code are excluded.\n\
+             \n\
+             Severity: info\n\
+             Config: [checkers.generated_attribution]",
+        ),
+        "hardcoded-windows-path" => Some(
+            "hardcoded-windows-path: Flags backslash file paths that break on non-Windows systems.\n\
+             \n\
+             Paths like scripts\\helper.py or src\\utils\\config.py use Windows-style backslash\n\
+             separators that fail on macOS and Linux. Agent instructions should use forward slashes\n\
+             for cross-platform compatibility.\n\
+             \n\
+             The checker excludes: absolute Windows paths (C:\\...) which are caught by\n\
+             absolute-path, regex escape sequences (\\d, \\n, \\s, etc.), content inside\n\
+             inline code or code blocks, and table rows.\n\
+             \n\
+             Severity: warning\n\
+             Config: [checkers.hardcoded_windows_path]",
         ),
         "orphaned-section" => Some(
             "orphaned-section: Flags headings with no content before the next heading.\n\
