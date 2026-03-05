@@ -118,6 +118,11 @@ fn main() -> Result<()> {
                 }
             }
         }
+        #[cfg(feature = "lsp")]
+        Commands::Lsp => {
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(spectralint::lsp::run_server());
+        }
     }
 
     Ok(())

@@ -68,6 +68,9 @@ pub enum Commands {
         /// Checker name (e.g., dead-reference, naming-inconsistency, agent-guidelines)
         rule: Option<String>,
     },
+    /// Start the Language Server Protocol server for editor integration
+    #[cfg(feature = "lsp")]
+    Lsp,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum, Deserialize, Default)]

@@ -5,7 +5,7 @@ use std::path::Path;
 use crate::cli::OutputFormat;
 use crate::types::Severity;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub format: OutputFormat,
@@ -17,7 +17,7 @@ pub struct Config {
     pub checkers: CheckersConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct CheckersConfig {
     pub dead_reference: ScopedCheckerConfig,
@@ -162,7 +162,7 @@ impl Default for CheckersConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct EmojiDensityConfig {
     pub enabled: bool,
@@ -180,7 +180,7 @@ impl Default for EmojiDensityConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct MissingEssentialSectionsConfig {
     pub enabled: bool,
@@ -200,7 +200,7 @@ impl Default for MissingEssentialSectionsConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct MissingVerificationConfig {
     pub enabled: bool,
@@ -220,7 +220,7 @@ impl Default for MissingVerificationConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct NegativeOnlyFramingConfig {
     pub enabled: bool,
@@ -242,7 +242,7 @@ impl Default for NegativeOnlyFramingConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct RedundantDirectiveConfig {
     pub enabled: bool,
@@ -264,7 +264,7 @@ impl Default for RedundantDirectiveConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct InstructionDensityConfig {
     pub enabled: bool,
@@ -284,7 +284,7 @@ impl Default for InstructionDensityConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct LargeCodeBlockConfig {
     pub enabled: bool,
@@ -304,7 +304,7 @@ impl Default for LargeCodeBlockConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct SectionLengthImbalanceConfig {
     pub enabled: bool,
@@ -326,7 +326,7 @@ impl Default for SectionLengthImbalanceConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct EmphasisOveruseConfig {
     pub enabled: bool,
@@ -346,7 +346,7 @@ impl Default for EmphasisOveruseConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct LongParagraphConfig {
     pub enabled: bool,
@@ -366,7 +366,7 @@ impl Default for LongParagraphConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct ExcessiveNestingConfig {
     pub enabled: bool,
@@ -386,7 +386,7 @@ impl Default for ExcessiveNestingConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct FileSizeConfig {
     pub enabled: bool,
@@ -406,7 +406,7 @@ impl Default for FileSizeConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct VagueDirectiveConfig {
     pub enabled: bool,
@@ -416,7 +416,7 @@ pub struct VagueDirectiveConfig {
     pub severity: Option<Severity>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct ScopedCheckerConfig {
     pub enabled: bool,
