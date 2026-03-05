@@ -36,21 +36,17 @@ pub(crate) fn non_code_lines_masked<'a>(
         .filter_map(|(i, (line, &in_code))| (!in_code).then_some((i, line.as_str())))
 }
 
-/// Filter lines by their code-block context (legacy, computes fence state on the fly).
-/// Used only during parsing before the mask is built.
-fn filter_by_fence(lines: &[String], want_code: bool) -> impl Iterator<Item = (usize, &str)> {
+/// Iterate non-code lines, computing fence state on the fly.
+/// Used during parsing before the pre-computed mask is available.
+fn non_code_lines(lines: &[String]) -> impl Iterator<Item = (usize, &str)> {
     let mut in_code_block = false;
     lines.iter().enumerate().filter_map(move |(i, line)| {
         if line.trim_start().starts_with("```") {
             in_code_block = !in_code_block;
             return None;
         }
-        (in_code_block == want_code).then_some((i, line.as_str()))
+        (!in_code_block).then_some((i, line.as_str()))
     })
-}
-
-pub(crate) fn non_code_lines(lines: &[String]) -> impl Iterator<Item = (usize, &str)> {
-    filter_by_fence(lines, false)
 }
 
 /// Returns true if the line should be scanned for directives.
@@ -81,11 +77,13 @@ static SUPPRESS_COMMENT: LazyLock<Regex> = LazyLock::new(|| {
 /// not directives to the agent. Skip vague-directive detection on them.
 pub(crate) static NON_DIRECTIVE_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
-        r"(?i)\b(?:",
-        r"can\s+be",                          // capability: "Can be helpful"
-        r"|may\s+be",                         // possibility: "May be useful"
-        r"|we\s+(?:need|should|could|might)", // first person: "we need to consider"
-        r")\b",
+        r"(?i)(?:",
+        r"\bcan\s+be\b",                          // capability: "Can be helpful"
+        r"|\bmay\s+be\b",                         // possibility: "May be useful"
+        r"|\bwe\s+(?:need|should|could|might)\b", // first person: "we need to consider"
+        r"|^You\s+are\b",                         // identity: "You are X who..."
+        r"|^You're\b",                            // identity: "You're X who..."
+        r")",
     ))
     .unwrap()
 });
@@ -98,6 +96,10 @@ static VAGUE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
         r"|if appropriate",
         r"|be helpful",
         r"|as appropriate",
+        r"|use best practices",
+        r"|handle errors? properly",
+        r"|handle errors? appropriately",
+        r"|ensure quality",
         r")\b",
     ))
     .unwrap()
@@ -354,6 +356,11 @@ fn extract_file_refs(lines: &[String], source_path: &Path, refs: &mut Vec<FileRe
 fn extract_directives(lines: &[String], directives: &mut Vec<Directive>) {
     for (i, line) in non_code_lines(lines) {
         if !is_directive_line(line) {
+            continue;
+        }
+
+        // Headings are structural labels, not directives.
+        if line.starts_with('#') {
             continue;
         }
 

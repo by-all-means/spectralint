@@ -81,6 +81,18 @@ impl Checker for DangerousCommandChecker {
                             continue;
                         }
 
+                        // Skip SQL keywords inside string literals (test payloads like SQL injection tests)
+                        if label.contains("DROP") || label.contains("TRUNCATE") {
+                            if let Some(m) = pat.find(line) {
+                                let before = &line[..m.start()];
+                                let in_double = before.matches('"').count() % 2 == 1;
+                                let in_single = before.matches('\'').count() % 2 == 1;
+                                if in_double || in_single {
+                                    continue;
+                                }
+                            }
+                        }
+
                         // Special case: --force-with-lease is the safe variant
                         if *label == "git push --force" && line.contains(FORCE_WITH_LEASE) {
                             continue;

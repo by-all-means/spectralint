@@ -114,23 +114,10 @@ impl Checker for DeadReferenceChecker {
                 }
 
                 // Resolve relative to source dir first, then project root.
-                // Reject paths that escape the project root (path traversal).
                 let source_dir = file_ref.source_file.parent().unwrap_or(&ctx.project_root);
                 let resolved_local = source_dir.join(&file_ref.path);
                 let resolved_root = ctx.project_root.join(&file_ref.path);
-                if (resolved_local.exists()
-                    && is_within_project(
-                        &resolved_local,
-                        ctx.canonical_root.as_deref(),
-                        &ctx.project_root,
-                    ))
-                    || (resolved_root.exists()
-                        && is_within_project(
-                            &resolved_root,
-                            ctx.canonical_root.as_deref(),
-                            &ctx.project_root,
-                        ))
-                {
+                if resolved_local.exists() || resolved_root.exists() {
                     continue;
                 }
 
@@ -1376,7 +1363,7 @@ mod tests {
     /// with the given `raw_line` as the sole line content. The referenced file
     /// does NOT exist on disk, so only line-level skip heuristics prevent a
     /// diagnostic.
-    fn bare_ref_ctx(root: &std::path::Path, ref_path: &str, raw_line: &str) -> CheckerContext {
+    fn bare_ref_ctx(root: &Path, ref_path: &str, raw_line: &str) -> CheckerContext {
         let parsed = ParsedFile {
             path: root.join("CLAUDE.md"),
             sections: vec![],

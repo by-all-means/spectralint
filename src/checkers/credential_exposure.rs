@@ -48,7 +48,7 @@ static TEST_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
 /// Credential values that are obviously test/dummy data.
 static TEST_CREDENTIAL_VALUE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r#"(?i)^["']?(?:test|example|sample|dummy|fake|mock|password|secret|changeme|abc|123)"#,
+        r#"(?i)^["']?(?:test|example|sample|dummy|fake|mock|password|secret|secure|changeme|abc|123)"#,
     )
     .unwrap()
 });

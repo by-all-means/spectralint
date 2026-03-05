@@ -14,10 +14,14 @@ static STRICT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
         r"(?i)\b(?:",
         r"when possible",
+        r"|if possible",
         r"|when needed",
         r"|as needed",
         r"|when necessary",
         r"|consider",
+        r"|ideally",
+        r"|should be fine",
+        r"|as much as possible",
         r")\b",
     ))
     .unwrap()
@@ -77,6 +81,10 @@ impl Checker for VagueDirectiveChecker {
             if has_additional {
                 for (i, line) in file.non_code_lines() {
                     if !is_directive_line(line) {
+                        continue;
+                    }
+
+                    if line.starts_with('#') {
                         continue;
                     }
 
@@ -204,7 +212,6 @@ mod tests {
             messages.iter().any(|m| m.contains("probably")),
             "Expected 'probably' in diagnostics"
         );
-        // Verify severity and category
         for d in &result.diagnostics {
             assert_eq!(d.severity, Severity::Info);
             assert_eq!(d.category, Category::VagueDirective);

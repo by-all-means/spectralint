@@ -16,27 +16,25 @@ static ANCHOR_LINK: LazyLock<Regex> =
 
 /// Convert a heading title to a GitHub-flavored markdown anchor slug.
 ///
-/// Rules: lowercase, strip non-alphanumeric except hyphens and spaces,
-/// replace spaces with hyphens, collapse consecutive hyphens.
+/// Mirrors GitHub's `github-slugger` algorithm: lowercase, keep only
+/// alphanumerics/spaces/hyphens, replace spaces with hyphens.
+/// Consecutive hyphens are NOT collapsed — GitHub preserves them.
+/// e.g. `Phase 0 — Discovery` → `phase-0--discovery` (em-dash stripped,
+/// surrounding spaces each become a hyphen).
 fn heading_to_anchor(title: &str) -> String {
     let mut slug = String::with_capacity(title.len());
-    let mut prev_hyphen = true; // treat start as hyphen to skip leading hyphens
     for c in title.chars() {
         if c.is_alphanumeric() {
             for lc in c.to_lowercase() {
                 slug.push(lc);
             }
-            prev_hyphen = false;
-        } else if (c == ' ' || c == '-' || c == '_') && !prev_hyphen {
+        } else if c == ' ' || c == '-' {
             slug.push('-');
-            prev_hyphen = true;
         }
+        // All other characters (em-dash, punctuation, etc.) are silently dropped
     }
-    // Trim trailing hyphen
-    if slug.ends_with('-') {
-        slug.pop();
-    }
-    slug
+    // Trim leading/trailing hyphens
+    slug.trim_matches('-').to_string()
 }
 
 pub(crate) struct BrokenAnchorLinkChecker {
@@ -295,11 +293,24 @@ mod tests {
 
     #[test]
     fn test_heading_to_anchor_special_chars() {
+        // GitHub doesn't collapse consecutive hyphens — `&` is stripped,
+        // leaving two spaces that each become a hyphen.
         assert_eq!(
             heading_to_anchor("Build & Test Commands"),
-            "build-test-commands"
+            "build--test-commands"
         );
         assert_eq!(heading_to_anchor("What's New?"), "whats-new");
+    }
+
+    #[test]
+    fn test_heading_to_anchor_em_dash() {
+        // Em-dash (U+2014) is stripped; surrounding spaces each become hyphens.
+        assert_eq!(
+            heading_to_anchor("Phase 0 — Intelligence & Discovery"),
+            "phase-0--intelligence--discovery"
+        );
+        // En-dash (U+2013) same behavior.
+        assert_eq!(heading_to_anchor("Pages 1–10"), "pages-110");
     }
 
     #[test]

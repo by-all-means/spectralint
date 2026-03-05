@@ -34,7 +34,9 @@ impl Checker for MissingStandardFileChecker {
             );
         }
 
-        if has_claude_md && !has_settings {
+        let has_claude_dir = ctx.project_root.join(".claude").is_dir();
+
+        if has_claude_md && has_claude_dir && !has_settings {
             emit!(
                 result,
                 ctx.project_root.join(".claude/settings.json"),
@@ -87,9 +89,29 @@ mod tests {
     }
 
     #[test]
-    fn test_has_claude_md_no_settings() {
+    fn test_has_claude_md_no_claude_dir_no_diagnostic() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
+        let files = vec![make_file(root, "CLAUDE.md")];
+        let ctx = CheckerContext {
+            files,
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+        let result = MissingStandardFileChecker.check(&ctx);
+        assert!(
+            result.diagnostics.is_empty(),
+            "No .claude/ dir means no suggestion for settings.json"
+        );
+    }
+
+    #[test]
+    fn test_has_claude_dir_but_no_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".claude")).unwrap();
         let files = vec![make_file(root, "CLAUDE.md")];
         let ctx = CheckerContext {
             files,
@@ -127,7 +149,7 @@ mod tests {
     fn test_case_insensitive_claude_md() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        // lowercase claude.md should still count
+        // lowercase claude.md should still count as CLAUDE.md
         let files = vec![make_file(root, "claude.md")];
         let ctx = CheckerContext {
             files,
@@ -137,7 +159,6 @@ mod tests {
             historical_indices: HashSet::new(),
         };
         let result = MissingStandardFileChecker.check(&ctx);
-        // Should find "missing settings" but NOT "missing CLAUDE.md"
         assert!(
             !result
                 .diagnostics

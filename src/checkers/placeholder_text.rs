@@ -93,6 +93,10 @@ impl Checker for PlaceholderTextChecker {
             }
 
             for (i, line) in file.non_code_lines() {
+                // Skip headings — "Todo" / "TBD" in a heading is a section title, not a placeholder.
+                if line.starts_with('#') {
+                    continue;
+                }
                 let prev_line = i
                     .checked_sub(1)
                     .and_then(|idx| file.raw_lines.get(idx))

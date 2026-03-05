@@ -5,7 +5,7 @@ use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::types::{Category, CheckResult, Severity};
 
-use super::utils::ScopeFilter;
+use super::utils::{inside_inline_code, ScopeFilter};
 use super::Checker;
 
 pub(crate) struct AbsolutePathChecker {
@@ -74,15 +74,23 @@ fn all_tildes_in_urls(line: &str) -> bool {
 /// if found, or `None` if the line is clean.
 fn detect_personal_path(line: &str) -> Option<String> {
     if let Some(m) = UNIX_PERSONAL.find(line) {
-        if !is_system_path(line, m.start()) {
+        if !is_system_path(line, m.start()) && !inside_inline_code(line, m.start()) {
             return Some(format!("Hardcoded personal path: {}", m.as_str()));
         }
     }
     if let Some(m) = WINDOWS_PERSONAL.find(line) {
-        return Some(format!("Hardcoded personal path: {}", m.as_str()));
+        if !inside_inline_code(line, m.start()) {
+            return Some(format!("Hardcoded personal path: {}", m.as_str()));
+        }
     }
     if line.contains("~/") && !all_tildes_in_urls(line) {
-        return Some("Tilde home path detected".to_string());
+        // Check if all tilde occurrences are inside inline code
+        let all_in_code = line
+            .match_indices("~/")
+            .all(|(i, _)| inside_inline_code(line, i));
+        if !all_in_code {
+            return Some("Tilde home path detected".to_string());
+        }
     }
     None
 }
@@ -96,7 +104,7 @@ impl Checker for AbsolutePathChecker {
                 continue;
             }
 
-            for (idx, line) in file.raw_lines.iter().enumerate() {
+            for (idx, line) in file.non_code_lines() {
                 if let Some(msg) = detect_personal_path(line) {
                     emit!(
                         result,
@@ -176,9 +184,12 @@ mod tests {
     }
 
     #[test]
-    fn test_path_in_code_block_still_flags() {
+    fn test_path_in_code_block_skipped() {
         let result = run_check(&["```bash", "cd /home/john/project", "```"]);
-        assert_eq!(result.diagnostics.len(), 1);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Paths inside code blocks should not be flagged"
+        );
     }
 
     #[test]
