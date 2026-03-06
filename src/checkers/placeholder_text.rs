@@ -5,7 +5,7 @@ use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::types::{Category, CheckResult, Severity};
 
-use super::utils::ScopeFilter;
+use super::utils::{inside_inline_code, ScopeFilter};
 use super::Checker;
 
 pub(crate) struct PlaceholderTextChecker {
@@ -22,13 +22,13 @@ impl PlaceholderTextChecker {
 
 static PLACEHOLDER_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
-        r"(?i)(?:",
-        r"\bTODO\b(?:\s*:)?",
-        r"|\bTBD\b(?:\s*:)?",
-        r"|\bFIXME\b(?:\s*:)?",
-        r"|\[insert .+?\]",
-        r"|\betc\.?(?:\s|$)",
-        r"|\band so on\b",
+        r"(?:",
+        r"\bTODO\b(?:\s*:)?", // case-sensitive: only ALL CAPS
+        r"|(?i:\bTBD\b)(?:\s*:)?",
+        r"|(?i:\bFIXME\b)(?:\s*:)?",
+        r"|(?i:\[insert .+?\])",
+        r"|(?i:\betc\.?)(?:\s|$)",
+        r"|(?i:\band so on\b)",
         r"|\.{3,}\s*$",
         r")",
     ))
@@ -56,6 +56,20 @@ fn is_inside_file_path(line: &str, match_start: usize, match_end: usize) -> bool
     let token =
         line[token_start..token_end].trim_matches(|c: char| c == '`' || c == '"' || c == '\'');
     token.contains('/') || token.contains('\\')
+}
+
+/// Returns true if the match is immediately followed by a file extension (e.g. `TODO.md`).
+fn is_file_reference(line: &str, match_end: usize) -> bool {
+    static FILE_EXT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\.[a-zA-Z]{1,5}\b").unwrap());
+    FILE_EXT.is_match(&line[match_end..])
+}
+
+/// Returns true if TODO/TBD/FIXME is used as a noun modifier (e.g. "TODO items", "TODO list").
+fn is_noun_usage(line: &str, match_end: usize) -> bool {
+    static NOUN_AFTER: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?i)^\s+(items?|list|entries|cards?|tracker|progress|count|app)\b").unwrap()
+    });
+    NOUN_AFTER.is_match(&line[match_end..])
 }
 
 /// Returns true if this match is an "etc." that follows a proper enumeration.
@@ -101,21 +115,26 @@ impl Checker for PlaceholderTextChecker {
                     .checked_sub(1)
                     .and_then(|idx| file.raw_lines.get(idx))
                     .map(|s| s.as_str());
-                if let Some(m) = PLACEHOLDER_PATTERN.find(line) {
-                    if !is_etc_after_enumeration(line, m.as_str(), prev_line)
-                        && !is_inside_file_path(line, m.start(), m.end())
+                for m in PLACEHOLDER_PATTERN.find_iter(line) {
+                    if is_etc_after_enumeration(line, m.as_str(), prev_line)
+                        || is_inside_file_path(line, m.start(), m.end())
+                        || inside_inline_code(line, m.start())
+                        || is_file_reference(line, m.end())
+                        || is_noun_usage(line, m.end())
                     {
-                        emit!(
-                            result,
-                            file.path,
-                            i + 1,
-                            Severity::Warning,
-                            Category::PlaceholderText,
-                            suggest: "Replace placeholder with actual content",
-                            "Placeholder text found: \"{}\"",
-                            m.as_str().trim()
-                        );
+                        continue;
                     }
+                    emit!(
+                        result,
+                        file.path,
+                        i + 1,
+                        Severity::Warning,
+                        Category::PlaceholderText,
+                        suggest: "Replace placeholder with actual content",
+                        "Placeholder text found: \"{}\"",
+                        m.as_str().trim()
+                    );
+                    break; // One diagnostic per line
                 }
             }
         }
@@ -293,6 +312,78 @@ mod tests {
     fn test_todo_standalone_still_detected() {
         // "TODO" not inside a path — should still flag
         let result = run_check(&["TODO: update tasks/todo.md"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_lowercase_todo_not_flagged() {
+        let result = run_check(&["a simple todo app might use 5-10 agents"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Lowercase 'todo' used as a noun should not flag"
+        );
+    }
+
+    #[test]
+    fn test_mixed_case_todo_not_flagged() {
+        let result = run_check(&["Todo errors cause graceful bailouts in production"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Mixed-case 'Todo' used as a noun should not flag"
+        );
+    }
+
+    #[test]
+    fn test_todo_as_feature_name_not_flagged() {
+        let result = run_check(&["Shows context health, tool activity, and todo progress"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Lowercase 'todo' as a feature name should not flag"
+        );
+    }
+
+    #[test]
+    fn test_todo_file_reference_not_flagged() {
+        let result = run_check(&["TODO.md (future goals)"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "TODO.md file reference should not flag"
+        );
+    }
+
+    #[test]
+    fn test_todo_in_inline_code_not_flagged() {
+        let result = run_check(&["Use `error.TODO-*.js` for test fixtures"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "TODO inside inline code should not flag"
+        );
+    }
+
+    #[test]
+    fn test_spanish_todo_not_flagged() {
+        let result = run_check(&["Como todo plugin de WordPress, el flujo comienza con la carga"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Spanish 'todo' (meaning 'all') should not flag"
+        );
+    }
+
+    #[test]
+    fn test_allcaps_todo_still_flagged() {
+        let result = run_check(&["TODO implement this feature"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_allcaps_todo_with_colon_still_flagged() {
+        let result = run_check(&["TODO: add error handling here"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_real_todo_after_inline_code_still_flagged() {
+        let result = run_check(&["See `some.code()` — TODO: fix this"]);
         assert_eq!(result.diagnostics.len(), 1);
     }
 

@@ -17,6 +17,19 @@ impl OrphanedSectionChecker {
     }
 }
 
+/// Returns true if the section title looks like a non-heading line that was
+/// mis-parsed as a heading (MediaWiki list items, separators, slash commands).
+fn is_likely_not_heading(title: &str) -> bool {
+    // MediaWiki bold markup used as numbered list items: # '''Bold text'''
+    title.starts_with("'''")
+    // Decorative separators: # === END === or # ---
+    || title.trim_matches(|c: char| c == '=' || c == '-' || c == '*' || c == ' ').is_empty()
+    // Wrapped separators: # === END USER INSTRUCTIONS ===
+    || (title.starts_with("===") && title.ends_with("==="))
+    // Slash commands or paths mistaken for headings: # /superpowers:brainstorm
+    || title.starts_with('/')
+}
+
 impl Checker for OrphanedSectionChecker {
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
@@ -34,6 +47,22 @@ impl Checker for OrphanedSectionChecker {
             for i in 0..sections.len() - 1 {
                 let current = &sections[i];
                 let next = &sections[i + 1];
+
+                // Skip document title (first heading at line 1)
+                if current.line == 1 && current.level == 1 {
+                    continue;
+                }
+
+                // Skip lines that look like they were mis-parsed as headings
+                if is_likely_not_heading(&current.title) {
+                    continue;
+                }
+
+                // Skip if the next "heading" isn't a real heading either —
+                // can't be orphaned relative to a mis-parsed line
+                if is_likely_not_heading(&next.title) {
+                    continue;
+                }
 
                 // Skip if next is a child section (lower level = deeper nesting)
                 if next.level > current.level {

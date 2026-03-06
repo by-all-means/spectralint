@@ -84,11 +84,12 @@ fn detect_personal_path(line: &str) -> Option<String> {
         }
     }
     if line.contains("~/") && !all_tildes_in_urls(line) {
-        // Check if all tilde occurrences are inside inline code
-        let all_in_code = line
+        // Check if all tilde occurrences are inside inline code or reference
+        // well-known hidden config dirs (~/.config/, ~/.claude/, etc.)
+        let all_benign = line
             .match_indices("~/")
-            .all(|(i, _)| inside_inline_code(line, i));
-        if !all_in_code {
+            .all(|(i, _)| inside_inline_code(line, i) || line[i..].starts_with("~/."));
+        if !all_benign {
             return Some("Tilde home path detected".to_string());
         }
     }
@@ -227,6 +228,25 @@ mod tests {
         // /home/ alone without a username following should not flag
         let result = run_check(&["Look in /home/ for users"]);
         assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_tilde_hidden_config_dir_no_flag() {
+        let result = run_check(&["Config stored in ~/.crystal/config.json"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Tilde paths to hidden config dirs (~/.something) should not flag"
+        );
+    }
+
+    #[test]
+    fn test_tilde_visible_dir_still_flags() {
+        let result = run_check(&["Save to ~/Documents/project"]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Tilde paths to visible dirs (~/Documents) should still flag"
+        );
     }
 
     #[test]

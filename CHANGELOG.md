@@ -2,6 +2,39 @@
 
 All notable changes to spectralint will be documented in this file.
 
+## 0.4.0 (2026-03-05)
+
+### New Rules (6 added, 68 total)
+
+- **generated-attribution** — flags AI-tool attribution lines wasting context tokens
+- **broken-anchor-link** — validates in-file `#anchor` links against heading slugs
+- **hardcoded-windows-path** — flags backslash paths that break on non-Windows
+- **command-without-codeblock** — flags bare shell commands not in code blocks *(strict-only)*
+- **missing-verification-step** — flags files with workflow steps but no verification *(strict-only)*
+- **long-paragraph** — flags dense text blocks (8+ consecutive prose lines) *(strict-only)*
+
+### Editor Integration
+
+- **LSP server** — real-time diagnostics via Language Server Protocol (`spectralint lsp`)
+- **VS Code extension** — minimal client that launches the LSP server automatically
+- LSP is now a **default feature** — included in all release binaries
+
+### Correctness
+
+- Hardened 8 checkers to reduce false positives (absolute-path, broken-anchor-link, credential-exposure, dangerous-command, dead-reference, missing-standard-file, placeholder-text, vague-directive)
+- **placeholder-text**: case-sensitive TODO (only ALL CAPS), skip inline code, file references (`TODO.md`), and noun usage (`TODO items`)
+- **absolute-path**: skip tilde paths to hidden config dirs (`~/.config/`, `~/.claude/`)
+- **dangerous-command**: skip SQL with inline comments (educational examples)
+- **placeholder-url**: skip template URLs on well-known real domains (github.com, etc.)
+- **orphaned-section**: skip document titles, MediaWiki list items, separators, slash commands, and mis-parsed comment lines
+- Parser improvements for more accurate non-code-block line extraction
+
+### Benchmark
+
+100 repos scanned — 139 findings (down from 531), 42% of repos affected. 17% had errors or warnings. 74% fewer findings than v0.3.0 through aggressive false positive reduction.
+
+---
+
 ## 0.3.0 (2026-03-01)
 
 ### New Rules (12 added, 60 total)

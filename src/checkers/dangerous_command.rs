@@ -81,6 +81,13 @@ impl Checker for DangerousCommandChecker {
                             continue;
                         }
 
+                        // Skip SQL statements with inline comments — likely educational/illustrative
+                        if (label.contains("DROP") || label.contains("TRUNCATE"))
+                            && line.contains("--")
+                        {
+                            continue;
+                        }
+
                         // Skip SQL keywords inside string literals (test payloads like SQL injection tests)
                         if label.contains("DROP") || label.contains("TRUNCATE") {
                             if let Some(m) = pat.find(line) {
@@ -218,6 +225,19 @@ mod tests {
         assert!(
             result.diagnostics.is_empty(),
             "DROP DATABASE IF EXISTS is idempotent and should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_drop_table_with_inline_comment_skipped() {
+        let result = run_check(&[
+            "```sql",
+            "drop table events_2023_01;  -- Instant cleanup",
+            "```",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "DROP TABLE with inline comment is educational and should not flag"
         );
     }
 

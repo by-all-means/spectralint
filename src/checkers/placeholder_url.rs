@@ -37,6 +37,32 @@ static PLACEHOLDER_URLS: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
+const REAL_DOMAINS: &[&str] = &[
+    "github.com/",
+    "gitlab.com/",
+    "bitbucket.org/",
+    "npmjs.com/",
+    "pypi.org/",
+    "crates.io/",
+    "hub.docker.com/",
+];
+
+/// Returns true if this is a template URL on a well-known real domain
+/// (e.g., `https://github.com/org/repo/releases/{VERSION}/...`).
+fn is_real_domain_template(url: &str) -> bool {
+    // Only filter template URLs (those containing {placeholders})
+    if !url.contains('{') {
+        return false;
+    }
+    let after_scheme = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url);
+    REAL_DOMAINS
+        .iter()
+        .any(|domain| after_scheme.starts_with(domain))
+}
+
 impl Checker for PlaceholderUrlChecker {
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
@@ -52,6 +78,10 @@ impl Checker for PlaceholderUrlChecker {
                 }
 
                 if let Some(m) = PLACEHOLDER_URLS.find(line) {
+                    // Skip template URLs on well-known real domains
+                    if is_real_domain_template(m.as_str()) {
+                        continue;
+                    }
                     emit!(
                         result,
                         file.path,
@@ -145,6 +175,17 @@ mod tests {
     fn test_your_domain_flags() {
         let result = run_check(&["Deploy to https://your-domain.com"]);
         assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_template_url_on_real_domain_no_flag() {
+        let result = run_check(&[
+            "Download from https://github.com/org/repo/releases/download/{VERSION}/app.zip",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Template URLs on well-known real domains should not flag"
+        );
     }
 
     #[test]

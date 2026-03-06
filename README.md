@@ -34,26 +34,26 @@ We cloned the top 100 public GitHub repos containing `CLAUDE.md` (sorted by star
 Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_count`, top 100 results, February 2026. Full shallow clones, all instruction files scanned (CLAUDE.md, AGENTS.md, .claude/\*\*, .github/copilot-instructions.md). See [`benchmarks/`](benchmarks/) for the repo list and reproduction script.
 
 ```
-100 repos scanned → 531 findings (56% of repos)
+100 repos scanned → 139 findings (42% of repos)
 
-  absolute-path                139   warning   (hardcoded /Users/... paths)
-  hardcoded-file-structure     107   info      (source paths that don't exist on disk)
-  large-code-block              73   info      (inline code >40 lines)
-  dead-reference                45   error     (files that genuinely don't exist)
-  orphaned-section              25   info      (sections with no actionable content)
-  file-size                     21   info/warn (files exceeding 400/500 lines)
-  duplicate-instruction-file    18   warning   (near-duplicate files)
-  placeholder-text              17   warning   ([TODO], [TBD] left in)
-  placeholder-url               12   info      (example.com/localhost URLs left in)
-  instruction-without-context   12   info      (directives with no code examples)
-  vague-directive               12   info      ("try to", "when possible")
-  stale-style-rule               7   info      (formatter-enforceable rules)
-  dangerous-command              6   warning   (rm -rf, DROP TABLE in code blocks)
+  hardcoded-file-structure      25   info      (source paths that don't exist on disk)
+  broken-anchor-link            17   warning   (in-file #anchor links with no matching heading)
+  large-code-block              16   info      (inline code >40 lines)
+  duplicate-instruction-file    15   warning   (near-duplicate files)
+  file-size                     14   info/warn (files exceeding 400/500 lines)
+  dead-reference                13   error     (files that genuinely don't exist)
+  placeholder-url                9   info      (example.com/localhost URLs left in)
+  vague-directive                7   info      ("try to", "when possible")
+  duplicate-section              7   warning   (repeated section headings)
+  stale-style-rule               3   info      (formatter-enforceable rules)
+  context-window-waste           3   info      (decorative elements wasting tokens)
+  generic-instruction            3   info      ("follow best practices")
+  missing-essential-sections     2   info      (no build/test commands)
 ```
 
-**40% of repos had errors or warnings** — dead references to files that genuinely don't exist, duplicate instruction files, dangerous commands, placeholder text, and hardcoded paths. Every finding manually verified against the actual repo.
+**17% of repos had errors or warnings** — dead references to files that genuinely don't exist, duplicate instruction files, and broken anchor links. 74% fewer findings than v0.3.0 through false positive reduction.
 
-## 66 Built-in Rules
+## 68 Built-in Rules
 
 | Rule | Severity | What it catches |
 |------|----------|-----------------|
@@ -128,7 +128,7 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 
 ## Features
 
-- **66 built-in rules** covering security, consistency, content quality, and agent best practices
+- **68 built-in rules** covering security, consistency, content quality, and agent best practices
 <!-- spectralint-disable-next-line vague-directive -->
 - **Vague directive detection** — finds non-deterministic language ("try to", "when possible")
 - **Cross-file analysis** — naming inconsistency and enum drift across multiple files
@@ -335,6 +335,31 @@ Suppression comments are validated automatically:
 - **`invalid-suppression`** — warns if you reference a rule name that doesn't exist (catches typos)
 - **`unused-suppression`** — flags suppress comments that didn't actually suppress any diagnostic
 
+## Editor Integration (LSP)
+
+spectralint includes a built-in Language Server Protocol server for real-time diagnostics in your editor.
+
+### VS Code
+
+A minimal VS Code extension is included in `editors/vscode/`. To install:
+
+```sh
+cd editors/vscode
+npm install
+npm run compile
+# Then open VS Code and run "Developer: Install Extension from Location..."
+```
+
+### Other Editors
+
+Any editor with LSP support can use the spectralint language server:
+
+```sh
+spectralint lsp
+```
+
+The server communicates over stdin/stdout and provides diagnostics on file open and save.
+
 ## CI Integration
 
 ### GitHub Actions
@@ -354,7 +379,7 @@ Add to your workflow:
 
 ## Strict Mode
 
-Enable 29 additional opinionated checkers (enum-drift, agent-guidelines, heading-hierarchy, emoji-density, missing-verification, negative-only-framing, cross-file-contradiction, missing-role-definition, redundant-directive, instruction-density, missing-examples, unbounded-scope, section-length-imbalance, untagged-code-block, emphasis-overuse, excessive-nesting, unversioned-stack-reference, missing-standard-file, bare-url, repeated-word, undocumented-env-var, empty-code-block, click-here-link, double-negation, imperative-heading, inconsistent-command-prefix, empty-heading, copied-meta-instructions, xml-document-wrapper):
+Enable 32 additional opinionated checkers (enum-drift, agent-guidelines, heading-hierarchy, emoji-density, missing-verification, negative-only-framing, cross-file-contradiction, missing-role-definition, redundant-directive, instruction-density, missing-examples, unbounded-scope, section-length-imbalance, untagged-code-block, emphasis-overuse, excessive-nesting, unversioned-stack-reference, missing-standard-file, bare-url, repeated-word, undocumented-env-var, empty-code-block, click-here-link, double-negation, imperative-heading, inconsistent-command-prefix, command-without-codeblock, missing-verification-step, long-paragraph, empty-heading, copied-meta-instructions, xml-document-wrapper):
 
 ```sh
 # Via CLI flag
