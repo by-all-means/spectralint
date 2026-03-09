@@ -5,7 +5,7 @@ use crate::config::MissingVerificationConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::types::ParsedFile;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -52,6 +52,15 @@ static TEST_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 impl Checker for MissingVerificationChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "missing-verification",
+            description: "Flags action sections without verification or success criteria",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

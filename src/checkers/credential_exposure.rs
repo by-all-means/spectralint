@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -54,6 +54,15 @@ static TEST_CREDENTIAL_VALUE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 impl Checker for CredentialExposureChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "credential-exposure",
+            description: "Detects hardcoded secrets and API keys",
+            default_severity: Severity::Error,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -84,7 +93,7 @@ impl Checker for CredentialExposureChecker {
                     }
 
                     // Redact to avoid leaking the credential value in output.
-                    let display = match matched.char_indices().nth(6) {
+                    let display = match matched.char_indices().nth(4) {
                         Some((byte_pos, _)) => format!("{}***", &matched[..byte_pos]),
                         None => matched.to_string(),
                     };

@@ -61,17 +61,22 @@ mod tests {
     use super::*;
     use crate::types::{Category, Diagnostic, Severity};
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     #[test]
     fn test_json_output_is_valid() {
         let result = CheckResult {
             diagnostics: vec![Diagnostic {
-                file: PathBuf::from("/project/CLAUDE.md"),
+                file: Arc::new(PathBuf::from("/project/CLAUDE.md")),
                 line: 10,
+                column: None,
+                end_line: None,
+                end_column: None,
                 severity: Severity::Error,
                 category: Category::DeadReference,
                 message: "file not found".to_string(),
                 suggestion: None,
+                fix: None,
             }],
         };
 

@@ -1,7 +1,7 @@
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::types::ParsedFile;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{count_directive_lines, is_instruction_file, ScopeFilter};
 use super::Checker;
@@ -27,6 +27,15 @@ fn has_inline_code(file: &ParsedFile) -> bool {
 }
 
 impl Checker for InstructionWithoutContextChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "instruction-without-context",
+            description: "Flags instruction files with no code blocks, file refs, or inline code",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

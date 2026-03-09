@@ -1,8 +1,8 @@
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
-use super::utils::{ScopeFilter, CONFLICT_PAIRS};
+use super::utils::{match_conflict_patterns, ScopeFilter, CONFLICT_PAIRS};
 use super::Checker;
 
 pub(crate) struct CrossFileContradictionChecker {
@@ -34,6 +34,15 @@ fn is_ancestor_descendant(ancestor: &std::path::Path, descendant: &std::path::Pa
 }
 
 impl Checker for CrossFileContradictionChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "cross-file-contradiction",
+            description: "Detects contradictory instructions across files",
+            default_severity: Severity::Warning,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -48,27 +57,17 @@ impl Checker for CrossFileContradictionChecker {
             .map(|f| f.non_code_lines().map(|(i, line)| (i + 1, line)).collect())
             .collect();
 
-        // Pre-compute bitmasks: for each file, which conflict pair patterns it matches.
+        // Pre-compute bitmasks using RegexSet for fast batch matching.
         // Bit (2*N) = matches pair[N].a, bit (2*N+1) = matches pair[N].b.
         let file_masks: Vec<u64> = file_lines
             .iter()
             .map(|lines| {
                 let mut mask: u64 = 0;
-                for (pair_idx, pair) in CONFLICT_PAIRS.iter().enumerate() {
-                    if (2 * pair_idx + 1) >= 64 {
-                        break;
-                    }
-                    let a_bit = 1u64 << (2 * pair_idx);
-                    let b_bit = 1u64 << (2 * pair_idx + 1);
-                    for (_, line) in lines {
-                        if mask & a_bit == 0 && pair.a.is_match(line) {
-                            mask |= a_bit;
-                        }
-                        if mask & b_bit == 0 && pair.b.is_match(line) {
-                            mask |= b_bit;
-                        }
-                        if mask & a_bit != 0 && mask & b_bit != 0 {
-                            break;
+                for (_, line) in lines {
+                    let matches = match_conflict_patterns(line);
+                    for idx in matches.iter() {
+                        if idx < 64 {
+                            mask |= 1u64 << idx;
                         }
                     }
                 }
@@ -167,7 +166,7 @@ mod tests {
         let raw_lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
         let in_code_block = crate::parser::build_code_block_mask(&raw_lines);
         ParsedFile {
-            path: root.join(rel),
+            path: std::sync::Arc::new(root.join(rel)),
             sections: vec![],
             tables: vec![],
             file_refs: vec![],

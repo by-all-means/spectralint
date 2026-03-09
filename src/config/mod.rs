@@ -23,11 +23,14 @@ pub struct CheckersConfig {
     pub dead_reference: ScopedCheckerConfig,
     pub vague_directive: VagueDirectiveConfig,
     pub naming_inconsistency: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub enum_drift: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub agent_guidelines: ScopedCheckerConfig,
     pub placeholder_text: ScopedCheckerConfig,
     pub file_size: FileSizeConfig,
     pub credential_exposure: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub heading_hierarchy: ScopedCheckerConfig,
     pub dangerous_command: ScopedCheckerConfig,
     pub stale_reference: ScopedCheckerConfig,
@@ -38,19 +41,24 @@ pub struct CheckersConfig {
     pub missing_verification: MissingVerificationConfig,
     pub negative_only_framing: NegativeOnlyFramingConfig,
     pub conflicting_directives: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub missing_role_definition: ScopedCheckerConfig,
     pub redundant_directive: RedundantDirectiveConfig,
     pub instruction_density: InstructionDensityConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub missing_examples: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub unbounded_scope: ScopedCheckerConfig,
     pub circular_reference: ScopedCheckerConfig,
     pub large_code_block: LargeCodeBlockConfig,
     pub duplicate_section: ScopedCheckerConfig,
     pub absolute_path: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub generic_instruction: ScopedCheckerConfig,
     pub misordered_steps: ScopedCheckerConfig,
     pub section_length_imbalance: SectionLengthImbalanceConfig,
     pub unclosed_fence: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub untagged_code_block: ScopedCheckerConfig,
     pub duplicate_instruction_file: ScopedCheckerConfig,
     pub outdated_model_reference: ScopedCheckerConfig,
@@ -64,26 +72,46 @@ pub struct CheckersConfig {
     pub excessive_nesting: ExcessiveNestingConfig,
     pub context_window_waste: ScopedCheckerConfig,
     pub ambiguous_scope_reference: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub instruction_without_context: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub cross_file_contradiction: ScopedCheckerConfig,
     pub stale_style_rule: ScopedCheckerConfig,
     pub hardcoded_windows_path: ScopedCheckerConfig,
     pub hardcoded_file_structure: ScopedCheckerConfig,
+    pub stale_file_tree: ScopedCheckerConfig,
+    pub command_validation: ScopedCheckerConfig,
+    pub token_budget: TokenBudgetConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub unversioned_stack_reference: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub missing_standard_file: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub bare_url: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub repeated_word: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub undocumented_env_var: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub empty_code_block: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub click_here_link: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub double_negation: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub imperative_heading: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub inconsistent_command_prefix: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub empty_heading: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub copied_meta_instructions: ScopedCheckerConfig,
     pub long_paragraph: LongParagraphConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub command_without_codeblock: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub missing_verification_step: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub xml_document_wrapper: ScopedCheckerConfig,
     pub custom_patterns: Vec<CustomPattern>,
 }
@@ -119,7 +147,7 @@ impl Default for CheckersConfig {
             large_code_block: LargeCodeBlockConfig::default(),
             duplicate_section: ScopedCheckerConfig::default(),
             absolute_path: ScopedCheckerConfig::default(),
-            generic_instruction: ScopedCheckerConfig::default(),
+            generic_instruction: ScopedCheckerConfig::disabled(),
             misordered_steps: ScopedCheckerConfig::default(),
             section_length_imbalance: SectionLengthImbalanceConfig::default(),
             unclosed_fence: ScopedCheckerConfig::default(),
@@ -136,11 +164,14 @@ impl Default for CheckersConfig {
             excessive_nesting: ExcessiveNestingConfig::default(),
             context_window_waste: ScopedCheckerConfig::default(),
             ambiguous_scope_reference: ScopedCheckerConfig::default(),
-            instruction_without_context: ScopedCheckerConfig::default(),
+            instruction_without_context: ScopedCheckerConfig::disabled(),
             cross_file_contradiction: ScopedCheckerConfig::disabled(),
             stale_style_rule: ScopedCheckerConfig::default(),
             hardcoded_windows_path: ScopedCheckerConfig::default(),
             hardcoded_file_structure: ScopedCheckerConfig::default(),
+            stale_file_tree: ScopedCheckerConfig::default(),
+            command_validation: ScopedCheckerConfig::default(),
+            token_budget: TokenBudgetConfig::default(),
             unversioned_stack_reference: ScopedCheckerConfig::disabled(),
             missing_standard_file: ScopedCheckerConfig::disabled(),
             bare_url: ScopedCheckerConfig::disabled(),
@@ -406,7 +437,7 @@ impl Default for FileSizeConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default)]
 pub struct VagueDirectiveConfig {
     pub enabled: bool,
@@ -422,6 +453,28 @@ pub struct ScopedCheckerConfig {
     pub enabled: bool,
     pub scope: Vec<String>,
     pub severity: Option<Severity>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct TokenBudgetConfig {
+    pub enabled: bool,
+    pub warn_tokens: usize,
+    pub max_tokens: usize,
+    pub scope: Vec<String>,
+    pub severity: Option<Severity>,
+}
+
+impl Default for TokenBudgetConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            warn_tokens: 4000,
+            max_tokens: 8000,
+            scope: Vec::new(),
+            severity: None,
+        }
+    }
 }
 
 fn default_severity() -> Severity {
@@ -462,21 +515,9 @@ impl Default for Config {
     }
 }
 
-impl Default for VagueDirectiveConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            strict: false,
-            extra_patterns: Vec::new(),
-            scope: Vec::new(),
-            severity: None,
-        }
-    }
-}
-
 impl ScopedCheckerConfig {
     /// A disabled checker (strict-only checks that are off by default).
-    fn disabled() -> Self {
+    pub(crate) fn disabled() -> Self {
         Self {
             enabled: false,
             scope: Vec::new(),
@@ -496,6 +537,85 @@ impl Default for ScopedCheckerConfig {
 }
 
 impl Config {
+    /// Returns a config with strict mode AND all checkers enabled.
+    /// Used by `all_checker_meta()` to instantiate every checker for metadata extraction.
+    pub fn default_with_all_enabled() -> Self {
+        let mut config = Self {
+            strict: true,
+            ..Default::default()
+        };
+        // Force-enable every checker so all_checkers() returns all of them.
+        config.checkers.dead_reference.enabled = true;
+        config.checkers.vague_directive.enabled = true;
+        config.checkers.naming_inconsistency.enabled = true;
+        config.checkers.enum_drift.enabled = true;
+        config.checkers.agent_guidelines.enabled = true;
+        config.checkers.placeholder_text.enabled = true;
+        config.checkers.file_size.enabled = true;
+        config.checkers.credential_exposure.enabled = true;
+        config.checkers.heading_hierarchy.enabled = true;
+        config.checkers.dangerous_command.enabled = true;
+        config.checkers.stale_reference.enabled = true;
+        config.checkers.emoji_density.enabled = true;
+        config.checkers.session_journal.enabled = true;
+        config.checkers.missing_essential_sections.enabled = true;
+        config.checkers.prompt_injection_vector.enabled = true;
+        config.checkers.missing_verification.enabled = true;
+        config.checkers.negative_only_framing.enabled = true;
+        config.checkers.conflicting_directives.enabled = true;
+        config.checkers.missing_role_definition.enabled = true;
+        config.checkers.redundant_directive.enabled = true;
+        config.checkers.instruction_density.enabled = true;
+        config.checkers.missing_examples.enabled = true;
+        config.checkers.unbounded_scope.enabled = true;
+        config.checkers.circular_reference.enabled = true;
+        config.checkers.large_code_block.enabled = true;
+        config.checkers.duplicate_section.enabled = true;
+        config.checkers.absolute_path.enabled = true;
+        config.checkers.generic_instruction.enabled = true;
+        config.checkers.misordered_steps.enabled = true;
+        config.checkers.section_length_imbalance.enabled = true;
+        config.checkers.unclosed_fence.enabled = true;
+        config.checkers.untagged_code_block.enabled = true;
+        config.checkers.duplicate_instruction_file.enabled = true;
+        config.checkers.outdated_model_reference.enabled = true;
+        config.checkers.broken_anchor_link.enabled = true;
+        config.checkers.broken_table.enabled = true;
+        config.checkers.placeholder_url.enabled = true;
+        config.checkers.emphasis_overuse.enabled = true;
+        config.checkers.boilerplate_template.enabled = true;
+        config.checkers.generated_attribution.enabled = true;
+        config.checkers.orphaned_section.enabled = true;
+        config.checkers.excessive_nesting.enabled = true;
+        config.checkers.cross_file_contradiction.enabled = true;
+        config.checkers.instruction_without_context.enabled = true;
+        config.checkers.ambiguous_scope_reference.enabled = true;
+        config.checkers.context_window_waste.enabled = true;
+        config.checkers.stale_style_rule.enabled = true;
+        config.checkers.hardcoded_windows_path.enabled = true;
+        config.checkers.hardcoded_file_structure.enabled = true;
+        config.checkers.stale_file_tree.enabled = true;
+        config.checkers.command_validation.enabled = true;
+        config.checkers.token_budget.enabled = true;
+        config.checkers.unversioned_stack_reference.enabled = true;
+        config.checkers.missing_standard_file.enabled = true;
+        config.checkers.bare_url.enabled = true;
+        config.checkers.repeated_word.enabled = true;
+        config.checkers.undocumented_env_var.enabled = true;
+        config.checkers.empty_code_block.enabled = true;
+        config.checkers.click_here_link.enabled = true;
+        config.checkers.double_negation.enabled = true;
+        config.checkers.imperative_heading.enabled = true;
+        config.checkers.inconsistent_command_prefix.enabled = true;
+        config.checkers.empty_heading.enabled = true;
+        config.checkers.copied_meta_instructions.enabled = true;
+        config.checkers.long_paragraph.enabled = true;
+        config.checkers.command_without_codeblock.enabled = true;
+        config.checkers.missing_verification_step.enabled = true;
+        config.checkers.xml_document_wrapper.enabled = true;
+        config
+    }
+
     pub fn load(config_path: Option<&Path>, project_root: &Path) -> Result<Self> {
         // When an explicit --config path is given, any read error is fatal.
         if let Some(path) = config_path {
@@ -548,8 +668,8 @@ ignore = ["node_modules", ".git", "target"]
 [checkers.dead_reference]
 enabled = true
 
-[checkers.vague_directive]
-enabled = true
+# [checkers.vague_directive]
+# enabled = true
 # strict = true  # also flag "when possible", "when needed", "as needed", "consider"
 # extra_patterns = ["(?i)\\bmaybe\\b", "(?i)\\bprobably\\b"]
 # scope = ["CLAUDE.md", "AGENTS.md", ".claude/**"]
@@ -653,8 +773,8 @@ enabled = true
 
 # ── New strict-only checks ──
 
-[checkers.generic_instruction]
-enabled = true
+# [checkers.generic_instruction]
+# enabled = true
 
 # [checkers.section_length_imbalance]
 # enabled = true
@@ -710,6 +830,17 @@ enabled = true
 
 [checkers.hardcoded_file_structure]
 enabled = true
+
+[checkers.stale_file_tree]
+enabled = true
+
+[checkers.command_validation]
+enabled = true
+
+[checkers.token_budget]
+enabled = true
+warn_tokens = 4000
+max_tokens = 8000
 
 # [checkers.unversioned_stack_reference]
 # enabled = true
@@ -782,6 +913,7 @@ strict = true
     }
 
     /// Look up the per-checker severity override for a given category.
+    #[must_use]
     pub fn severity_override(&self, category: &crate::types::Category) -> Option<Severity> {
         use crate::types::Category;
         match category {
@@ -835,6 +967,9 @@ strict = true
             Category::StaleStyleRule => self.checkers.stale_style_rule.severity,
             Category::HardcodedWindowsPath => self.checkers.hardcoded_windows_path.severity,
             Category::HardcodedFileStructure => self.checkers.hardcoded_file_structure.severity,
+            Category::StaleFileTree => self.checkers.stale_file_tree.severity,
+            Category::CommandValidation => self.checkers.command_validation.severity,
+            Category::TokenBudget => self.checkers.token_budget.severity,
             Category::UnversionedStackReference => {
                 self.checkers.unversioned_stack_reference.severity
             }
@@ -870,7 +1005,10 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
         assert!(config.checkers.dead_reference.enabled);
-        assert!(config.checkers.vague_directive.enabled);
+        assert!(
+            !config.checkers.vague_directive.enabled,
+            "vague_directive should be disabled by default (strict-only)"
+        );
         assert!(config.checkers.vague_directive.extra_patterns.is_empty());
         assert!(config.checkers.vague_directive.scope.is_empty());
         assert!(config.checkers.naming_inconsistency.enabled);

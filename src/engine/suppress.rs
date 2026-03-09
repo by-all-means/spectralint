@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::emit;
 use crate::parser::types::{InlineSuppress, ParsedFile, SuppressKind};
@@ -18,7 +19,7 @@ pub(super) struct SuppressedRange {
 
 pub(super) fn build_suppression_set(
     files: &[ParsedFile],
-) -> HashMap<PathBuf, Vec<SuppressedRange>> {
+) -> HashMap<Arc<PathBuf>, Vec<SuppressedRange>> {
     files
         .iter()
         .filter_map(|file| {
@@ -78,21 +79,25 @@ fn build_ranges(comments: &[InlineSuppress], total_lines: usize) -> Vec<Suppress
 }
 
 pub(super) fn is_suppressed(
-    suppressions: &HashMap<PathBuf, Vec<SuppressedRange>>,
-    file: &Path,
+    suppressions: &HashMap<Arc<PathBuf>, Vec<SuppressedRange>>,
+    file: &Arc<PathBuf>,
     line: usize,
     category: &Category,
 ) -> bool {
     let Some(ranges) = suppressions.get(file) else {
         return false;
     };
-    let mut cat_str = None;
     let mut matched = false;
     for range in ranges {
         if line >= range.start_line && line <= range.end_line {
             let rule_matches = match range.rule.as_deref() {
                 None => true,
-                Some(rule) => cat_str.get_or_insert_with(|| category.to_string()) == rule,
+                Some(rule) => match category {
+                    Category::CustomPattern(_) => {
+                        rule.strip_prefix("custom:") == Some(category.as_str())
+                    }
+                    _ => category.as_str() == rule,
+                },
             };
             if rule_matches {
                 range.used.set(true);
@@ -105,15 +110,17 @@ pub(super) fn is_suppressed(
 
 /// Collect all known rule names from built-in categories and custom patterns.
 /// Derives from `AVAILABLE_RULES` in explain.rs to avoid maintaining a separate list.
+/// Custom patterns are included as `"custom:<name>"` via `Box::leak` (bounded startup cost).
 pub(super) fn all_known_rule_names(
     custom_patterns: &[crate::config::CustomPattern],
-) -> HashSet<String> {
-    let mut names: HashSet<String> = crate::cli::explain::AVAILABLE_RULES
+) -> HashSet<&'static str> {
+    let mut names: HashSet<&'static str> = crate::cli::explain::AVAILABLE_RULES
         .iter()
-        .map(|(name, _)| name.to_string())
+        .map(|(name, _)| *name)
         .collect();
     for pat in custom_patterns {
-        names.insert(format!("custom:{}", pat.name));
+        let leaked: &'static str = format!("custom:{}", pat.name).leak();
+        names.insert(leaked);
     }
     names
 }
@@ -122,7 +129,7 @@ pub(super) fn all_known_rule_names(
 /// Returns diagnostics for unrecognized rule names.
 pub(super) fn validate_suppress_rules(
     files: &[ParsedFile],
-    known_rules: &HashSet<String>,
+    known_rules: &HashSet<&'static str>,
 ) -> Vec<crate::types::Diagnostic> {
     let mut result = crate::types::CheckResult::default();
     for file in files {
@@ -147,7 +154,7 @@ pub(super) fn validate_suppress_rules(
 
 /// Find suppression ranges that were never used (no diagnostic was suppressed by them).
 pub(super) fn find_unused_suppressions(
-    suppressions: &HashMap<PathBuf, Vec<SuppressedRange>>,
+    suppressions: &HashMap<Arc<PathBuf>, Vec<SuppressedRange>>,
 ) -> Vec<crate::types::Diagnostic> {
     let mut result = crate::types::CheckResult::default();
     for (file, ranges) in suppressions {
@@ -190,26 +197,12 @@ mod tests {
         assert_eq!(ranges[0].end_line, 6);
 
         let mut map = HashMap::new();
-        map.insert(PathBuf::from("test.md"), ranges);
+        let key = Arc::new(PathBuf::from("test.md"));
+        map.insert(key.clone(), ranges);
 
-        assert!(is_suppressed(
-            &map,
-            Path::new("test.md"),
-            6,
-            &Category::DeadReference
-        ));
-        assert!(!is_suppressed(
-            &map,
-            Path::new("test.md"),
-            7,
-            &Category::DeadReference
-        ));
-        assert!(!is_suppressed(
-            &map,
-            Path::new("test.md"),
-            6,
-            &Category::VagueDirective
-        ));
+        assert!(is_suppressed(&map, &key, 6, &Category::DeadReference));
+        assert!(!is_suppressed(&map, &key, 7, &Category::DeadReference));
+        assert!(!is_suppressed(&map, &key, 6, &Category::VagueDirective));
     }
 
     #[test]
@@ -230,26 +223,12 @@ mod tests {
         assert_eq!(ranges.len(), 1);
 
         let mut map = HashMap::new();
-        map.insert(PathBuf::from("test.md"), ranges);
+        let key = Arc::new(PathBuf::from("test.md"));
+        map.insert(key.clone(), ranges);
 
-        assert!(is_suppressed(
-            &map,
-            Path::new("test.md"),
-            5,
-            &Category::DeadReference
-        ));
-        assert!(is_suppressed(
-            &map,
-            Path::new("test.md"),
-            5,
-            &Category::VagueDirective
-        ));
-        assert!(!is_suppressed(
-            &map,
-            Path::new("test.md"),
-            9,
-            &Category::DeadReference
-        ));
+        assert!(is_suppressed(&map, &key, 5, &Category::DeadReference));
+        assert!(is_suppressed(&map, &key, 5, &Category::VagueDirective));
+        assert!(!is_suppressed(&map, &key, 9, &Category::DeadReference));
     }
 
     #[test]
@@ -269,32 +248,18 @@ mod tests {
         let ranges = build_ranges(&comments, 20);
 
         let mut map = HashMap::new();
-        map.insert(PathBuf::from("test.md"), ranges);
+        let key = Arc::new(PathBuf::from("test.md"));
+        map.insert(key.clone(), ranges);
 
-        assert!(is_suppressed(
-            &map,
-            Path::new("test.md"),
-            5,
-            &Category::DeadReference
-        ));
+        assert!(is_suppressed(&map, &key, 5, &Category::DeadReference));
+        assert!(!is_suppressed(&map, &key, 5, &Category::VagueDirective));
         assert!(!is_suppressed(
             &map,
-            Path::new("test.md"),
-            5,
-            &Category::VagueDirective
-        ));
-        assert!(!is_suppressed(
-            &map,
-            Path::new("test.md"),
+            &key,
             5,
             &Category::NamingInconsistency
         ));
-        assert!(!is_suppressed(
-            &map,
-            Path::new("test.md"),
-            9,
-            &Category::DeadReference
-        ));
+        assert!(!is_suppressed(&map, &key, 9, &Category::DeadReference));
     }
 
     #[test]
@@ -307,32 +272,13 @@ mod tests {
         let ranges = build_ranges(&comments, 20);
 
         let mut map = HashMap::new();
-        map.insert(PathBuf::from("test.md"), ranges);
+        let key = Arc::new(PathBuf::from("test.md"));
+        map.insert(key.clone(), ranges);
 
-        assert!(is_suppressed(
-            &map,
-            Path::new("test.md"),
-            6,
-            &Category::DeadReference
-        ));
-        assert!(is_suppressed(
-            &map,
-            Path::new("test.md"),
-            6,
-            &Category::VagueDirective
-        ));
-        assert!(is_suppressed(
-            &map,
-            Path::new("test.md"),
-            6,
-            &Category::EnumDrift,
-        ));
-        assert!(!is_suppressed(
-            &map,
-            Path::new("test.md"),
-            7,
-            &Category::DeadReference
-        ));
+        assert!(is_suppressed(&map, &key, 6, &Category::DeadReference));
+        assert!(is_suppressed(&map, &key, 6, &Category::VagueDirective));
+        assert!(is_suppressed(&map, &key, 6, &Category::EnumDrift,));
+        assert!(!is_suppressed(&map, &key, 7, &Category::DeadReference));
     }
 
     #[test]
@@ -403,32 +349,13 @@ mod tests {
         assert_eq!(ranges.len(), 2);
 
         let mut map = HashMap::new();
-        map.insert(PathBuf::from("test.md"), ranges);
+        let key = Arc::new(PathBuf::from("test.md"));
+        map.insert(key.clone(), ranges);
 
-        assert!(is_suppressed(
-            &map,
-            Path::new("test.md"),
-            6,
-            &Category::DeadReference
-        ));
-        assert!(!is_suppressed(
-            &map,
-            Path::new("test.md"),
-            6,
-            &Category::VagueDirective
-        ));
-        assert!(is_suppressed(
-            &map,
-            Path::new("test.md"),
-            8,
-            &Category::VagueDirective
-        ));
-        assert!(!is_suppressed(
-            &map,
-            Path::new("test.md"),
-            8,
-            &Category::DeadReference
-        ));
+        assert!(is_suppressed(&map, &key, 6, &Category::DeadReference));
+        assert!(!is_suppressed(&map, &key, 6, &Category::VagueDirective));
+        assert!(is_suppressed(&map, &key, 8, &Category::VagueDirective));
+        assert!(!is_suppressed(&map, &key, 8, &Category::DeadReference));
     }
 
     #[test]
@@ -453,27 +380,19 @@ mod tests {
         let ranges = build_ranges(&comments, 20);
 
         let mut map = HashMap::new();
-        map.insert(PathBuf::from("test.md"), ranges);
+        let key = Arc::new(PathBuf::from("test.md"));
+        map.insert(key.clone(), ranges);
 
-        assert!(is_suppressed(
-            &map,
-            Path::new("test.md"),
-            4,
-            &Category::DeadReference
-        ));
-        assert!(is_suppressed(
-            &map,
-            Path::new("test.md"),
-            4,
-            &Category::VagueDirective
-        ));
+        assert!(is_suppressed(&map, &key, 4, &Category::DeadReference));
+        assert!(is_suppressed(&map, &key, 4, &Category::VagueDirective));
     }
 
     #[test]
     fn test_suppression_for_unknown_file() {
         let map = HashMap::new();
+        let key = Arc::new(PathBuf::from("unknown.md"));
         assert!(
-            !is_suppressed(&map, Path::new("unknown.md"), 5, &Category::DeadReference),
+            !is_suppressed(&map, &key, 5, &Category::DeadReference),
             "File not in suppression map should never be suppressed"
         );
     }
@@ -496,26 +415,12 @@ mod tests {
         assert_eq!(ranges.len(), 2);
 
         let mut map = HashMap::new();
-        map.insert(PathBuf::from("test.md"), ranges);
+        let key = Arc::new(PathBuf::from("test.md"));
+        map.insert(key.clone(), ranges);
 
-        assert!(is_suppressed(
-            &map,
-            Path::new("test.md"),
-            6,
-            &Category::DeadReference
-        ));
-        assert!(is_suppressed(
-            &map,
-            Path::new("test.md"),
-            7,
-            &Category::DeadReference
-        ));
-        assert!(!is_suppressed(
-            &map,
-            Path::new("test.md"),
-            8,
-            &Category::DeadReference
-        ));
+        assert!(is_suppressed(&map, &key, 6, &Category::DeadReference));
+        assert!(is_suppressed(&map, &key, 7, &Category::DeadReference));
+        assert!(!is_suppressed(&map, &key, 8, &Category::DeadReference));
     }
 
     #[test]
@@ -528,7 +433,8 @@ mod tests {
         let ranges = build_ranges(&comments, 20);
 
         let mut map = HashMap::new();
-        map.insert(PathBuf::from("test.md"), ranges);
+        let key = Arc::new(PathBuf::from("test.md"));
+        map.insert(key.clone(), ranges);
 
         // Don't suppress anything — range should remain unused
         let unused = find_unused_suppressions(&map);
@@ -546,15 +452,11 @@ mod tests {
         let ranges = build_ranges(&comments, 20);
 
         let mut map = HashMap::new();
-        map.insert(PathBuf::from("test.md"), ranges);
+        let key = Arc::new(PathBuf::from("test.md"));
+        map.insert(key.clone(), ranges);
 
         // Suppress a diagnostic — range should be marked used
-        assert!(is_suppressed(
-            &map,
-            Path::new("test.md"),
-            6,
-            &Category::DeadReference
-        ));
+        assert!(is_suppressed(&map, &key, 6, &Category::DeadReference));
 
         let unused = find_unused_suppressions(&map);
         assert!(unused.is_empty());
@@ -564,7 +466,7 @@ mod tests {
     fn test_invalid_suppression_detected() {
         let known = all_known_rule_names(&[]);
         let file = ParsedFile {
-            path: PathBuf::from("test.md"),
+            path: Arc::new(PathBuf::from("test.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![],
@@ -587,7 +489,7 @@ mod tests {
     fn test_valid_suppression_not_flagged() {
         let known = all_known_rule_names(&[]);
         let file = ParsedFile {
-            path: PathBuf::from("test.md"),
+            path: Arc::new(PathBuf::from("test.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![],

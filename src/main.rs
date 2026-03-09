@@ -1,9 +1,90 @@
 use anyhow::Result;
 use clap::Parser;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
-use spectralint::cli::{Cli, Commands, Preset};
+use spectralint::cli::{Cli, Commands, OutputFormat, Preset};
 use spectralint::config::Config;
 use spectralint::engine;
+use spectralint::types::Severity;
+
+/// Run a single check pass. Returns true if diagnostics meet the fail_on threshold.
+#[allow(clippy::too_many_arguments)]
+fn run_check(
+    project_root: &Path,
+    cfg: &Config,
+    config_path: Option<&Path>,
+    rule: &[String],
+    output_format: OutputFormat,
+    quiet: bool,
+    count: bool,
+    fail_on: Severity,
+    use_cache: bool,
+    apply_fix: bool,
+) -> Result<bool> {
+    let mut result = engine::run(project_root, cfg, use_cache, config_path)?;
+
+    // Apply --rule filter
+    if !rule.is_empty() {
+        use spectralint::types::Category;
+        let normalized: Vec<String> = rule.iter().map(|r| r.replace('_', "-")).collect();
+        let parsed_categories: Vec<Category> =
+            normalized.iter().filter_map(|r| r.parse().ok()).collect();
+        let fallback_set: std::collections::HashSet<&str> =
+            normalized.iter().map(|s| s.as_str()).collect();
+        result.diagnostics.retain(|d| {
+            parsed_categories.contains(&d.category)
+                || fallback_set.contains(d.category.as_str())
+                || fallback_set.contains(&*d.category.to_string())
+        });
+    }
+
+    // Apply autofixes if --fix is set
+    if apply_fix {
+        let fixed = engine::apply_fixes(&result.diagnostics);
+        if fixed > 0 {
+            eprintln!("Applied {fixed} fix(es).");
+        }
+    }
+
+    if !quiet {
+        if count {
+            let (e, w, i) = result.severity_counts();
+            if e + w + i == 0 {
+                println!("no issues found");
+            } else {
+                let s = |n: usize| if n == 1 { "" } else { "s" };
+                let parts: Vec<String> = [
+                    (e > 0).then(|| format!("{e} error{}", s(e))),
+                    (w > 0).then(|| format!("{w} warning{}", s(w))),
+                    (i > 0).then(|| format!("{i} info")),
+                ]
+                .into_iter()
+                .flatten()
+                .collect();
+                println!("{}", parts.join(", "));
+            }
+        } else {
+            spectralint::cli::output::render(&result, project_root, output_format);
+        }
+    }
+
+    Ok(result.has_severity_at_least(fail_on))
+}
+
+/// Collect modification times for all scanned files.
+fn collect_mtimes(files: &[PathBuf]) -> HashMap<PathBuf, SystemTime> {
+    files
+        .iter()
+        .filter_map(|p| {
+            std::fs::metadata(p)
+                .and_then(|m| m.modified())
+                .ok()
+                .map(|t| (p.clone(), t))
+        })
+        .collect()
+}
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -19,6 +100,9 @@ fn main() -> Result<()> {
             quiet,
             no_color,
             count,
+            no_cache,
+            watch,
+            fix,
         } => {
             // Handle --no-color and NO_COLOR env var
             if no_color || std::env::var("NO_COLOR").is_ok() {
@@ -30,49 +114,60 @@ fn main() -> Result<()> {
             if strict {
                 cfg.strict = true;
             }
-            let mut result = engine::run(&project_root, &cfg)?;
-
-            // Apply per-checker severity overrides
-            for d in &mut result.diagnostics {
-                if let Some(sev) = cfg.severity_override(&d.category) {
-                    d.severity = sev;
-                }
-            }
-
-            // Apply --rule filter
-            if !rule.is_empty() {
-                let normalized_rules: std::collections::HashSet<String> =
-                    rule.iter().map(|r| r.replace('_', "-")).collect();
-                result
-                    .diagnostics
-                    .retain(|d| normalized_rules.contains(&d.category.to_string()));
-            }
 
             let output_format = format.unwrap_or(cfg.format);
-            if !quiet {
-                if count {
-                    let (e, w, i) = result.severity_counts();
-                    if e + w + i == 0 {
-                        println!("no issues found");
-                    } else {
-                        let s = |n: usize| if n == 1 { "" } else { "s" };
-                        let parts: Vec<String> = [
-                            (e > 0).then(|| format!("{e} error{}", s(e))),
-                            (w > 0).then(|| format!("{w} warning{}", s(w))),
-                            (i > 0).then(|| format!("{i} info")),
-                        ]
-                        .into_iter()
-                        .flatten()
-                        .collect();
-                        println!("{}", parts.join(", "));
-                    }
-                } else {
-                    spectralint::cli::output::render(&result, &project_root, output_format);
+
+            let use_cache = !no_cache;
+
+            // First run
+            let failed = run_check(
+                &project_root,
+                &cfg,
+                config.as_deref(),
+                &rule,
+                output_format,
+                quiet,
+                count,
+                fail_on,
+                use_cache,
+                fix,
+            )?;
+
+            if !watch {
+                if failed {
+                    std::process::exit(1);
                 }
+                return Ok(());
             }
 
-            if result.has_severity_at_least(fail_on) {
-                std::process::exit(1);
+            // Watch mode: poll for changes and re-run
+            let mut prev_mtimes = collect_mtimes(&engine::scanned_files(&project_root, &cfg));
+
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+
+                let current_files = engine::scanned_files(&project_root, &cfg);
+                let current_mtimes = collect_mtimes(&current_files);
+
+                if current_mtimes != prev_mtimes {
+                    println!("\n--- Re-checking... ---\n");
+                    match run_check(
+                        &project_root,
+                        &cfg,
+                        config.as_deref(),
+                        &rule,
+                        output_format,
+                        quiet,
+                        count,
+                        fail_on,
+                        use_cache,
+                        fix,
+                    ) {
+                        Ok(_) => {}
+                        Err(e) => eprintln!("Error: {e}"),
+                    }
+                    prev_mtimes = current_mtimes;
+                }
             }
         }
         Commands::Init { preset } => {

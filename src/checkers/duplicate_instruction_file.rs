@@ -4,7 +4,7 @@ use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::is_directive_line;
 use crate::parser::types::ParsedFile;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{is_instruction_file, normalize_directive, ScopeFilter, MIN_DIRECTIVE_LINES};
 use super::Checker;
@@ -42,6 +42,15 @@ fn references_other(file: &ParsedFile, other: &ParsedFile) -> bool {
 }
 
 impl Checker for DuplicateInstructionFileChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "duplicate-instruction-file",
+            description: "Flags near-duplicate instruction files",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -132,7 +141,7 @@ mod tests {
         let raw_lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
         let in_code_block = crate::parser::build_code_block_mask(&raw_lines);
         ParsedFile {
-            path: root.join(name),
+            path: std::sync::Arc::new(root.join(name)),
             sections: vec![],
             tables: vec![],
             file_refs,

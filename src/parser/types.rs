@@ -1,8 +1,9 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct ParsedFile {
-    pub path: PathBuf,
+    pub path: Arc<PathBuf>,
     pub sections: Vec<Section>,
     pub tables: Vec<Table>,
     pub file_refs: Vec<FileRef>,
@@ -43,7 +44,7 @@ pub struct Directive {
     pub pattern_matched: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SuppressKind {
     Disable,
     Enable,

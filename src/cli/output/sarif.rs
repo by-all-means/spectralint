@@ -43,6 +43,8 @@ struct SarifResult {
     level: &'static str,
     message: SarifMessage,
     locations: Vec<SarifLocation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    help: Option<SarifMessage>,
 }
 
 #[derive(Serialize)]
@@ -72,6 +74,12 @@ struct SarifArtifactLocation {
 struct SarifRegion {
     #[serde(rename = "startLine")]
     start_line: usize,
+    #[serde(rename = "startColumn", skip_serializing_if = "Option::is_none")]
+    start_column: Option<usize>,
+    #[serde(rename = "endLine", skip_serializing_if = "Option::is_none")]
+    end_line: Option<usize>,
+    #[serde(rename = "endColumn", skip_serializing_if = "Option::is_none")]
+    end_column: Option<usize>,
 }
 
 fn severity_to_level(severity: Severity) -> &'static str {
@@ -115,9 +123,18 @@ fn build_output(result: &CheckResult, project_root: &Path) -> SarifLog {
                 locations: vec![SarifLocation {
                     physical_location: SarifPhysicalLocation {
                         artifact_location: SarifArtifactLocation { uri: rel },
-                        region: SarifRegion { start_line: d.line },
+                        region: SarifRegion {
+                            start_line: d.line,
+                            start_column: d.column,
+                            end_line: d.end_line,
+                            end_column: d.end_column,
+                        },
                     },
                 }],
+                help: d
+                    .suggestion
+                    .as_ref()
+                    .map(|s| SarifMessage { text: s.clone() }),
             }
         })
         .collect();
@@ -148,17 +165,22 @@ mod tests {
     use super::*;
     use crate::types::{Category, Diagnostic};
     use std::path::PathBuf;
+    use std::sync::Arc;
 
     #[test]
     fn test_sarif_output_structure() {
         let result = CheckResult {
             diagnostics: vec![Diagnostic {
-                file: PathBuf::from("/project/CLAUDE.md"),
+                file: Arc::new(PathBuf::from("/project/CLAUDE.md")),
                 line: 10,
+                column: None,
+                end_line: None,
+                end_column: None,
                 severity: Severity::Error,
                 category: Category::DeadReference,
                 message: "file not found".to_string(),
                 suggestion: None,
+                fix: None,
             }],
         };
 
@@ -174,6 +196,35 @@ mod tests {
             parsed["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["region"]
                 ["startLine"],
             10
+        );
+        // No suggestion → no help field
+        assert!(parsed["runs"][0]["results"][0]["help"].is_null());
+    }
+
+    #[test]
+    fn test_sarif_output_includes_suggestion_as_help() {
+        let result = CheckResult {
+            diagnostics: vec![Diagnostic {
+                file: Arc::new(PathBuf::from("/project/CLAUDE.md")),
+                line: 5,
+                column: None,
+                end_line: None,
+                end_column: None,
+                severity: Severity::Warning,
+                category: Category::VagueDirective,
+                message: "directive is too vague".to_string(),
+                suggestion: Some("Be more specific about the expected behavior".to_string()),
+                fix: None,
+            }],
+        };
+
+        let output = build_output(&result, Path::new("/project"));
+        let json = serde_json::to_string_pretty(&output).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(
+            parsed["runs"][0]["results"][0]["help"]["text"],
+            "Be more specific about the expected behavior"
         );
     }
 

@@ -1,7 +1,7 @@
 use crate::config::ExcessiveNestingConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -43,6 +43,15 @@ fn list_depth(line: &str) -> Option<usize> {
 }
 
 impl Checker for ExcessiveNestingChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "excessive-nesting",
+            description: "Flags lists nested too deeply for agents to parse",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

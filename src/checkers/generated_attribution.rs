@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::non_code_lines_masked;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{inside_inline_code, ScopeFilter};
 use super::Checker;
@@ -48,6 +48,15 @@ impl GeneratedAttributionChecker {
 }
 
 impl Checker for GeneratedAttributionChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "generated-attribution",
+            description: "Flags AI-tool attribution lines that waste context tokens",
+            default_severity: Severity::Info,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

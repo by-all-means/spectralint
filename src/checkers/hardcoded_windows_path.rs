@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::non_code_lines_masked;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{inside_inline_code, ScopeFilter};
 use super::Checker;
@@ -32,6 +32,15 @@ impl HardcodedWindowsPathChecker {
 }
 
 impl Checker for HardcodedWindowsPathChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "hardcoded-windows-path",
+            description: "Flags backslash file paths that break on non-Windows",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

@@ -4,7 +4,7 @@ use comrak::nodes::NodeValue;
 use comrak::{parse_document, Arena, Options};
 use regex::Regex;
 use std::path::Path;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use types::{Directive, FileRef, InlineSuppress, ParsedFile, Section, SuppressKind, Table};
 
@@ -168,7 +168,7 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
     if is_mediawiki_content(&content) {
         let in_code_block = build_code_block_mask(&raw_lines);
         return Ok(ParsedFile {
-            path: path.to_path_buf(),
+            path: Arc::new(path.to_path_buf()),
             sections: vec![],
             tables: vec![],
             file_refs: vec![],
@@ -200,7 +200,7 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
     let in_code_block = build_code_block_mask(&raw_lines);
 
     Ok(ParsedFile {
-        path: path.to_path_buf(),
+        path: Arc::new(path.to_path_buf()),
         sections,
         tables,
         file_refs,

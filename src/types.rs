@@ -1,6 +1,23 @@
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::Arc;
+
+/// A structured autofix: a description plus one or more text replacements.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Fix {
+    pub description: String,
+    pub replacements: Vec<Replacement>,
+}
+
+/// A single text replacement within a file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Replacement {
+    pub line: usize,      // 1-based line number
+    pub start_col: usize, // 0-based byte offset in line
+    pub end_col: usize,   // 0-based byte offset in line (exclusive)
+    pub new_text: String,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
@@ -8,6 +25,22 @@ pub enum Severity {
     Info,
     Warning,
     Error,
+}
+
+/// Metadata that every checker provides, enabling auto-registration
+/// and eliminating the need to manually update multiple files when
+/// adding a new checker.
+#[derive(Debug, Clone)]
+pub struct RuleMeta {
+    /// Kebab-case rule name (e.g. "dead-reference").
+    pub name: &'static str,
+    /// One-line description shown in `spectralint list`.
+    pub description: &'static str,
+    /// The default severity emitted by this checker.
+    pub default_severity: Severity,
+    /// If true, the checker is only enabled when `--strict` is passed
+    /// (or when explicitly enabled in config).
+    pub strict_only: bool,
 }
 
 impl std::fmt::Display for Severity {
@@ -87,9 +120,94 @@ pub enum Category {
     BrokenAnchorLink,
     LongParagraph,
     HardcodedWindowsPath,
+    StaleFileTree,
+    CommandValidation,
+    TokenBudget,
     InvalidSuppression,
     UnusedSuppression,
-    CustomPattern(String),
+    CustomPattern(Box<str>),
+}
+
+impl Category {
+    /// Returns the kebab-case name of this category without allocating
+    /// for built-in variants. For `CustomPattern`, returns the pattern
+    /// name (without the `custom:` prefix).
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Category::DeadReference => "dead-reference",
+            Category::VagueDirective => "vague-directive",
+            Category::NamingInconsistency => "naming-inconsistency",
+            Category::EnumDrift => "enum-drift",
+            Category::AgentGuidelines => "agent-guidelines",
+            Category::PlaceholderText => "placeholder-text",
+            Category::FileSize => "file-size",
+            Category::CredentialExposure => "credential-exposure",
+            Category::HeadingHierarchy => "heading-hierarchy",
+            Category::DangerousCommand => "dangerous-command",
+            Category::StaleReference => "stale-reference",
+            Category::EmojiDensity => "emoji-density",
+            Category::SessionJournal => "session-journal",
+            Category::MissingEssentialSections => "missing-essential-sections",
+            Category::PromptInjectionVector => "prompt-injection-vector",
+            Category::MissingVerification => "missing-verification",
+            Category::NegativeOnlyFraming => "negative-only-framing",
+            Category::ConflictingDirectives => "conflicting-directives",
+            Category::MissingRoleDefinition => "missing-role-definition",
+            Category::RedundantDirective => "redundant-directive",
+            Category::InstructionDensity => "instruction-density",
+            Category::MissingExamples => "missing-examples",
+            Category::UnboundedScope => "unbounded-scope",
+            Category::CircularReference => "circular-reference",
+            Category::LargeCodeBlock => "large-code-block",
+            Category::DuplicateSection => "duplicate-section",
+            Category::AbsolutePath => "absolute-path",
+            Category::GenericInstruction => "generic-instruction",
+            Category::MisorderedSteps => "misordered-steps",
+            Category::SectionLengthImbalance => "section-length-imbalance",
+            Category::UnclosedFence => "unclosed-fence",
+            Category::UntaggedCodeBlock => "untagged-code-block",
+            Category::DuplicateInstructionFile => "duplicate-instruction-file",
+            Category::OutdatedModelReference => "outdated-model-reference",
+            Category::BrokenTable => "broken-table",
+            Category::PlaceholderUrl => "placeholder-url",
+            Category::EmphasisOveruse => "emphasis-overuse",
+            Category::BoilerplateTemplate => "boilerplate-template",
+            Category::OrphanedSection => "orphaned-section",
+            Category::ExcessiveNesting => "excessive-nesting",
+            Category::ContextWindowWaste => "context-window-waste",
+            Category::AmbiguousScopeReference => "ambiguous-scope-reference",
+            Category::InstructionWithoutContext => "instruction-without-context",
+            Category::CrossFileContradiction => "cross-file-contradiction",
+            Category::StaleStyleRule => "stale-style-rule",
+            Category::HardcodedFileStructure => "hardcoded-file-structure",
+            Category::UnversionedStackReference => "unversioned-stack-reference",
+            Category::MissingStandardFile => "missing-standard-file",
+            Category::BareUrl => "bare-url",
+            Category::RepeatedWord => "repeated-word",
+            Category::UndocumentedEnvVar => "undocumented-env-var",
+            Category::EmptyCodeBlock => "empty-code-block",
+            Category::ClickHereLink => "click-here-link",
+            Category::DoubleNegation => "double-negation",
+            Category::ImperativeHeading => "imperative-heading",
+            Category::InconsistentCommandPrefix => "inconsistent-command-prefix",
+            Category::EmptyHeading => "empty-heading",
+            Category::CopiedMetaInstructions => "copied-meta-instructions",
+            Category::XmlDocumentWrapper => "xml-document-wrapper",
+            Category::GeneratedAttribution => "generated-attribution",
+            Category::CommandWithoutCodeblock => "command-without-codeblock",
+            Category::MissingVerificationStep => "missing-verification-step",
+            Category::BrokenAnchorLink => "broken-anchor-link",
+            Category::LongParagraph => "long-paragraph",
+            Category::HardcodedWindowsPath => "hardcoded-windows-path",
+            Category::StaleFileTree => "stale-file-tree",
+            Category::CommandValidation => "command-validation",
+            Category::TokenBudget => "token-budget",
+            Category::InvalidSuppression => "invalid-suppression",
+            Category::UnusedSuppression => "unused-suppression",
+            Category::CustomPattern(name) => name,
+        }
+    }
 }
 
 impl Serialize for Category {
@@ -98,90 +216,133 @@ impl Serialize for Category {
     }
 }
 
+impl<'de> Deserialize<'de> for Category {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
 impl std::fmt::Display for Category {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Category::DeadReference => f.write_str("dead-reference"),
-            Category::VagueDirective => f.write_str("vague-directive"),
-            Category::NamingInconsistency => f.write_str("naming-inconsistency"),
-            Category::EnumDrift => f.write_str("enum-drift"),
-            Category::AgentGuidelines => f.write_str("agent-guidelines"),
-            Category::PlaceholderText => f.write_str("placeholder-text"),
-            Category::FileSize => f.write_str("file-size"),
-            Category::CredentialExposure => f.write_str("credential-exposure"),
-            Category::HeadingHierarchy => f.write_str("heading-hierarchy"),
-            Category::DangerousCommand => f.write_str("dangerous-command"),
-            Category::StaleReference => f.write_str("stale-reference"),
-            Category::EmojiDensity => f.write_str("emoji-density"),
-            Category::SessionJournal => f.write_str("session-journal"),
-            Category::MissingEssentialSections => f.write_str("missing-essential-sections"),
-            Category::PromptInjectionVector => f.write_str("prompt-injection-vector"),
-            Category::MissingVerification => f.write_str("missing-verification"),
-            Category::NegativeOnlyFraming => f.write_str("negative-only-framing"),
-            Category::ConflictingDirectives => f.write_str("conflicting-directives"),
-            Category::MissingRoleDefinition => f.write_str("missing-role-definition"),
-            Category::RedundantDirective => f.write_str("redundant-directive"),
-            Category::InstructionDensity => f.write_str("instruction-density"),
-            Category::MissingExamples => f.write_str("missing-examples"),
-            Category::UnboundedScope => f.write_str("unbounded-scope"),
-            Category::CircularReference => f.write_str("circular-reference"),
-            Category::LargeCodeBlock => f.write_str("large-code-block"),
-            Category::DuplicateSection => f.write_str("duplicate-section"),
-            Category::AbsolutePath => f.write_str("absolute-path"),
-            Category::GenericInstruction => f.write_str("generic-instruction"),
-            Category::MisorderedSteps => f.write_str("misordered-steps"),
-            Category::SectionLengthImbalance => f.write_str("section-length-imbalance"),
-            Category::UnclosedFence => f.write_str("unclosed-fence"),
-            Category::UntaggedCodeBlock => f.write_str("untagged-code-block"),
-            Category::DuplicateInstructionFile => f.write_str("duplicate-instruction-file"),
-            Category::OutdatedModelReference => f.write_str("outdated-model-reference"),
-            Category::BrokenTable => f.write_str("broken-table"),
-            Category::PlaceholderUrl => f.write_str("placeholder-url"),
-            Category::EmphasisOveruse => f.write_str("emphasis-overuse"),
-            Category::BoilerplateTemplate => f.write_str("boilerplate-template"),
-            Category::OrphanedSection => f.write_str("orphaned-section"),
-            Category::ExcessiveNesting => f.write_str("excessive-nesting"),
-            Category::ContextWindowWaste => f.write_str("context-window-waste"),
-            Category::AmbiguousScopeReference => f.write_str("ambiguous-scope-reference"),
-            Category::InstructionWithoutContext => f.write_str("instruction-without-context"),
-            Category::CrossFileContradiction => f.write_str("cross-file-contradiction"),
-            Category::StaleStyleRule => f.write_str("stale-style-rule"),
-            Category::HardcodedFileStructure => f.write_str("hardcoded-file-structure"),
-            Category::UnversionedStackReference => f.write_str("unversioned-stack-reference"),
-            Category::MissingStandardFile => f.write_str("missing-standard-file"),
-            Category::BareUrl => f.write_str("bare-url"),
-            Category::RepeatedWord => f.write_str("repeated-word"),
-            Category::UndocumentedEnvVar => f.write_str("undocumented-env-var"),
-            Category::EmptyCodeBlock => f.write_str("empty-code-block"),
-            Category::ClickHereLink => f.write_str("click-here-link"),
-            Category::DoubleNegation => f.write_str("double-negation"),
-            Category::ImperativeHeading => f.write_str("imperative-heading"),
-            Category::InconsistentCommandPrefix => f.write_str("inconsistent-command-prefix"),
-            Category::EmptyHeading => f.write_str("empty-heading"),
-            Category::CopiedMetaInstructions => f.write_str("copied-meta-instructions"),
-            Category::XmlDocumentWrapper => f.write_str("xml-document-wrapper"),
-            Category::GeneratedAttribution => f.write_str("generated-attribution"),
-            Category::CommandWithoutCodeblock => f.write_str("command-without-codeblock"),
-            Category::MissingVerificationStep => f.write_str("missing-verification-step"),
-            Category::BrokenAnchorLink => f.write_str("broken-anchor-link"),
-            Category::LongParagraph => f.write_str("long-paragraph"),
-            Category::HardcodedWindowsPath => f.write_str("hardcoded-windows-path"),
-            Category::InvalidSuppression => f.write_str("invalid-suppression"),
-            Category::UnusedSuppression => f.write_str("unused-suppression"),
-            Category::CustomPattern(name) => write!(f, "custom:{name}"),
+            Category::CustomPattern(_) => write!(f, "custom:{}", self.as_str()),
+            _ => f.write_str(self.as_str()),
         }
     }
 }
 
+impl std::str::FromStr for Category {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "dead-reference" => Ok(Category::DeadReference),
+            "vague-directive" => Ok(Category::VagueDirective),
+            "naming-inconsistency" => Ok(Category::NamingInconsistency),
+            "enum-drift" => Ok(Category::EnumDrift),
+            "agent-guidelines" => Ok(Category::AgentGuidelines),
+            "placeholder-text" => Ok(Category::PlaceholderText),
+            "file-size" => Ok(Category::FileSize),
+            "credential-exposure" => Ok(Category::CredentialExposure),
+            "heading-hierarchy" => Ok(Category::HeadingHierarchy),
+            "dangerous-command" => Ok(Category::DangerousCommand),
+            "stale-reference" => Ok(Category::StaleReference),
+            "emoji-density" => Ok(Category::EmojiDensity),
+            "session-journal" => Ok(Category::SessionJournal),
+            "missing-essential-sections" => Ok(Category::MissingEssentialSections),
+            "prompt-injection-vector" => Ok(Category::PromptInjectionVector),
+            "missing-verification" => Ok(Category::MissingVerification),
+            "negative-only-framing" => Ok(Category::NegativeOnlyFraming),
+            "conflicting-directives" => Ok(Category::ConflictingDirectives),
+            "missing-role-definition" => Ok(Category::MissingRoleDefinition),
+            "redundant-directive" => Ok(Category::RedundantDirective),
+            "instruction-density" => Ok(Category::InstructionDensity),
+            "missing-examples" => Ok(Category::MissingExamples),
+            "unbounded-scope" => Ok(Category::UnboundedScope),
+            "circular-reference" => Ok(Category::CircularReference),
+            "large-code-block" => Ok(Category::LargeCodeBlock),
+            "duplicate-section" => Ok(Category::DuplicateSection),
+            "absolute-path" => Ok(Category::AbsolutePath),
+            "generic-instruction" => Ok(Category::GenericInstruction),
+            "misordered-steps" => Ok(Category::MisorderedSteps),
+            "section-length-imbalance" => Ok(Category::SectionLengthImbalance),
+            "unclosed-fence" => Ok(Category::UnclosedFence),
+            "untagged-code-block" => Ok(Category::UntaggedCodeBlock),
+            "duplicate-instruction-file" => Ok(Category::DuplicateInstructionFile),
+            "outdated-model-reference" => Ok(Category::OutdatedModelReference),
+            "broken-table" => Ok(Category::BrokenTable),
+            "placeholder-url" => Ok(Category::PlaceholderUrl),
+            "emphasis-overuse" => Ok(Category::EmphasisOveruse),
+            "boilerplate-template" => Ok(Category::BoilerplateTemplate),
+            "orphaned-section" => Ok(Category::OrphanedSection),
+            "excessive-nesting" => Ok(Category::ExcessiveNesting),
+            "context-window-waste" => Ok(Category::ContextWindowWaste),
+            "ambiguous-scope-reference" => Ok(Category::AmbiguousScopeReference),
+            "instruction-without-context" => Ok(Category::InstructionWithoutContext),
+            "cross-file-contradiction" => Ok(Category::CrossFileContradiction),
+            "stale-style-rule" => Ok(Category::StaleStyleRule),
+            "hardcoded-file-structure" => Ok(Category::HardcodedFileStructure),
+            "unversioned-stack-reference" => Ok(Category::UnversionedStackReference),
+            "missing-standard-file" => Ok(Category::MissingStandardFile),
+            "bare-url" => Ok(Category::BareUrl),
+            "repeated-word" => Ok(Category::RepeatedWord),
+            "undocumented-env-var" => Ok(Category::UndocumentedEnvVar),
+            "empty-code-block" => Ok(Category::EmptyCodeBlock),
+            "click-here-link" => Ok(Category::ClickHereLink),
+            "double-negation" => Ok(Category::DoubleNegation),
+            "imperative-heading" => Ok(Category::ImperativeHeading),
+            "inconsistent-command-prefix" => Ok(Category::InconsistentCommandPrefix),
+            "empty-heading" => Ok(Category::EmptyHeading),
+            "copied-meta-instructions" => Ok(Category::CopiedMetaInstructions),
+            "xml-document-wrapper" => Ok(Category::XmlDocumentWrapper),
+            "generated-attribution" => Ok(Category::GeneratedAttribution),
+            "command-without-codeblock" => Ok(Category::CommandWithoutCodeblock),
+            "missing-verification-step" => Ok(Category::MissingVerificationStep),
+            "broken-anchor-link" => Ok(Category::BrokenAnchorLink),
+            "long-paragraph" => Ok(Category::LongParagraph),
+            "hardcoded-windows-path" => Ok(Category::HardcodedWindowsPath),
+            "stale-file-tree" => Ok(Category::StaleFileTree),
+            "command-validation" => Ok(Category::CommandValidation),
+            "token-budget" => Ok(Category::TokenBudget),
+            "invalid-suppression" => Ok(Category::InvalidSuppression),
+            "unused-suppression" => Ok(Category::UnusedSuppression),
+            other => {
+                if let Some(name) = other.strip_prefix("custom:") {
+                    Ok(Category::CustomPattern(name.into()))
+                } else {
+                    Err(format!("unknown category: {other}"))
+                }
+            }
+        }
+    }
+}
+
+fn serialize_arc_pathbuf<S: serde::Serializer>(
+    path: &Arc<PathBuf>,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    serializer.collect_str(&path.display())
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Diagnostic {
-    pub file: PathBuf,
+    #[serde(serialize_with = "serialize_arc_pathbuf")]
+    pub file: Arc<PathBuf>,
     pub line: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_line: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_column: Option<usize>,
     pub severity: Severity,
     pub category: Category,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggestion: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fix: Option<Box<Fix>>,
 }
 
 #[derive(Debug, Default)]
@@ -190,6 +351,7 @@ pub struct CheckResult {
 }
 
 impl CheckResult {
+    #[must_use]
     fn count_severity(&self, severity: Severity) -> usize {
         self.diagnostics
             .iter()
@@ -197,19 +359,23 @@ impl CheckResult {
             .count()
     }
 
+    #[must_use]
     pub fn error_count(&self) -> usize {
         self.count_severity(Severity::Error)
     }
 
+    #[must_use]
     pub fn warning_count(&self) -> usize {
         self.count_severity(Severity::Warning)
     }
 
+    #[must_use]
     pub fn info_count(&self) -> usize {
         self.count_severity(Severity::Info)
     }
 
     /// Returns (errors, warnings, info) in a single pass.
+    #[must_use]
     pub fn severity_counts(&self) -> (usize, usize, usize) {
         let mut e = 0;
         let mut w = 0;
@@ -224,6 +390,7 @@ impl CheckResult {
         (e, w, i)
     }
 
+    #[must_use]
     pub fn has_severity_at_least(&self, threshold: Severity) -> bool {
         self.diagnostics.iter().any(|d| d.severity >= threshold)
     }
@@ -235,12 +402,16 @@ mod tests {
 
     fn make_diagnostic(severity: Severity) -> Diagnostic {
         Diagnostic {
-            file: PathBuf::from("test.md"),
+            file: Arc::new(PathBuf::from("test.md")),
             line: 1,
+            column: None,
+            end_line: None,
+            end_column: None,
             severity,
             category: Category::DeadReference,
             message: "test".to_string(),
             suggestion: None,
+            fix: None,
         }
     }
 
@@ -470,6 +641,12 @@ mod tests {
             Category::HardcodedWindowsPath.to_string(),
             "hardcoded-windows-path"
         );
+        assert_eq!(Category::StaleFileTree.to_string(), "stale-file-tree");
+        assert_eq!(
+            Category::CommandValidation.to_string(),
+            "command-validation"
+        );
+        assert_eq!(Category::TokenBudget.to_string(), "token-budget");
         assert_eq!(
             Category::InvalidSuppression.to_string(),
             "invalid-suppression"
@@ -479,8 +656,26 @@ mod tests {
             "unused-suppression"
         );
         assert_eq!(
-            Category::CustomPattern("todo".to_string()).to_string(),
+            Category::CustomPattern("todo".into()).to_string(),
             "custom:todo"
+        );
+    }
+
+    #[test]
+    fn test_category_as_str() {
+        assert_eq!(Category::DeadReference.as_str(), "dead-reference");
+        assert_eq!(Category::VagueDirective.as_str(), "vague-directive");
+        assert_eq!(Category::TokenBudget.as_str(), "token-budget");
+        assert_eq!(Category::CustomPattern("todo".into()).as_str(), "todo");
+        // as_str() for built-in variants matches Display output
+        assert_eq!(
+            Category::DeadReference.as_str(),
+            Category::DeadReference.to_string()
+        );
+        // as_str() for CustomPattern returns just the name (no "custom:" prefix)
+        assert_ne!(
+            Category::CustomPattern("todo".into()).as_str(),
+            Category::CustomPattern("todo".into()).to_string()
         );
     }
 
@@ -521,38 +716,50 @@ mod tests {
     fn test_diagnostic_sort_by_file_then_line() {
         let mut diagnostics = [
             Diagnostic {
-                file: PathBuf::from("b.md"),
+                file: Arc::new(PathBuf::from("b.md")),
                 line: 10,
+                column: None,
+                end_line: None,
+                end_column: None,
                 severity: Severity::Error,
                 category: Category::DeadReference,
                 message: "msg1".to_string(),
                 suggestion: None,
+                fix: None,
             },
             Diagnostic {
-                file: PathBuf::from("a.md"),
+                file: Arc::new(PathBuf::from("a.md")),
                 line: 5,
+                column: None,
+                end_line: None,
+                end_column: None,
                 severity: Severity::Warning,
                 category: Category::VagueDirective,
                 message: "msg2".to_string(),
                 suggestion: None,
+                fix: None,
             },
             Diagnostic {
-                file: PathBuf::from("a.md"),
+                file: Arc::new(PathBuf::from("a.md")),
                 line: 1,
+                column: None,
+                end_line: None,
+                end_column: None,
                 severity: Severity::Info,
                 category: Category::EnumDrift,
                 message: "msg3".to_string(),
                 suggestion: None,
+                fix: None,
             },
         ];
 
         diagnostics.sort_by(|a, b| (&a.file, a.line).cmp(&(&b.file, b.line)));
 
-        assert_eq!(diagnostics[0].file, PathBuf::from("a.md"));
+        assert_eq!(*diagnostics[0].file, PathBuf::from("a.md"));
         assert_eq!(diagnostics[0].line, 1);
-        assert_eq!(diagnostics[1].file, PathBuf::from("a.md"));
+        assert_eq!(*diagnostics[1].file, PathBuf::from("a.md"));
         assert_eq!(diagnostics[1].line, 5);
-        assert_eq!(diagnostics[2].file, PathBuf::from("b.md"));
+        assert_eq!(*diagnostics[2].file, PathBuf::from("b.md"));
         assert_eq!(diagnostics[2].line, 10);
     }
 
@@ -560,36 +767,52 @@ mod tests {
     fn test_structural_dedup() {
         let mut diagnostics = vec![
             Diagnostic {
-                file: PathBuf::from("a.md"),
+                file: Arc::new(PathBuf::from("a.md")),
                 line: 5,
+                column: None,
+                end_line: None,
+                end_column: None,
                 severity: Severity::Warning,
                 category: Category::DeadReference,
                 message: "first".to_string(),
                 suggestion: None,
+                fix: None,
             },
             Diagnostic {
-                file: PathBuf::from("a.md"),
+                file: Arc::new(PathBuf::from("a.md")),
                 line: 5,
+                column: None,
+                end_line: None,
+                end_column: None,
                 severity: Severity::Warning,
                 category: Category::DeadReference,
                 message: "first".to_string(),
                 suggestion: None,
+                fix: None,
             },
             Diagnostic {
-                file: PathBuf::from("a.md"),
+                file: Arc::new(PathBuf::from("a.md")),
                 line: 5,
+                column: None,
+                end_line: None,
+                end_column: None,
                 severity: Severity::Info,
                 category: Category::VagueDirective,
                 message: "different rule same line".to_string(),
                 suggestion: None,
+                fix: None,
             },
             Diagnostic {
-                file: PathBuf::from("a.md"),
+                file: Arc::new(PathBuf::from("a.md")),
                 line: 10,
+                column: None,
+                end_line: None,
+                end_column: None,
                 severity: Severity::Warning,
                 category: Category::DeadReference,
                 message: "different line".to_string(),
                 suggestion: None,
+                fix: None,
             },
         ];
 
@@ -616,5 +839,255 @@ mod tests {
         assert_eq!(diagnostics[0].message, "first");
         assert_eq!(diagnostics[1].message, "different rule same line");
         assert_eq!(diagnostics[2].message, "different line");
+    }
+
+    #[test]
+    fn test_category_fromstr_roundtrip() {
+        // All built-in categories should round-trip through Display and FromStr
+        let categories = [
+            Category::DeadReference,
+            Category::VagueDirective,
+            Category::NamingInconsistency,
+            Category::EnumDrift,
+            Category::AgentGuidelines,
+            Category::PlaceholderText,
+            Category::FileSize,
+            Category::CredentialExposure,
+            Category::HeadingHierarchy,
+            Category::DangerousCommand,
+            Category::StaleReference,
+            Category::EmojiDensity,
+            Category::SessionJournal,
+            Category::MissingEssentialSections,
+            Category::PromptInjectionVector,
+            Category::MissingVerification,
+            Category::NegativeOnlyFraming,
+            Category::ConflictingDirectives,
+            Category::MissingRoleDefinition,
+            Category::RedundantDirective,
+            Category::InstructionDensity,
+            Category::MissingExamples,
+            Category::UnboundedScope,
+            Category::CircularReference,
+            Category::LargeCodeBlock,
+            Category::DuplicateSection,
+            Category::AbsolutePath,
+            Category::GenericInstruction,
+            Category::MisorderedSteps,
+            Category::SectionLengthImbalance,
+            Category::UnclosedFence,
+            Category::UntaggedCodeBlock,
+            Category::DuplicateInstructionFile,
+            Category::OutdatedModelReference,
+            Category::BrokenTable,
+            Category::PlaceholderUrl,
+            Category::EmphasisOveruse,
+            Category::BoilerplateTemplate,
+            Category::OrphanedSection,
+            Category::ExcessiveNesting,
+            Category::ContextWindowWaste,
+            Category::AmbiguousScopeReference,
+            Category::InstructionWithoutContext,
+            Category::CrossFileContradiction,
+            Category::StaleStyleRule,
+            Category::HardcodedFileStructure,
+            Category::UnversionedStackReference,
+            Category::MissingStandardFile,
+            Category::BareUrl,
+            Category::RepeatedWord,
+            Category::UndocumentedEnvVar,
+            Category::EmptyCodeBlock,
+            Category::ClickHereLink,
+            Category::DoubleNegation,
+            Category::ImperativeHeading,
+            Category::InconsistentCommandPrefix,
+            Category::EmptyHeading,
+            Category::CopiedMetaInstructions,
+            Category::XmlDocumentWrapper,
+            Category::GeneratedAttribution,
+            Category::CommandWithoutCodeblock,
+            Category::MissingVerificationStep,
+            Category::BrokenAnchorLink,
+            Category::LongParagraph,
+            Category::HardcodedWindowsPath,
+            Category::StaleFileTree,
+            Category::CommandValidation,
+            Category::TokenBudget,
+            Category::InvalidSuppression,
+            Category::UnusedSuppression,
+        ];
+
+        for cat in &categories {
+            let s = cat.to_string();
+            let parsed: Category = s
+                .parse()
+                .unwrap_or_else(|e| panic!("Failed to parse '{}' back to Category: {}", s, e));
+            assert_eq!(
+                &parsed, cat,
+                "Round-trip failed for '{s}': got {parsed:?}, expected {cat:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_category_fromstr_custom_pattern() {
+        let parsed: Category = "custom:todo".parse().unwrap();
+        assert_eq!(parsed, Category::CustomPattern("todo".into()));
+        assert_eq!(parsed.to_string(), "custom:todo");
+    }
+
+    #[test]
+    fn test_category_fromstr_unknown() {
+        let result: std::result::Result<Category, _> = "not-a-real-rule".parse();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("unknown category"));
+    }
+
+    #[test]
+    fn test_category_serde_json_roundtrip() {
+        // All built-in categories should survive JSON serialization
+        let categories = [
+            Category::DeadReference,
+            Category::VagueDirective,
+            Category::TokenBudget,
+            Category::RepeatedWord,
+            Category::CustomPattern("my-rule".into()),
+        ];
+        for cat in &categories {
+            let json = serde_json::to_string(cat).unwrap();
+            let parsed: Category = serde_json::from_str(&json).unwrap();
+            assert_eq!(&parsed, cat, "JSON roundtrip failed for {cat:?}");
+        }
+    }
+
+    #[test]
+    fn test_category_fromstr_empty_custom() {
+        // "custom:" with empty name
+        let parsed: Category = "custom:".parse().unwrap();
+        assert_eq!(parsed, Category::CustomPattern("".into()));
+    }
+
+    #[test]
+    fn test_severity_counts_single_pass() {
+        let result = CheckResult {
+            diagnostics: vec![
+                make_diagnostic(Severity::Error),
+                make_diagnostic(Severity::Warning),
+                make_diagnostic(Severity::Warning),
+                make_diagnostic(Severity::Info),
+            ],
+        };
+        let (e, w, i) = result.severity_counts();
+        assert_eq!(e, 1);
+        assert_eq!(w, 2);
+        assert_eq!(i, 1);
+    }
+
+    #[test]
+    fn test_severity_counts_empty() {
+        let result = CheckResult::default();
+        assert_eq!(result.severity_counts(), (0, 0, 0));
+    }
+
+    #[test]
+    fn test_diagnostic_json_skips_none_fields() {
+        let d = Diagnostic {
+            file: Arc::new(PathBuf::from("test.md")),
+            line: 1,
+            column: None,
+            end_line: None,
+            end_column: None,
+            severity: Severity::Info,
+            category: Category::DeadReference,
+            message: "test".to_string(),
+            suggestion: None,
+            fix: None,
+        };
+        let json = serde_json::to_value(&d).unwrap();
+        assert!(
+            !json.as_object().unwrap().contains_key("column"),
+            "None column should be skipped"
+        );
+        assert!(
+            !json.as_object().unwrap().contains_key("end_line"),
+            "None end_line should be skipped"
+        );
+        assert!(
+            !json.as_object().unwrap().contains_key("suggestion"),
+            "None suggestion should be skipped"
+        );
+        assert!(
+            !json.as_object().unwrap().contains_key("fix"),
+            "None fix should be skipped"
+        );
+    }
+
+    #[test]
+    fn test_diagnostic_json_includes_present_fields() {
+        use crate::types::{Fix, Replacement};
+        let d = Diagnostic {
+            file: Arc::new(PathBuf::from("test.md")),
+            line: 5,
+            column: Some(10),
+            end_line: Some(5),
+            end_column: Some(20),
+            severity: Severity::Warning,
+            category: Category::RepeatedWord,
+            message: "dup word".to_string(),
+            suggestion: Some("remove it".to_string()),
+            fix: Some(Box::new(Fix {
+                description: "auto-fix".to_string(),
+                replacements: vec![Replacement {
+                    line: 5,
+                    start_col: 10,
+                    end_col: 14,
+                    new_text: String::new(),
+                }],
+            })),
+        };
+        let json = serde_json::to_value(&d).unwrap();
+        let obj = json.as_object().unwrap();
+        assert_eq!(obj["column"], 10);
+        assert_eq!(obj["end_line"], 5);
+        assert_eq!(obj["end_column"], 20);
+        assert_eq!(obj["suggestion"], "remove it");
+        assert!(obj.contains_key("fix"));
+        assert_eq!(obj["fix"]["replacements"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_diagnostic_file_serialized_as_string() {
+        let d = make_diagnostic(Severity::Error);
+        let json = serde_json::to_value(&d).unwrap();
+        assert!(
+            json["file"].is_string(),
+            "Arc<PathBuf> should serialize as string"
+        );
+        assert_eq!(json["file"].as_str().unwrap(), "test.md");
+    }
+
+    #[test]
+    fn test_fix_equality() {
+        use crate::types::{Fix, Replacement};
+        let f1 = Fix {
+            description: "fix".to_string(),
+            replacements: vec![Replacement {
+                line: 1,
+                start_col: 0,
+                end_col: 5,
+                new_text: "x".to_string(),
+            }],
+        };
+        let f2 = f1.clone();
+        assert_eq!(f1, f2);
+    }
+
+    #[test]
+    fn test_check_result_default_empty() {
+        let r = CheckResult::default();
+        assert!(r.diagnostics.is_empty());
+        assert_eq!(r.error_count(), 0);
+        assert_eq!(r.warning_count(), 0);
+        assert_eq!(r.info_count(), 0);
     }
 }

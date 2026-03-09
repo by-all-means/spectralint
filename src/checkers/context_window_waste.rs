@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::types::ParsedFile;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -45,6 +45,15 @@ static DECORATIVE_COMMENT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*<!--\s*[-=~*─━═]{3,}\s*-->").unwrap());
 
 impl Checker for ContextWindowWasteChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "context-window-waste",
+            description: "Flags decorative elements that waste context window tokens",
+            default_severity: Severity::Info,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

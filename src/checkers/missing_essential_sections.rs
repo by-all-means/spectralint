@@ -5,9 +5,9 @@ use std::sync::LazyLock;
 use crate::config::MissingEssentialSectionsConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
-use super::utils::{is_instruction_file, ScopeFilter};
+use super::utils::{is_instruction_file, is_reasoning_prompt, ScopeFilter, COMMAND_NAMES};
 use super::Checker;
 
 pub(crate) struct MissingEssentialSectionsChecker {
@@ -23,9 +23,6 @@ impl MissingEssentialSectionsChecker {
         }
     }
 }
-
-/// Shared command-name alternation used by both CODE_BLOCK_COMMAND and INLINE_COMMAND.
-const COMMAND_NAMES: &str = r"cargo|bun|uvx?|npm|npx|yarn|pnpm|pytest|make|go\s+(?:build|test|run)|docker|pip|poetry|gradle|mvn|bundle|rake|mix|dotnet|cmake";
 
 /// Command patterns commonly found in code blocks.
 static CODE_BLOCK_COMMAND: LazyLock<Regex> =
@@ -66,6 +63,15 @@ fn is_specialized_file(file_path: &Path, project_root: &Path) -> bool {
 }
 
 impl Checker for MissingEssentialSectionsChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "missing-essential-sections",
+            description: "Flags files lacking build/test commands or setup sections",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -89,6 +95,14 @@ impl Checker for MissingEssentialSectionsChecker {
             // Files like activity logs, curated lists, and context dumps don't need
             // build/test commands because they aren't telling the agent what to do.
             if !is_instruction_file(&file.raw_lines, &file.in_code_block) {
+                continue;
+            }
+
+            // Skip reasoning/workflow agent prompts that have no code blocks, no
+            // file references, and no shell command mentions — these are pure prose
+            // instructions (e.g., FlowKit agent system prompts) and don't need
+            // build/test commands.
+            if is_reasoning_prompt(file) {
                 continue;
             }
 
@@ -134,6 +148,7 @@ mod tests {
     use crate::checkers::utils::test_helpers::single_file_ctx_with_sections;
     use crate::parser::types::{ParsedFile, Section};
     use std::collections::HashSet;
+    use std::sync::Arc;
 
     fn run_check(lines: &[&str]) -> CheckResult {
         run_check_with_sections(lines, vec![])
@@ -217,6 +232,9 @@ mod tests {
 
     #[test]
     fn test_file_without_commands_flags() {
+        // Include a code block (with non-command content) so the file is not
+        // classified as a reasoning prompt — it has code context but no
+        // build/test commands.
         let result = run_check(&[
             "# Guide",
             "",
@@ -225,6 +243,10 @@ mod tests {
             "You must ensure code quality.",
             "",
             "Never skip unit tests.",
+            "",
+            "```",
+            "// example snippet",
+            "```",
         ]);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].severity, Severity::Info);
@@ -256,7 +278,7 @@ mod tests {
         let root = dir.path();
         // File inside .claude/commands/ — specialized, should be skipped
         let file = ParsedFile {
-            path: root.join(".claude/commands/review.md"),
+            path: Arc::new(root.join(".claude/commands/review.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![],
@@ -312,6 +334,8 @@ mod tests {
 
     #[test]
     fn test_instruction_file_without_commands_flags() {
+        // Include a code block so the file is recognized as code-related (not
+        // a reasoning prompt), but the code block has no build/test commands.
         let result = run_check(&[
             "# Guidelines",
             "",
@@ -320,6 +344,10 @@ mod tests {
             "Ensure all PRs have tests.",
             "",
             "Follow the coding standards.",
+            "",
+            "```typescript",
+            "const x = 1;",
+            "```",
         ]);
         assert_eq!(
             result.diagnostics.len(),
@@ -362,5 +390,39 @@ mod tests {
             ],
         );
         assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_reasoning_agent_prompt_skipped() {
+        // A pure prose reasoning/workflow agent prompt: headings and
+        // imperative instructions but zero code blocks, zero file
+        // references, and zero shell-command mentions. Should NOT be
+        // flagged because it is not a coding agent configuration.
+        let result = run_check(&[
+            "# Research Agent",
+            "",
+            "You are a research analysis agent.",
+            "",
+            "## Core Responsibilities",
+            "",
+            "Always verify claims against primary sources.",
+            "Never accept unverified assertions.",
+            "Ensure conclusions follow from evidence.",
+            "",
+            "## Workflow",
+            "",
+            "1. Gather relevant information from the provided context.",
+            "2. Analyze the data for patterns and inconsistencies.",
+            "3. Synthesize findings into a structured report.",
+            "",
+            "## Output Format",
+            "",
+            "Use clear headings and bullet points.",
+            "Avoid jargon when plain language suffices.",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Reasoning agent prompts (pure prose, no code/commands/file refs) should be skipped"
+        );
     }
 }

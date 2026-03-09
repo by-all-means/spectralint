@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::is_directive_line;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{is_heading, ScopeFilter};
 use super::Checker;
@@ -107,6 +107,15 @@ fn should_skip(line: &str) -> bool {
 }
 
 impl Checker for UnversionedStackReferenceChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "unversioned-stack-reference",
+            description: "Flags tech stack mentions without version numbers",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

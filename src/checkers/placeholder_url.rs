@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::is_directive_line;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{is_heading, ScopeFilter};
 use super::Checker;
@@ -64,6 +64,15 @@ fn is_real_domain_template(url: &str) -> bool {
 }
 
 impl Checker for PlaceholderUrlChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "placeholder-url",
+            description: "Flags placeholder/example URLs in prose",
+            default_severity: Severity::Info,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

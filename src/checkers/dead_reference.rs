@@ -1,10 +1,10 @@
 use regex::Regex;
 use std::path::Path;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{is_template_ref, is_within_project};
 use super::Checker;
@@ -87,6 +87,15 @@ fn resolves_via_dir_context(
 pub(crate) struct DeadReferenceChecker;
 
 impl Checker for DeadReferenceChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "dead-reference",
+            description: "Flags .md references to files that don't exist",
+            default_severity: Severity::Error,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -114,10 +123,24 @@ impl Checker for DeadReferenceChecker {
                 }
 
                 // Resolve relative to source dir first, then project root.
+                // After resolving, verify the path stays within the project root
+                // to prevent `../../etc/passwd` style traversals from silently passing.
                 let source_dir = file_ref.source_file.parent().unwrap_or(&ctx.project_root);
                 let resolved_local = source_dir.join(&file_ref.path);
                 let resolved_root = ctx.project_root.join(&file_ref.path);
-                if resolved_local.exists() || resolved_root.exists() {
+                if (resolved_local.exists()
+                    && is_within_project(
+                        &resolved_local,
+                        ctx.canonical_root.as_deref(),
+                        &ctx.project_root,
+                    ))
+                    || (resolved_root.exists()
+                        && is_within_project(
+                            &resolved_root,
+                            ctx.canonical_root.as_deref(),
+                            &ctx.project_root,
+                        ))
+                {
                     continue;
                 }
 
@@ -182,7 +205,7 @@ impl Checker for DeadReferenceChecker {
 
                 emit!(
                     result,
-                    file_ref.source_file,
+                    Arc::new(file_ref.source_file.clone()),
                     file_ref.line,
                     Severity::Error,
                     Category::DeadReference,
@@ -210,7 +233,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -247,7 +270,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![
@@ -296,7 +319,7 @@ mod tests {
 
         // docs/AGENTS.md references "scout.md" — should resolve to docs/scout.md
         let parsed = ParsedFile {
-            path: root.join("docs/AGENTS.md"),
+            path: Arc::new(root.join("docs/AGENTS.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -332,7 +355,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("changelog.md"),
+            path: Arc::new(root.join("changelog.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -374,7 +397,7 @@ mod tests {
         fs::write(root.join("agent_definitions/scout.md"), "# Scout").unwrap();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -413,7 +436,7 @@ mod tests {
 
         // docs/AGENTS.md references "../sibling.md"
         let parsed = ParsedFile {
-            path: root.join("docs/AGENTS.md"),
+            path: Arc::new(root.join("docs/AGENTS.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -450,7 +473,7 @@ mod tests {
         fs::create_dir_all(root.join("docs")).unwrap();
 
         let parsed = ParsedFile {
-            path: root.join("docs/AGENTS.md"),
+            path: Arc::new(root.join("docs/AGENTS.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -487,7 +510,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -523,7 +546,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -559,7 +582,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -595,7 +618,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -631,7 +654,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -674,7 +697,7 @@ mod tests {
 
         // CLAUDE.md references bare "SKILL.md" (convention, not a root file)
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -713,7 +736,7 @@ mod tests {
 
         // No SKILL.md exists anywhere
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -755,7 +778,7 @@ mod tests {
 
         // Reference uses explicit wrong path
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -792,7 +815,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -828,7 +851,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -864,7 +887,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -900,7 +923,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![
@@ -943,7 +966,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![
@@ -999,7 +1022,7 @@ mod tests {
         fs::write(root.join("templates/claude-code/CLAUDE.md"), "# Template").unwrap();
 
         let parsed = ParsedFile {
-            path: root.join("templates/claude-code/CLAUDE.md"),
+            path: Arc::new(root.join("templates/claude-code/CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -1035,7 +1058,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -1073,7 +1096,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -1112,7 +1135,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: Arc::new(root.join("AGENTS.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![
@@ -1163,7 +1186,7 @@ mod tests {
         raw_lines[6] = "- `AGENT.md`".to_string();
 
         let parsed = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: Arc::new(root.join("AGENTS.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![
@@ -1206,7 +1229,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -1246,7 +1269,7 @@ mod tests {
         fs::write(root.join("src/templates/base/skill-content.md"), "# Skill").unwrap();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -1287,7 +1310,7 @@ mod tests {
 
         // Directory context exists but file does NOT exist there
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -1328,7 +1351,7 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -1365,7 +1388,7 @@ mod tests {
     /// diagnostic.
     fn bare_ref_ctx(root: &Path, ref_path: &str, raw_line: &str) -> CheckerContext {
         let parsed = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![FileRef {
@@ -1385,6 +1408,48 @@ mod tests {
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
         }
+    }
+
+    #[test]
+    fn test_path_traversal_outside_project_flagged() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        // Reference uses ../../.. traversal to reach outside the project.
+        // Even though /etc/passwd exists on the system, the checker must
+        // treat it as a dead reference because it escapes the project root.
+        let parsed = ParsedFile {
+            path: Arc::new(root.join("CLAUDE.md")),
+            sections: vec![],
+            tables: vec![],
+            file_refs: vec![FileRef {
+                path: "../../../etc/passwd".to_string(),
+                line: 1,
+                source_file: root.join("CLAUDE.md"),
+            }],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: vec!["See ../../../etc/passwd for details".to_string()],
+            in_code_block: vec![],
+        };
+
+        let canonical_root = root.canonicalize().ok();
+        let ctx = CheckerContext {
+            files: vec![parsed],
+            project_root: root.to_path_buf(),
+            canonical_root,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = DeadReferenceChecker;
+        let result = checker.check(&ctx);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Path traversal escaping project root should be flagged as dead reference"
+        );
+        assert_eq!(result.diagnostics[0].category, Category::DeadReference);
     }
 
     #[test]

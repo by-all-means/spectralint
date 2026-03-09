@@ -1,6 +1,6 @@
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -20,6 +20,15 @@ impl UntaggedCodeBlockChecker {
 const MIN_CONTENT_LINES: usize = 2;
 
 impl Checker for UntaggedCodeBlockChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "untagged-code-block",
+            description: "Flags code fences without a language tag",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

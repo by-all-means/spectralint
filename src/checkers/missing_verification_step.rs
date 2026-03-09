@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -39,6 +39,15 @@ impl MissingVerificationStepChecker {
 }
 
 impl Checker for MissingVerificationStepChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "missing-verification-step",
+            description: "Flags files with workflow steps but no verification",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

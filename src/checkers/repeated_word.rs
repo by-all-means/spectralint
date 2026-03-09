@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::non_code_lines_masked;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, Fix, Replacement, RuleMeta, Severity};
 
 use super::utils::{inside_inline_code, ScopeFilter};
 use super::Checker;
@@ -28,6 +28,15 @@ impl RepeatedWordChecker {
 }
 
 impl Checker for RepeatedWordChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "repeated-word",
+            description: "Flags accidental consecutive duplicate words",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -61,12 +70,24 @@ impl Checker for RepeatedWordChecker {
                                 && !inside_inline_code(line, first.start())
                             {
                                 let lower = word.to_lowercase();
+                                // Fix: remove from end of first word to end of second word
+                                // (removes the whitespace + the duplicate word)
+                                let fix = Fix {
+                                    description: format!("Remove the duplicate \"{lower}\""),
+                                    replacements: vec![Replacement {
+                                        line: line_num,
+                                        start_col: first.end(),
+                                        end_col: second.end(),
+                                        new_text: String::new(),
+                                    }],
+                                };
                                 emit!(
                                     result,
                                     file.path,
                                     line_num,
                                     Severity::Info,
                                     Category::RepeatedWord,
+                                    fix: fix,
                                     suggest: &format!("Remove the duplicate \"{lower}\""),
                                     "repeated word: \"{lower} {lower}\""
                                 );
@@ -145,5 +166,21 @@ mod tests {
     fn test_is_is_flagged() {
         let result = check(&["The question is is it ready"]);
         assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_fix_data_present() {
+        let result = check(&["The the dog ran"]);
+        assert_eq!(result.diagnostics.len(), 1);
+        let d = &result.diagnostics[0];
+        let fix = d.fix.as_ref().expect("fix should be present");
+        assert_eq!(fix.replacements.len(), 1);
+        let r = &fix.replacements[0];
+        assert_eq!(r.line, 1);
+        // "The the dog ran" — first "The" is 0..3, second "the" is 4..7
+        // Fix removes from end of first (3) to end of second (7) = " the"
+        assert_eq!(r.start_col, 3);
+        assert_eq!(r.end_col, 7);
+        assert_eq!(r.new_text, "");
     }
 }

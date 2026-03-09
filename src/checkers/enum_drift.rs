@@ -5,7 +5,7 @@ use strsim::jaro_winkler;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::types::Table;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{is_instruction_file, normalize, ScopeFilter};
 use super::Checker;
@@ -29,6 +29,15 @@ struct TableRef<'a> {
 }
 
 impl Checker for EnumDriftChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "enum-drift",
+            description: "Tables with matching columns but divergent values",
+            default_severity: Severity::Warning,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
         let mut seen = HashSet::new();
@@ -176,7 +185,7 @@ mod tests {
     ) -> ParsedFile {
         let in_code_block = crate::parser::build_code_block_mask(&raw_lines);
         ParsedFile {
-            path,
+            path: std::sync::Arc::new(path),
             sections: vec![],
             tables,
             file_refs: vec![],
@@ -259,7 +268,7 @@ mod tests {
         let root = dir.path();
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["Status".to_string(), "Action".to_string()],
@@ -278,7 +287,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("changelog.md"),
+            path: std::sync::Arc::new(root.join("changelog.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["Status".to_string(), "Action".to_string()],
@@ -322,7 +331,7 @@ mod tests {
 
         // Create 3 files with the same table to trigger multiple comparisons
         let make_file = |name: &str, extra_value: &str| ParsedFile {
-            path: root.join(name),
+            path: std::sync::Arc::new(root.join(name)),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["Status".to_string(), "Action".to_string()],
@@ -382,7 +391,7 @@ mod tests {
         };
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![table.clone()],
             file_refs: vec![],
@@ -393,7 +402,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: std::sync::Arc::new(root.join("AGENTS.md")),
             sections: vec![],
             tables: vec![Table { line: 3, ..table }],
             file_refs: vec![],
@@ -423,7 +432,7 @@ mod tests {
         let root = dir.path();
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["Status".to_string(), "Action".to_string()],
@@ -442,7 +451,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("reports/output.md"),
+            path: std::sync::Arc::new(root.join("reports/output.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["Status".to_string(), "Action".to_string()],
@@ -485,7 +494,7 @@ mod tests {
         let root = dir.path();
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["Fruit".to_string(), "Color".to_string()],
@@ -501,7 +510,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: std::sync::Arc::new(root.join("AGENTS.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["Country".to_string(), "Capital".to_string()],
@@ -538,7 +547,7 @@ mod tests {
         let root = dir.path();
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["Status".to_string(), "Color".to_string()],
@@ -554,7 +563,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: std::sync::Arc::new(root.join("AGENTS.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["Status".to_string(), "Priority".to_string()],
@@ -591,7 +600,7 @@ mod tests {
         let root = dir.path();
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["Status".to_string(), "Color".to_string()],
@@ -607,7 +616,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: std::sync::Arc::new(root.join("AGENTS.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["Status".to_string(), "Priority".to_string()],
@@ -763,7 +772,7 @@ mod tests {
 
         // Two tables in the SAME file with different values
         let file = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![
                 Table {

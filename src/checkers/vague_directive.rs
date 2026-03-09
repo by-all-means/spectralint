@@ -4,9 +4,9 @@ use std::sync::LazyLock;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::{is_directive_line, NON_DIRECTIVE_CONTEXT};
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
-use super::utils::{ScopeFilter, REGEX_SIZE_LIMIT};
+use super::utils::{is_reasoning_prompt, ScopeFilter, REGEX_SIZE_LIMIT};
 use super::Checker;
 
 /// Hedging phrases enabled by `strict = true` (opt-in only).
@@ -56,6 +56,15 @@ impl VagueDirectiveChecker {
 }
 
 impl Checker for VagueDirectiveChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "vague-directive",
+            description: "Detects non-deterministic language in instructions",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -65,6 +74,15 @@ impl Checker for VagueDirectiveChecker {
             if !self.scope.includes(&file.path, &ctx.project_root) {
                 continue;
             }
+
+            // Skip reasoning/workflow agent prompts (pure prose, no code
+            // blocks, no file references, no shell commands). Hedging
+            // language like "when possible" is appropriate nuance in such
+            // files and flagging it would be a false positive.
+            if is_reasoning_prompt(file) {
+                continue;
+            }
+
             for directive in &file.directives {
                 emit!(
                     result,
@@ -122,8 +140,19 @@ impl Checker for VagueDirectiveChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::types::{Directive, ParsedFile};
+    use crate::parser::types::{Directive, FileRef, ParsedFile};
     use std::collections::HashSet;
+    use std::path::PathBuf;
+
+    /// Helper: create a single FileRef so the file is not classified as a
+    /// reasoning prompt (which would cause it to be skipped).
+    fn code_file_ref() -> FileRef {
+        FileRef {
+            path: "src/main.rs".to_string(),
+            line: 1,
+            source_file: PathBuf::from("instructions.md"),
+        }
+    }
 
     #[test]
     fn test_vague_directive_flagged() {
@@ -131,10 +160,10 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("instructions.md"),
+            path: std::sync::Arc::new(root.join("instructions.md")),
             sections: vec![],
             tables: vec![],
-            file_refs: vec![],
+            file_refs: vec![code_file_ref()],
             directives: vec![Directive {
                 line: 5,
                 pattern_matched: "Try to".to_string(),
@@ -166,10 +195,10 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("instructions.md"),
+            path: std::sync::Arc::new(root.join("instructions.md")),
             sections: vec![],
             tables: vec![],
-            file_refs: vec![],
+            file_refs: vec![code_file_ref()],
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![
@@ -224,10 +253,10 @@ mod tests {
         let root = dir.path();
 
         let in_scope = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
-            file_refs: vec![],
+            file_refs: vec![code_file_ref()],
             directives: vec![Directive {
                 line: 3,
                 pattern_matched: "Try to".to_string(),
@@ -238,10 +267,10 @@ mod tests {
         };
 
         let out_of_scope = ParsedFile {
-            path: root.join("reports/output.md"),
+            path: std::sync::Arc::new(root.join("reports/output.md")),
             sections: vec![],
             tables: vec![],
-            file_refs: vec![],
+            file_refs: vec![code_file_ref()],
             directives: vec![Directive {
                 line: 5,
                 pattern_matched: "Try to".to_string(),
@@ -279,10 +308,10 @@ mod tests {
         let root = dir.path();
 
         let file = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
-            file_refs: vec![],
+            file_refs: vec![code_file_ref()],
             directives: vec![Directive {
                 line: 3,
                 pattern_matched: "Try to".to_string(),
@@ -316,10 +345,10 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("instructions.md"),
+            path: std::sync::Arc::new(root.join("instructions.md")),
             sections: vec![],
             tables: vec![],
-            file_refs: vec![],
+            file_refs: vec![code_file_ref()],
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![
@@ -356,10 +385,10 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("instructions.md"),
+            path: std::sync::Arc::new(root.join("instructions.md")),
             sections: vec![],
             tables: vec![],
-            file_refs: vec![],
+            file_refs: vec![code_file_ref()],
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![
@@ -392,10 +421,10 @@ mod tests {
         let root = dir.path();
 
         let parsed = ParsedFile {
-            path: root.join("instructions.md"),
+            path: std::sync::Arc::new(root.join("instructions.md")),
             sections: vec![],
             tables: vec![],
-            file_refs: vec![],
+            file_refs: vec![code_file_ref()],
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![
@@ -420,6 +449,55 @@ mod tests {
             result.diagnostics.len(),
             2,
             "Strict mode + extra patterns should flag both"
+        );
+    }
+
+    #[test]
+    fn test_reasoning_prompt_skipped() {
+        // A pure prose reasoning/workflow agent prompt: no code blocks, no
+        // file references, no shell command mentions. Hedging language is
+        // natural in such files and should NOT be flagged.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let parsed = ParsedFile {
+            path: std::sync::Arc::new(root.join("reasoning-agent.md")),
+            sections: vec![],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![Directive {
+                line: 5,
+                pattern_matched: "Try to".to_string(),
+            }],
+            suppress_comments: vec![],
+            raw_lines: vec![
+                "# Research Agent".to_string(),
+                "".to_string(),
+                "You are a research analysis agent.".to_string(),
+                "".to_string(),
+                "Try to verify claims against primary sources when possible.".to_string(),
+                "Consider multiple perspectives before drawing conclusions.".to_string(),
+                "".to_string(),
+                "Ideally, cross-reference at least two independent sources.".to_string(),
+            ],
+            in_code_block: vec![],
+        };
+
+        let ctx = CheckerContext {
+            files: vec![parsed],
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+
+        // Even in strict mode, reasoning prompts should be skipped
+        let checker = VagueDirectiveChecker::new(true, &[], &[]);
+        let result = checker.check(&ctx);
+
+        assert!(
+            result.diagnostics.is_empty(),
+            "Reasoning agent prompts (pure prose, no code/commands/file refs) should not be flagged"
         );
     }
 }

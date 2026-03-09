@@ -242,6 +242,18 @@ pub const AVAILABLE_RULES: &[(&str, &str)] = &[
         "Flags XML declarations and wrapper tags in markdown",
     ),
     (
+        "stale-file-tree",
+        "Flags ASCII directory trees containing paths that don't exist on disk",
+    ),
+    (
+        "command-validation",
+        "Flags build/test commands whose toolchain prerequisites are missing",
+    ),
+    (
+        "token-budget",
+        "Estimates token cost of instruction files and flags context window overuse",
+    ),
+    (
         "invalid-suppression",
         "Warns on unrecognized rule names in suppress comments",
     ),
@@ -252,6 +264,7 @@ pub const AVAILABLE_RULES: &[(&str, &str)] = &[
     ("custom", "User-defined regex patterns from config"),
 ];
 
+#[must_use]
 pub fn list_rules() -> String {
     use std::fmt::Write;
     let mut out = String::from("Available rules:\n\n");
@@ -262,6 +275,7 @@ pub fn list_rules() -> String {
     out
 }
 
+#[must_use]
 pub fn explain(rule: &str) -> Option<&'static str> {
     match rule {
         "dead-reference" => Some(
@@ -1187,6 +1201,58 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              \n\
              Severity: configurable (default: warning)\n\
              Config: [[checkers.custom_patterns]]",
+        ),
+        "stale-file-tree" => Some(
+            "stale-file-tree: Flags ASCII directory trees containing paths that don't exist on disk.\n\
+             \n\
+             Instruction files often include directory tree diagrams to document project structure.\n\
+             When files get renamed or deleted, these trees become stale — agents trust the documented\n\
+             structure and make incorrect assumptions about where code lives.\n\
+             \n\
+             The checker parses Unicode box-drawing trees (├── └──) and ASCII variants (|-- +--)\n\
+             inside fenced code blocks, then verifies each path exists relative to the project root.\n\
+             \n\
+             Excluded: trees preceded by example/creation context, trees containing ellipsis (...),\n\
+             placeholder paths (<name>, {template}, xxx).\n\
+             \n\
+             Severity: warning (files), info (directories)\n\
+             Config: [checkers.stale_file_tree]",
+        ),
+        "command-validation" => Some(
+            "command-validation: Flags build/test commands whose toolchain prerequisites are missing.\n\
+             \n\
+             When a CLAUDE.md says `cargo test` but there's no Cargo.toml, or `npm install` but no\n\
+             package.json, the documented commands won't work. This checker maps referenced commands\n\
+             to their required manifest files and verifies they exist.\n\
+             \n\
+             Supported toolchains: Cargo, npm/Yarn/pnpm/Bun, Go, Python, Make, Maven, Gradle,\n\
+             .NET, Ruby/Bundler, Elixir, Flutter/Dart, Docker Compose.\n\
+             \n\
+             Excluded: commands inside docker run/exec context, conditional references\n\
+             (\"if using Go...\"), and advisory mentions (\"optionally\", \"alternatively\").\n\
+             One diagnostic per toolchain per file.\n\
+             \n\
+             Severity: warning\n\
+             Config: [checkers.command_validation]",
+        ),
+        "token-budget" => Some(
+            "token-budget: Estimates token cost of instruction files and flags context window overuse.\n\
+             \n\
+             Every instruction file loaded by an agent consumes context window tokens. Large files\n\
+             crowd out space for actual work — code diffs, tool outputs, conversation history.\n\
+             This checker estimates token count using a character-based heuristic (~4 chars per token)\n\
+             and flags files that exceed configurable thresholds.\n\
+             \n\
+             Default thresholds:\n\
+             - warn_tokens: 4000 (~16KB) — emits info-level advisory\n\
+             - max_tokens: 8000 (~32KB) — emits warning-level diagnostic\n\
+             \n\
+             The estimate is intentionally approximate — exact tokenization varies by model.\n\
+             The goal is catching obviously oversized files, not precise token accounting.\n\
+             \n\
+             Severity: info (warn threshold), warning (max threshold)\n\
+             Config: [checkers.token_budget]\n\
+             Options: warn_tokens, max_tokens, scope, severity",
         ),
         _ => None,
     }

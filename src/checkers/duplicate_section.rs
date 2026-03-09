@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -20,6 +20,15 @@ impl DuplicateSectionChecker {
 }
 
 impl Checker for DuplicateSectionChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "duplicate-section",
+            description: "Flags repeated section headings within a file",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

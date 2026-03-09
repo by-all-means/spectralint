@@ -1,6 +1,6 @@
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -17,6 +17,36 @@ impl OrphanedSectionChecker {
     }
 }
 
+/// Returns true if the section title looks like an intentional outline/prompt
+/// heading that is expected to have no body content (e.g., numbered outlines,
+/// questions for an LLM to fill in, or placeholder indicators).
+fn is_intentionally_empty(title: &str) -> bool {
+    let trimmed = title.trim();
+
+    // Numbered/lettered outline headings: "1. Topic", "a. Subtopic", "12. Item"
+    if let Some((prefix, _)) = trimmed.split_once(". ") {
+        if !prefix.is_empty()
+            && prefix
+                .chars()
+                .all(|c| c.is_ascii_digit() || c.is_ascii_lowercase())
+        {
+            return true;
+        }
+    }
+
+    // Question headings: "What should we build?"
+    if trimmed.ends_with('?') {
+        return true;
+    }
+
+    // Placeholder indicators: "..." or "[fill in]"
+    if trimmed.contains("...") || trimmed.contains("[fill in]") {
+        return true;
+    }
+
+    false
+}
+
 /// Returns true if the section title looks like a non-heading line that was
 /// mis-parsed as a heading (MediaWiki list items, separators, slash commands).
 fn is_likely_not_heading(title: &str) -> bool {
@@ -31,6 +61,15 @@ fn is_likely_not_heading(title: &str) -> bool {
 }
 
 impl Checker for OrphanedSectionChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "orphaned-section",
+            description: "Flags headings with no content before the next heading",
+            default_severity: Severity::Info,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -64,6 +103,12 @@ impl Checker for OrphanedSectionChecker {
                     continue;
                 }
 
+                // Skip intentional outline/prompt headings that are expected
+                // to be empty (numbered outlines, questions, placeholders)
+                if is_intentionally_empty(&current.title) {
+                    continue;
+                }
+
                 // Skip if next is a child section (lower level = deeper nesting)
                 if next.level > current.level {
                     continue;
@@ -73,11 +118,9 @@ impl Checker for OrphanedSectionChecker {
                 let content_start = current.line; // heading line (1-indexed)
                 let content_end = next.line - 1; // line before next heading
 
-                let has_content = file
-                    .raw_lines
+                let has_content = file.raw_lines
+                    [content_start..content_start + content_end.saturating_sub(content_start)]
                     .iter()
-                    .skip(content_start) // skip the heading line itself
-                    .take(content_end.saturating_sub(content_start))
                     .any(|line| {
                         let trimmed = line.trim();
                         !trimmed.is_empty() && !trimmed.starts_with('#')
@@ -206,5 +249,79 @@ mod tests {
         // Last section has no "next" to compare against, so it's not flagged
         let result = run_check(&["## Section"], vec![section_with_end("Section", 2, 1, 1)]);
         assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_numbered_outline_not_flagged() {
+        let result = run_check(
+            &["## 1. Business Model Options", "## 2. Revenue Streams"],
+            vec![
+                section_with_end("1. Business Model Options", 2, 1, 1),
+                section_with_end("2. Revenue Streams", 2, 2, 2),
+            ],
+        );
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_lettered_outline_not_flagged() {
+        let result = run_check(
+            &["## a. Subtopic", "## b. Another Subtopic"],
+            vec![
+                section_with_end("a. Subtopic", 2, 1, 1),
+                section_with_end("b. Another Subtopic", 2, 2, 2),
+            ],
+        );
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_question_heading_not_flagged() {
+        let result = run_check(
+            &["## What should we build?", "## Next Steps"],
+            vec![
+                section_with_end("What should we build?", 2, 1, 1),
+                section_with_end("Next Steps", 2, 2, 2),
+            ],
+        );
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_placeholder_heading_not_flagged() {
+        let result = run_check(
+            &["## Topics to cover...", "## Next Section"],
+            vec![
+                section_with_end("Topics to cover...", 2, 1, 1),
+                section_with_end("Next Section", 2, 2, 2),
+            ],
+        );
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_fill_in_placeholder_not_flagged() {
+        let result = run_check(
+            &["## [fill in] your goals", "## Next Section"],
+            vec![
+                section_with_end("[fill in] your goals", 2, 1, 1),
+                section_with_end("Next Section", 2, 2, 2),
+            ],
+        );
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_plain_empty_section_still_flagged() {
+        // "Empty Section" has no number, no question mark, no placeholder
+        let result = run_check(
+            &["## Empty Section", "## Next Section"],
+            vec![
+                section_with_end("Empty Section", 2, 1, 1),
+                section_with_end("Next Section", 2, 2, 2),
+            ],
+        );
+        assert_eq!(result.diagnostics.len(), 1);
+        assert!(result.diagnostics[0].message.contains("Empty Section"));
     }
 }

@@ -20,12 +20,9 @@ pub fn render(result: &CheckResult, project_root: &Path) {
         return;
     }
 
-    let mut by_category: BTreeMap<_, Vec<_>> = BTreeMap::new();
+    let mut by_category: BTreeMap<&str, Vec<_>> = BTreeMap::new();
     for d in &result.diagnostics {
-        by_category
-            .entry(d.category.to_string())
-            .or_default()
-            .push(d);
+        by_category.entry(d.category.as_str()).or_default().push(d);
     }
 
     let errors = result.error_count();
@@ -75,15 +72,15 @@ pub fn render(result: &CheckResult, project_root: &Path) {
         let (icon, label) = match severity {
             Severity::Error => (
                 styled!("\u{2717}", red).to_string(),
-                styled!(cat_name.as_str(), red.bold).to_string(),
+                styled!(*cat_name, red.bold).to_string(),
             ),
             Severity::Warning => (
                 styled!("\u{26a0}", yellow).to_string(),
-                styled!(cat_name.as_str(), yellow.bold).to_string(),
+                styled!(*cat_name, yellow.bold).to_string(),
             ),
             Severity::Info => (
                 styled!("\u{2139}", blue).to_string(),
-                styled!(cat_name.as_str(), blue.bold).to_string(),
+                styled!(*cat_name, blue.bold).to_string(),
             ),
         };
 

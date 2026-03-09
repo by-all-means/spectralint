@@ -1,7 +1,7 @@
 use crate::config::LargeCodeBlockConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -21,6 +21,15 @@ impl LargeCodeBlockChecker {
 }
 
 impl Checker for LargeCodeBlockChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "large-code-block",
+            description: "Flags inline code blocks exceeding a configurable threshold",
+            default_severity: Severity::Info,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

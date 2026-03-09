@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::non_code_lines_masked;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -38,6 +38,15 @@ impl ImperativeHeadingChecker {
 }
 
 impl Checker for ImperativeHeadingChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "imperative-heading",
+            description: "Flags headings that contain instructions instead of topics",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

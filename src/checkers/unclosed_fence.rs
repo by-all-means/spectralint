@@ -1,6 +1,6 @@
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -18,6 +18,15 @@ impl UnclosedFenceChecker {
 }
 
 impl Checker for UnclosedFenceChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "unclosed-fence",
+            description: "Flags code fences that are never closed",
+            default_severity: Severity::Error,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -53,7 +62,7 @@ impl Checker for UnclosedFenceChecker {
                     result,
                     file.path,
                     fence_open_line,
-                    Severity::Warning,
+                    Severity::Error,
                     Category::UnclosedFence,
                     suggest: "Add a closing ``` — everything after this fence is treated as code",
                     "Code fence{} opened here is never closed",
@@ -81,7 +90,7 @@ mod tests {
         let result = run_check(&["# Heading", "```python", "x = 1", "y = 2"]);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].line, 2);
-        assert_eq!(result.diagnostics[0].severity, Severity::Warning);
+        assert_eq!(result.diagnostics[0].severity, Severity::Error);
         assert!(result.diagnostics[0].message.contains("(python)"));
     }
 

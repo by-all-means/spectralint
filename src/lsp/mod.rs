@@ -34,9 +34,11 @@ impl SpectralintServer {
         let cfg = self.config.lock().await.clone();
 
         let run_root = root.clone();
-        let result = tokio::task::spawn_blocking(move || crate::engine::run(&run_root, &cfg)).await;
+        let result =
+            tokio::task::spawn_blocking(move || crate::engine::run(&run_root, &cfg, false, None))
+                .await;
 
-        let mut check_result = match result {
+        let check_result = match result {
             Ok(Ok(r)) => r,
             Ok(Err(e)) => {
                 self.client
@@ -52,22 +54,13 @@ impl SpectralintServer {
             }
         };
 
-        // Apply severity overrides (same as main.rs)
-        let cfg = self.config.lock().await;
-        for d in &mut check_result.diagnostics {
-            if let Some(sev) = cfg.severity_override(&d.category) {
-                d.severity = sev;
-            }
-        }
-        drop(cfg);
-
         // Group diagnostics by file
         let mut by_file: HashMap<PathBuf, Vec<Diagnostic>> = HashMap::new();
         for d in &check_result.diagnostics {
             let abs_path = if d.file.is_absolute() {
-                d.file.clone()
+                (*d.file).clone()
             } else {
-                root.join(&d.file)
+                root.join(d.file.as_ref() as &std::path::Path)
             };
             by_file
                 .entry(abs_path)
@@ -203,12 +196,16 @@ mod tests {
 
     fn make_diag(severity: Severity, line: usize, suggestion: Option<&str>) -> SpectralDiag {
         SpectralDiag {
-            file: PathBuf::from("test.md"),
+            file: Arc::new(PathBuf::from("test.md")),
             line,
+            column: None,
+            end_line: None,
+            end_column: None,
             severity,
             category: Category::DeadReference,
             message: "broken ref to `foo.md`".to_string(),
             suggestion: suggestion.map(String::from),
+            fix: None,
         }
     }
 

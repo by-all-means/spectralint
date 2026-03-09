@@ -7,6 +7,7 @@ mod broken_anchor_link;
 mod broken_table;
 mod circular_reference;
 mod click_here_link;
+mod command_validation;
 mod command_without_codeblock;
 mod conflicting_directives;
 mod context_window_waste;
@@ -56,8 +57,10 @@ mod redundant_directive;
 mod repeated_word;
 mod section_length_imbalance;
 mod session_journal;
+mod stale_file_tree;
 mod stale_reference;
 mod stale_style_rule;
+mod token_budget;
 mod unbounded_scope;
 mod unclosed_fence;
 mod undocumented_env_var;
@@ -69,10 +72,22 @@ mod xml_document_wrapper;
 
 use crate::config::Config;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::CheckResult;
+use crate::types::{CheckResult, RuleMeta};
 
 pub(crate) trait Checker: Send + Sync {
+    /// Static metadata about this checker (name, description, severity, strict_only).
+    #[allow(dead_code)]
+    fn meta(&self) -> RuleMeta;
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult;
+}
+
+/// Collect metadata from all checkers (using default config to instantiate them).
+/// Useful for generating rule lists and validation.
+#[allow(dead_code)]
+pub(crate) fn all_checker_meta() -> Vec<RuleMeta> {
+    let config = Config::default_with_all_enabled();
+    all_checkers(&config).iter().map(|c| c.meta()).collect()
 }
 
 pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
@@ -81,7 +96,7 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
     if config.checkers.dead_reference.enabled {
         checkers.push(Box::new(dead_reference::DeadReferenceChecker));
     }
-    if config.checkers.vague_directive.enabled {
+    if config.strict || config.checkers.vague_directive.enabled {
         checkers.push(Box::new(vague_directive::VagueDirectiveChecker::new(
             config.checkers.vague_directive.strict,
             &config.checkers.vague_directive.extra_patterns,
@@ -148,7 +163,7 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
             &config.checkers.session_journal.scope,
         )));
     }
-    if config.checkers.missing_essential_sections.enabled {
+    if config.strict || config.checkers.missing_essential_sections.enabled {
         checkers.push(Box::new(
             missing_essential_sections::MissingEssentialSectionsChecker::new(
                 &config.checkers.missing_essential_sections,
@@ -234,7 +249,7 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
             &config.checkers.absolute_path.scope,
         )));
     }
-    if config.checkers.generic_instruction.enabled {
+    if config.strict || config.checkers.generic_instruction.enabled {
         checkers.push(Box::new(
             generic_instruction::GenericInstructionChecker::new(
                 &config.checkers.generic_instruction.scope,
@@ -330,7 +345,7 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
             ),
         ));
     }
-    if config.checkers.instruction_without_context.enabled {
+    if config.strict || config.checkers.instruction_without_context.enabled {
         checkers.push(Box::new(
             instruction_without_context::InstructionWithoutContextChecker::new(
                 &config.checkers.instruction_without_context.scope,
@@ -369,6 +384,21 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
                 &config.checkers.hardcoded_file_structure.scope,
             ),
         ));
+    }
+    if config.checkers.stale_file_tree.enabled {
+        checkers.push(Box::new(stale_file_tree::StaleFileTreeChecker::new(
+            &config.checkers.stale_file_tree.scope,
+        )));
+    }
+    if config.checkers.command_validation.enabled {
+        checkers.push(Box::new(command_validation::CommandValidationChecker::new(
+            &config.checkers.command_validation.scope,
+        )));
+    }
+    if config.checkers.token_budget.enabled {
+        checkers.push(Box::new(token_budget::TokenBudgetChecker::new(
+            &config.checkers.token_budget,
+        )));
     }
     if config.strict || config.checkers.unversioned_stack_reference.enabled {
         checkers.push(Box::new(
@@ -469,4 +499,77 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
     }
 
     checkers
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn all_checkers_have_unique_meta_names() {
+        let metas = all_checker_meta();
+        assert!(!metas.is_empty(), "all_checker_meta() returned no checkers");
+
+        let mut seen = HashSet::new();
+        for meta in &metas {
+            assert!(
+                !meta.name.is_empty(),
+                "Checker meta has empty name: {:?}",
+                meta
+            );
+            assert!(
+                !meta.description.is_empty(),
+                "Checker '{}' has empty description",
+                meta.name
+            );
+            assert!(
+                seen.insert(meta.name),
+                "Duplicate checker name: '{}'",
+                meta.name
+            );
+        }
+    }
+
+    #[test]
+    fn meta_count_matches_checker_count() {
+        let config = Config::default_with_all_enabled();
+        let checkers = all_checkers(&config);
+        let metas = all_checker_meta();
+        assert_eq!(
+            checkers.len(),
+            metas.len(),
+            "all_checkers() and all_checker_meta() return different counts"
+        );
+    }
+
+    /// Rules that appear in AVAILABLE_RULES but are not always instantiated as
+    /// standalone checkers: pseudo-rules from the suppression system, and the
+    /// `custom` rule which requires user-defined patterns in config.
+    const NON_DEFAULT_RULES: &[&str] = &["unused-suppression", "invalid-suppression", "custom"];
+
+    #[test]
+    fn meta_names_match_available_rules() {
+        use crate::cli::explain::AVAILABLE_RULES;
+
+        let metas = all_checker_meta();
+        let meta_names: HashSet<&str> = metas.iter().map(|m| m.name).collect();
+        let rule_names: HashSet<&str> = AVAILABLE_RULES
+            .iter()
+            .map(|(name, _)| *name)
+            .filter(|n| !NON_DEFAULT_RULES.contains(n))
+            .collect();
+
+        let in_meta_not_rules: Vec<_> = meta_names.difference(&rule_names).collect();
+        let in_rules_not_meta: Vec<_> = rule_names.difference(&meta_names).collect();
+
+        assert!(
+            in_meta_not_rules.is_empty() && in_rules_not_meta.is_empty(),
+            "Mismatch between checker meta() names and AVAILABLE_RULES:\n  \
+             In meta() but not AVAILABLE_RULES: {:?}\n  \
+             In AVAILABLE_RULES but not meta(): {:?}",
+            in_meta_not_rules,
+            in_rules_not_meta,
+        );
+    }
 }

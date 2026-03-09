@@ -12,6 +12,7 @@ const MAX_WALK_DEPTH: usize = 256;
 pub(crate) struct ScanResult {
     pub files: Vec<PathBuf>,
     pub filename_index: HashSet<String>,
+    pub canonical_root: Option<PathBuf>,
 }
 
 /// Immutable configuration for a single walk pass.
@@ -24,9 +25,10 @@ struct WalkConfig {
 }
 
 pub(crate) fn scan(root: &Path, config: &Config) -> ScanResult {
+    let canonical_root = root.canonicalize().ok();
     let walk = WalkConfig {
         root: root.to_path_buf(),
-        canonical_root: root.canonicalize().ok(),
+        canonical_root: canonical_root.clone(),
         ignore: build_glob_set(&config.ignore),
         ignore_files: build_glob_set(&config.ignore_files),
         include: build_glob_set(&config.include),
@@ -38,9 +40,11 @@ pub(crate) fn scan(root: &Path, config: &Config) -> ScanResult {
     ScanResult {
         files,
         filename_index,
+        canonical_root,
     }
 }
 
+#[must_use]
 pub(crate) fn matches_glob(path: &Path, root: &Path, set: &GlobSet) -> bool {
     path.file_name()
         .and_then(|n| n.to_str())

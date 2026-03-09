@@ -6,7 +6,7 @@ use strsim::jaro_winkler;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{normalize, ScopeFilter};
 use super::Checker;
@@ -63,6 +63,15 @@ enum NameKind {
 const MAX_NAMES: usize = 500;
 
 impl Checker for NamingInconsistencyChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "naming-inconsistency",
+            description: "Same concept named differently within or across files",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -265,7 +274,7 @@ mod tests {
         let root = dir.path();
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["api_key".to_string(), "Value".to_string()],
@@ -281,7 +290,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: std::sync::Arc::new(root.join("AGENTS.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["apiKey".to_string(), "Value".to_string()],
@@ -327,7 +336,7 @@ mod tests {
         let root = dir.path();
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["Input".to_string(), "Action".to_string()],
@@ -343,7 +352,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: std::sync::Arc::new(root.join("AGENTS.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["INPUT".to_string(), "Action".to_string()],
@@ -386,7 +395,7 @@ mod tests {
         let root = dir.path();
 
         let file = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![
                 Table {
@@ -439,7 +448,7 @@ mod tests {
         let root = dir.path();
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["api_key".to_string(), "Value".to_string()],
@@ -455,7 +464,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("reports/output.md"),
+            path: std::sync::Arc::new(root.join("reports/output.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["apiKey".to_string(), "Value".to_string()],
@@ -503,7 +512,7 @@ mod tests {
         // "api_endpoint" vs "api_endpont" → very high Jaro-Winkler similarity (>0.95)
         // This is similar but doesn't just differ by trailing 's'
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["api_endpoint".to_string()],
@@ -519,7 +528,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: std::sync::Arc::new(root.join("AGENTS.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["api_endpont".to_string()],
@@ -563,7 +572,7 @@ mod tests {
 
         // "api_key" vs "user_name" → very different, should not flag
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["api_key".to_string()],
@@ -579,7 +588,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: std::sync::Arc::new(root.join("AGENTS.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["user_name".to_string()],
@@ -616,7 +625,7 @@ mod tests {
         let root = dir.path();
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![Section {
                 title: "Dec 5, 2025".to_string(),
                 level: 2,
@@ -632,7 +641,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: std::sync::Arc::new(root.join("AGENTS.md")),
             sections: vec![Section {
                 title: "Dec 4, 2025".to_string(),
                 level: 2,
@@ -674,7 +683,7 @@ mod tests {
         let root = dir.path();
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![Section {
                 title: "2025-10-27".to_string(),
                 level: 2,
@@ -690,7 +699,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: std::sync::Arc::new(root.join("AGENTS.md")),
             sections: vec![Section {
                 title: "2025-08-20".to_string(),
                 level: 2,
@@ -732,7 +741,7 @@ mod tests {
         let root = dir.path();
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![Section {
                 title: "3. Validation Checklist".to_string(),
                 level: 2,
@@ -748,7 +757,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: std::sync::Arc::new(root.join("AGENTS.md")),
             sections: vec![Section {
                 title: "4. Validation Checklist".to_string(),
                 level: 2,
@@ -790,7 +799,7 @@ mod tests {
         let root = dir.path();
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![Section {
                 title: "Step 3: Check for shared content".to_string(),
                 level: 2,
@@ -806,7 +815,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: std::sync::Arc::new(root.join("AGENTS.md")),
             sections: vec![Section {
                 title: "Step 4: Check for shared content".to_string(),
                 level: 2,
@@ -848,7 +857,7 @@ mod tests {
         let root = dir.path();
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["allowed-tools: Bash(gh pr comment:)".to_string()],
@@ -864,7 +873,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: std::sync::Arc::new(root.join("AGENTS.md")),
             sections: vec![],
             tables: vec![Table {
                 headers: vec!["allowed-tools: Bash(gh pr diff:)".to_string()],
@@ -906,7 +915,7 @@ mod tests {
         let root = dir.path();
 
         let file1 = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![Section {
                 title: "Development Workflows".to_string(),
                 level: 2,
@@ -922,7 +931,7 @@ mod tests {
         };
 
         let file2 = ParsedFile {
-            path: root.join("AGENTS.md"),
+            path: std::sync::Arc::new(root.join("AGENTS.md")),
             sections: vec![Section {
                 title: "Development Workflow".to_string(),
                 level: 2,

@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::non_code_lines_masked;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{inside_inline_code, is_heading, ScopeFilter};
 use super::Checker;
@@ -40,6 +40,15 @@ impl UndocumentedEnvVarChecker {
 }
 
 impl Checker for UndocumentedEnvVarChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "undocumented-env-var",
+            description: "Flags env var references without nearby explanation",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

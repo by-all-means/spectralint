@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{inside_inline_code, ScopeFilter};
 use super::Checker;
@@ -122,6 +122,15 @@ static ACTION_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 impl Checker for StaleReferenceChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "stale-reference",
+            description: "Detects time-sensitive conditional logic that becomes stale",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

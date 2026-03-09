@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{inside_inline_code, ScopeFilter};
 use super::Checker;
@@ -97,6 +97,15 @@ fn detect_personal_path(line: &str) -> Option<String> {
 }
 
 impl Checker for AbsolutePathChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "absolute-path",
+            description: "Flags hardcoded personal paths that break portability",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

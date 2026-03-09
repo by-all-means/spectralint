@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -78,6 +78,15 @@ const STRONG_MARKER_THRESHOLD: usize = 2;
 const CHECKMARK_THRESHOLD: usize = 8;
 
 impl Checker for SessionJournalChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "session-journal",
+            description: "Detects session logs masquerading as instruction files",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

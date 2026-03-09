@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -49,6 +49,15 @@ static DANGEROUS_PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(
 });
 
 impl Checker for DangerousCommandChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "dangerous-command",
+            description: "Flags dangerous shell/SQL commands in code blocks",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

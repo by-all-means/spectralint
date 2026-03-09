@@ -1,6 +1,6 @@
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -18,6 +18,15 @@ impl EmptyCodeBlockChecker {
 }
 
 impl Checker for EmptyCodeBlockChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "empty-code-block",
+            description: "Flags code blocks with no content",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

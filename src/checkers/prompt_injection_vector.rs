@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::is_directive_line;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -62,6 +62,15 @@ static HTML_INJECTION_KEYWORDS: LazyLock<Regex> =
 const SPECTRALINT_COMMENT_PREFIX: &str = "spectralint-";
 
 impl Checker for PromptInjectionVectorChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "prompt-injection-vector",
+            description: "Detects patterns that could be prompt injection attacks",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

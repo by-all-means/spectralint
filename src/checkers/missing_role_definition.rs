@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{count_directive_lines, is_instruction_file, ScopeFilter};
 use super::Checker;
@@ -83,6 +83,15 @@ static SKIP_PATH_SEGMENTS: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:^|/)(?:commands|skills|tasks)/").unwrap());
 
 impl Checker for MissingRoleDefinitionChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "missing-role-definition",
+            description: "Flags files without a role definition",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -311,7 +320,7 @@ mod tests {
         let root = dir.path();
         let lines = enough_directives();
         let file = ParsedFile {
-            path: root.join("sub/deep/CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("sub/deep/CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![],

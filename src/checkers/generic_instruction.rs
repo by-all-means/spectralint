@@ -4,9 +4,9 @@ use std::sync::LazyLock;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::is_directive_line;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
-use super::utils::{has_elaboration_after, is_heading, ScopeFilter};
+use super::utils::{has_elaboration_after, is_heading, is_reasoning_prompt, ScopeFilter};
 use super::Checker;
 
 pub(crate) struct GenericInstructionChecker {
@@ -40,11 +40,27 @@ static GENERIC_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 impl Checker for GenericInstructionChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "generic-instruction",
+            description: "Flags meaningless instructions the model already knows",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
         for file in &ctx.files {
             if !self.scope.includes(&file.path, &ctx.project_root) {
+                continue;
+            }
+
+            // Skip reasoning/workflow agent prompts (no code blocks, no file
+            // references). These are domain-specific prose files where
+            // spectralint lacks context to judge instruction value.
+            if is_reasoning_prompt(file) {
                 continue;
             }
 
@@ -81,7 +97,17 @@ mod tests {
     use super::*;
     use crate::checkers::utils::test_helpers::single_file_ctx;
 
+    /// Run the checker on the given lines, prepending a code block so the file
+    /// is not classified as a reasoning prompt (which would skip the check).
     fn run_check(lines: &[&str]) -> CheckResult {
+        let mut all_lines: Vec<&str> = vec!["```bash", "echo hello", "```"];
+        all_lines.extend_from_slice(lines);
+        let (_dir, ctx) = single_file_ctx(&all_lines);
+        GenericInstructionChecker::new(&[]).check(&ctx)
+    }
+
+    /// Run the checker on raw lines without any code block prefix.
+    fn run_check_raw(lines: &[&str]) -> CheckResult {
         let (_dir, ctx) = single_file_ctx(lines);
         GenericInstructionChecker::new(&[]).check(&ctx)
     }
@@ -223,6 +249,55 @@ mod tests {
         assert!(
             result.diagnostics.is_empty(),
             "Generic instruction in blockquote should not flag"
+        );
+    }
+
+    #[test]
+    fn test_reasoning_agent_prompt_not_flagged() {
+        // A pure prose reasoning/workflow agent prompt: no code blocks,
+        // no file references. spectralint lacks context to judge whether
+        // instructions are generic in this domain, so it should skip the file.
+        let result = run_check_raw(&[
+            "# Legal Document Review Agent",
+            "",
+            "You are a legal document review specialist.",
+            "",
+            "## Core Principles",
+            "",
+            "- Think step by step when analyzing contracts",
+            "- Follow best practices for due diligence",
+            "- Be helpful and accurate in your assessments",
+            "- Pay attention to detail in every clause",
+            "",
+            "## Workflow",
+            "",
+            "- Review each section of the contract carefully",
+            "- Identify potential risks and liabilities",
+            "- Produce high-quality summaries for stakeholders",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Reasoning agent prompt (no code blocks, no file refs) should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_file_with_code_block_still_flagged() {
+        // A file with code blocks is not a reasoning prompt, so generic
+        // instructions should still be flagged.
+        let result = run_check_raw(&[
+            "# Build Guide",
+            "",
+            "```bash",
+            "cargo build",
+            "```",
+            "",
+            "- Follow best practices",
+        ]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "File with code blocks should still flag generic instructions"
         );
     }
 }

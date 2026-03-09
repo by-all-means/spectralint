@@ -6,7 +6,7 @@ use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::is_directive_line;
 use crate::parser::types::ParsedFile;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{is_instruction_file, ScopeFilter};
 use super::Checker;
@@ -79,6 +79,15 @@ const RESPONSIBILITY_KEYWORDS: &[(&[&str], &str)] = &[
 ];
 
 impl Checker for AgentGuidelinesChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "agent-guidelines",
+            description: "Best-practice violations in agent instructions",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -263,6 +272,7 @@ mod tests {
     };
     use crate::parser::types::Section;
     use std::collections::HashSet;
+    use std::sync::Arc;
 
     fn make_ctx(root: &std::path::Path, files: Vec<ParsedFile>) -> CheckerContext {
         CheckerContext {
@@ -283,7 +293,7 @@ mod tests {
         let raw_lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
         let in_code_block = crate::parser::build_code_block_mask(&raw_lines);
         ParsedFile {
-            path: root.join(name),
+            path: Arc::new(root.join(name)),
             sections,
             tables: vec![],
             file_refs: vec![],

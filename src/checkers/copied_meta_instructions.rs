@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::non_code_lines_masked;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{is_heading, ScopeFilter};
 use super::Checker;
@@ -41,6 +41,15 @@ impl CopiedMetaInstructionsChecker {
 }
 
 impl Checker for CopiedMetaInstructionsChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "copied-meta-instructions",
+            description: "Flags AI boilerplate",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -71,7 +80,7 @@ impl Checker for CopiedMetaInstructionsChecker {
                             result,
                             file.path,
                             line_num,
-                            Severity::Warning,
+                            Severity::Info,
                             Category::CopiedMetaInstructions,
                             suggest: "Remove AI boilerplate — instruction files should contain project-specific directives",
                             "copied meta-instruction — this looks like AI-generated boilerplate, not a project directive"

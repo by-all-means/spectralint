@@ -1,6 +1,6 @@
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -26,6 +26,15 @@ const TEMPLATE_FINGERPRINTS: &[&str] = &[
 const MAX_NON_EMPTY_LINES: usize = 20;
 
 impl Checker for BoilerplateTemplateChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "boilerplate-template",
+            description: "Flags unchanged default template instruction files",
+            default_severity: Severity::Info,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

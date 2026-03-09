@@ -1,11 +1,11 @@
 use regex::Regex;
 use std::collections::HashSet;
 use std::path::Path;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{is_heading, is_template_ref, is_within_project, ScopeFilter};
 use super::Checker;
@@ -144,6 +144,15 @@ fn path_exists(
 }
 
 impl Checker for HardcodedFileStructureChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "hardcoded-file-structure",
+            description: "Flags references to non-.md source files that don't exist",
+            default_severity: Severity::Info,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -235,7 +244,7 @@ fn check_path(
 
     emit!(
         result,
-        file_path,
+        Arc::new(file_path.to_path_buf()),
         line_num,
         Severity::Info,
         Category::HardcodedFileStructure,
@@ -381,7 +390,7 @@ mod tests {
         let raw_lines = vec!["- Entry point is `src/cli/main.ts`".to_string()];
         let in_code_block = crate::parser::build_code_block_mask(&raw_lines);
         let file = crate::parser::types::ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![],

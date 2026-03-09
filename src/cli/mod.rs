@@ -56,6 +56,18 @@ pub enum Commands {
         /// Print only a summary count (e.g., "3 errors, 12 warnings, 5 info")
         #[arg(long)]
         count: bool,
+
+        /// Disable result caching (cache is enabled by default)
+        #[arg(long)]
+        no_cache: bool,
+
+        /// Re-run on file changes (poll every 2 seconds)
+        #[arg(long)]
+        watch: bool,
+
+        /// Automatically apply fixes for diagnostics that have structured fix data
+        #[arg(long)]
+        fix: bool,
     },
     /// Create a default .spectralintrc.toml
     Init {

@@ -1,7 +1,7 @@
 use crate::config::SectionLengthImbalanceConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -34,6 +34,15 @@ fn is_toc_section(title: &str) -> bool {
 const MIN_MEDIAN_FLOOR: usize = 5;
 
 impl Checker for SectionLengthImbalanceChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "section-length-imbalance",
+            description: "Flags disproportionately long sections relative to siblings",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

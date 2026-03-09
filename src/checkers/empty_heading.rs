@@ -1,7 +1,7 @@
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::non_code_lines_masked;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -19,6 +19,15 @@ impl EmptyHeadingChecker {
 }
 
 impl Checker for EmptyHeadingChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "empty-heading",
+            description: "Flags headings with no title text",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

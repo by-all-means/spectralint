@@ -8,11 +8,11 @@ use crate::parser::types::ParsedFile;
 use super::scanner::matches_glob;
 
 pub struct CheckerContext {
-    pub files: Vec<ParsedFile>,
-    pub project_root: PathBuf,
-    pub canonical_root: Option<PathBuf>,
-    pub filename_index: HashSet<String>,
-    pub historical_indices: HashSet<usize>,
+    pub(crate) files: Vec<ParsedFile>,
+    pub(crate) project_root: PathBuf,
+    pub(crate) canonical_root: Option<PathBuf>,
+    pub(crate) filename_index: HashSet<String>,
+    pub(crate) historical_indices: HashSet<usize>,
 }
 
 impl CheckerContext {
@@ -21,6 +21,7 @@ impl CheckerContext {
         project_root: &Path,
         historical_patterns: &[String],
         filename_index: HashSet<String>,
+        canonical_root: Option<PathBuf>,
     ) -> Self {
         let historical_set = build_glob_set(historical_patterns);
         let historical_indices = files
@@ -29,7 +30,6 @@ impl CheckerContext {
             .filter(|(_, f)| matches_glob(&f.path, project_root, &historical_set))
             .map(|(i, _)| i)
             .collect();
-        let canonical_root = project_root.canonicalize().ok();
         Self {
             files,
             project_root: project_root.to_path_buf(),
@@ -77,10 +77,11 @@ pub(crate) fn build_glob_set(patterns: &[String]) -> GlobSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     fn make_parsed_file(root: &Path, name: &str) -> ParsedFile {
         ParsedFile {
-            path: root.join(name),
+            path: Arc::new(root.join(name)),
             sections: vec![],
             tables: vec![],
             file_refs: vec![],
@@ -103,7 +104,7 @@ mod tests {
 
         let patterns = vec!["changelog*".to_string(), "retro*".to_string()];
 
-        let ctx = CheckerContext::build(files, root, &patterns, HashSet::new());
+        let ctx = CheckerContext::build(files, root, &patterns, HashSet::new(), None);
 
         assert!(
             !ctx.historical_indices.contains(&0),
@@ -134,7 +135,7 @@ mod tests {
 
         let patterns = vec!["docs/history.md".to_string()];
 
-        let ctx = CheckerContext::build(files, root, &patterns, HashSet::new());
+        let ctx = CheckerContext::build(files, root, &patterns, HashSet::new(), None);
 
         assert!(!ctx.historical_indices.contains(&0));
         assert!(
@@ -155,7 +156,7 @@ mod tests {
             make_parsed_file(root, "CLAUDE.md"),
         ];
 
-        let ctx = CheckerContext::build(files, root, &[], HashSet::new());
+        let ctx = CheckerContext::build(files, root, &[], HashSet::new(), None);
 
         assert!(
             ctx.historical_indices.is_empty(),

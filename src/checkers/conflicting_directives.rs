@@ -1,8 +1,8 @@
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
-use super::utils::{ScopeFilter, CONFLICT_PAIRS};
+use super::utils::{match_conflict_patterns, ScopeFilter, CONFLICT_PAIRS};
 use super::Checker;
 
 pub(crate) struct ConflictingDirectivesChecker {
@@ -18,6 +18,15 @@ impl ConflictingDirectivesChecker {
 }
 
 impl Checker for ConflictingDirectivesChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "conflicting-directives",
+            description: "Detects contradictory instructions in the same file",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -28,7 +37,31 @@ impl Checker for ConflictingDirectivesChecker {
 
             let directive_lines: Vec<(usize, &str)> = file.non_code_lines().collect();
 
-            for pair in CONFLICT_PAIRS.iter() {
+            // Pre-filter: use RegexSet to build a bitmask of which pair sides
+            // appear anywhere in this file, then only run individual regexes
+            // for pairs that have both sides present.
+            let num_pairs = CONFLICT_PAIRS.len();
+            let mut pair_has_a = vec![false; num_pairs];
+            let mut pair_has_b = vec![false; num_pairs];
+
+            for &(_, line) in &directive_lines {
+                let matches = match_conflict_patterns(line);
+                for idx in matches.iter() {
+                    let pair_idx = idx / 2;
+                    if idx % 2 == 0 {
+                        pair_has_a[pair_idx] = true;
+                    } else {
+                        pair_has_b[pair_idx] = true;
+                    }
+                }
+            }
+
+            for (pair_idx, pair) in CONFLICT_PAIRS.iter().enumerate() {
+                // Skip pairs where one side is entirely absent
+                if !pair_has_a[pair_idx] || !pair_has_b[pair_idx] {
+                    continue;
+                }
+
                 let mut a_match: Option<usize> = None;
                 let mut b_match: Option<usize> = None;
 

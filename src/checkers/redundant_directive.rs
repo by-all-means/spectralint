@@ -6,7 +6,7 @@ use crate::config::RedundantDirectiveConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::is_directive_line;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{normalize_directive, ScopeFilter};
 use super::Checker;
@@ -54,6 +54,15 @@ static NON_DIRECTIVE_LINE: LazyLock<Regex> = LazyLock::new(|| {
 const MAX_DIRECTIVE_LINES: usize = 200;
 
 impl Checker for RedundantDirectiveChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "redundant-directive",
+            description: "Detects near-duplicate directive lines via similarity",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -80,12 +89,34 @@ impl Checker for RedundantDirectiveChecker {
             // emitting multiple diagnostics for the same line.
             let mut flagged: HashSet<usize> = HashSet::new();
 
+            let threshold = self.similarity_threshold;
+            // Jaro similarity <= (1 + min_len/max_len + 1) / 3, so for
+            // jaro >= T we need min_len/max_len >= 3T - 2.  Jaro-Winkler
+            // only adds a small bonus, so this bound is safe.
+            let min_len_ratio = (3.0 * threshold - 2.0).max(0.0);
+
             for i in 0..directives.len() {
                 for j in (i + 1)..directives.len() {
                     if !flagged.insert(directives[j].0) {
                         // Already flagged this target line — skip.
                         continue;
                     }
+
+                    // Length pre-filter: if the shorter string is too short
+                    // relative to the longer one, Jaro-Winkler cannot reach
+                    // the threshold — skip the expensive comparison.
+                    let len_a = directives[i].1.len();
+                    let len_b = directives[j].1.len();
+                    let (min_len, max_len) = if len_a < len_b {
+                        (len_a, len_b)
+                    } else {
+                        (len_b, len_a)
+                    };
+                    if max_len > 0 && (min_len as f64) < min_len_ratio * max_len as f64 {
+                        flagged.remove(&directives[j].0);
+                        continue;
+                    }
+
                     let sim = strsim::jaro_winkler(&directives[i].1, &directives[j].1);
                     if sim >= self.similarity_threshold {
                         emit!(

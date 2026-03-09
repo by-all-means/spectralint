@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use crate::config::InstructionDensityConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{is_bullet_line, ScopeFilter};
 use super::Checker;
@@ -49,6 +49,15 @@ static SKIP_SECTION_TITLE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 impl Checker for InstructionDensityChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "instruction-density",
+            description: "Flags sections with excessive consecutive bullet points",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

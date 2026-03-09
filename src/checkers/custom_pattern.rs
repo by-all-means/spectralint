@@ -3,7 +3,7 @@ use regex::RegexBuilder;
 use crate::config::CustomPattern;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::REGEX_SIZE_LIMIT;
 use super::Checker;
@@ -49,6 +49,15 @@ impl CustomPatternChecker {
 }
 
 impl Checker for CustomPatternChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "custom",
+            description: "User-defined regex patterns from config",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -61,7 +70,7 @@ impl Checker for CustomPatternChecker {
                             file.path,
                             i + 1,
                             pattern.severity,
-                            Category::CustomPattern(pattern.name.clone()),
+                            Category::CustomPattern(pattern.name.as_str().into()),
                             "{}",
                             pattern.message
                         );
@@ -100,7 +109,7 @@ mod tests {
         assert_eq!(result.diagnostics[0].severity, Severity::Warning);
         assert_eq!(
             result.diagnostics[0].category,
-            Category::CustomPattern("todo-comment".to_string())
+            Category::CustomPattern("todo-comment".into())
         );
     }
 

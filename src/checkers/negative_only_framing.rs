@@ -5,7 +5,7 @@ use crate::config::NegativeOnlyFramingConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::is_directive_line;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -37,6 +37,15 @@ static NEGATIVE_PATTERNS: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 impl Checker for NegativeOnlyFramingChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "negative-only-framing",
+            description: "Flags files where 65%+ of directives are negative",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

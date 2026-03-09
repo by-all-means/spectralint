@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -47,6 +47,15 @@ static EXAMPLE_TITLE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\b(?:examples?|sample)\b").unwrap());
 
 impl Checker for MissingExamplesChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "missing-examples",
+            description: "Flags format specs without accompanying code examples",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

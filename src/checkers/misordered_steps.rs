@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{is_heading, ScopeFilter};
 use super::Checker;
@@ -24,6 +24,15 @@ static STEP_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)(?:^|\b)step\s*(\d{1,3})\b").unwrap());
 
 impl Checker for MisorderedStepsChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "misordered-steps",
+            description: "Flags out-of-order numbered steps",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

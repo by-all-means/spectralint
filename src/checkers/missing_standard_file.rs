@@ -1,12 +1,57 @@
+use std::sync::Arc;
+
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::Checker;
 
 pub(crate) struct MissingStandardFileChecker;
 
+/// Check whether the directory looks like a real project root.
+///
+/// We look for common project-root signals:
+/// - `.git` directory
+/// - Package manager / build manifests (Cargo.toml, package.json, go.mod, etc.)
+///
+/// If none of these exist the directory is likely a temp dir, subdirectory, or
+/// bare folder — and we should not flag it for missing CLAUDE.md.
+fn looks_like_project_root(root: &std::path::Path) -> bool {
+    const PROJECT_SIGNALS: &[&str] = &[
+        ".git",
+        "Cargo.toml",
+        "package.json",
+        "go.mod",
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "Gemfile",
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+        "CMakeLists.txt",
+        "Makefile",
+        "flake.nix",
+        "deno.json",
+        "composer.json",
+        "mix.exs",
+        "Project.toml",
+        ".hg",
+    ];
+
+    PROJECT_SIGNALS.iter().any(|s| root.join(s).exists())
+}
+
 impl Checker for MissingStandardFileChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "missing-standard-file",
+            description: "Flags projects missing common instruction files",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -22,10 +67,10 @@ impl Checker for MissingStandardFileChecker {
         });
         let has_settings = ctx.project_root.join(".claude/settings.json").exists();
 
-        if !has_claude_md {
+        if !has_claude_md && looks_like_project_root(&ctx.project_root) {
             emit!(
                 result,
-                ctx.project_root.join("CLAUDE.md"),
+                Arc::new(ctx.project_root.join("CLAUDE.md")),
                 0,
                 Severity::Info,
                 Category::MissingStandardFile,
@@ -39,7 +84,7 @@ impl Checker for MissingStandardFileChecker {
         if has_claude_md && has_claude_dir && !has_settings {
             emit!(
                 result,
-                ctx.project_root.join(".claude/settings.json"),
+                Arc::new(ctx.project_root.join(".claude/settings.json")),
                 0,
                 Severity::Info,
                 Category::MissingStandardFile,
@@ -60,7 +105,7 @@ mod tests {
 
     fn make_file(root: &std::path::Path, name: &str) -> ParsedFile {
         ParsedFile {
-            path: root.join(name),
+            path: Arc::new(root.join(name)),
             sections: vec![],
             tables: vec![],
             file_refs: vec![],
@@ -75,6 +120,8 @@ mod tests {
     fn test_missing_claude_md() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
+        // Create a .git directory so the checker recognises this as a project root
+        std::fs::create_dir_all(root.join(".git")).unwrap();
         let files = vec![make_file(root, "AGENTS.md")];
         let ctx = CheckerContext {
             files,
@@ -86,6 +133,27 @@ mod tests {
         let result = MissingStandardFileChecker.check(&ctx);
         assert_eq!(result.diagnostics.len(), 1);
         assert!(result.diagnostics[0].message.contains("no CLAUDE.md"));
+    }
+
+    #[test]
+    fn test_bare_directory_not_flagged() {
+        // A directory with no .git, no manifest files — not a project root.
+        // The checker should NOT emit a missing-CLAUDE.md diagnostic here.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let files = vec![make_file(root, "AGENTS.md")];
+        let ctx = CheckerContext {
+            files,
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+        let result = MissingStandardFileChecker.check(&ctx);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Bare directory without project root signals should not be flagged"
+        );
     }
 
     #[test]

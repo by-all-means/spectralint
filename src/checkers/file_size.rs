@@ -1,7 +1,7 @@
 use crate::config::FileSizeConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::Checker;
 
@@ -22,6 +22,15 @@ impl FileSizeChecker {
 }
 
 impl Checker for FileSizeChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "file-size",
+            description: "Warns when instruction files exceed recommended length",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -81,7 +90,7 @@ mod tests {
         let root = dir.path();
         let lines: Vec<String> = (0..line_count).map(|i| format!("Line {i}")).collect();
         let file = ParsedFile {
-            path: root.join("CLAUDE.md"),
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
             sections: vec![],
             tables: vec![],
             file_refs: vec![],

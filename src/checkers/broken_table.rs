@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
@@ -46,6 +46,15 @@ fn is_table_line(line: &str) -> bool {
 }
 
 impl Checker for BrokenTableChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "broken-table",
+            description: "Flags malformed markdown tables",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

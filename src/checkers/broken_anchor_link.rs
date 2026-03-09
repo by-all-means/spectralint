@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::non_code_lines_masked;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{inside_inline_code, ScopeFilter};
 use super::Checker;
@@ -50,6 +50,15 @@ impl BrokenAnchorLinkChecker {
 }
 
 impl Checker for BrokenAnchorLinkChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "broken-anchor-link",
+            description: "Flags in-file anchor links that don't match any heading",
+            default_severity: Severity::Error,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -83,7 +92,7 @@ impl Checker for BrokenAnchorLinkChecker {
                             result,
                             file.path,
                             line_num,
-                            Severity::Warning,
+                            Severity::Error,
                             Category::BrokenAnchorLink,
                             suggest: "Fix the anchor to match an existing heading, or add the missing heading",
                             "anchor link `#{}` does not match any heading in this file",

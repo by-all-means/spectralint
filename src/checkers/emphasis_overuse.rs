@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use crate::config::EmphasisOveruseConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{is_heading, ScopeFilter};
 use super::Checker;
@@ -35,6 +35,15 @@ static CAPS_EMPHASIS: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 impl Checker for EmphasisOveruseChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "emphasis-overuse",
+            description: "Flags files with excessive emphasis markers",
+            default_severity: Severity::Info,
+            strict_only: true,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 

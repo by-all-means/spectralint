@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, Severity};
+use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::{is_template_ref, ScopeFilter};
 use super::Checker;
@@ -44,6 +45,15 @@ enum DfsState {
 }
 
 impl Checker for CircularReferenceChecker {
+    fn meta(&self) -> RuleMeta {
+        RuleMeta {
+            name: "circular-reference",
+            description: "Detects circular file reference chains",
+            default_severity: Severity::Warning,
+            strict_only: false,
+        }
+    }
+
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
@@ -55,7 +65,7 @@ impl Checker for CircularReferenceChecker {
                 let key = file
                     .path
                     .canonicalize()
-                    .unwrap_or_else(|_| file.path.clone());
+                    .unwrap_or_else(|_| (*file.path).clone());
                 (key, idx)
             })
             .collect();
@@ -132,7 +142,7 @@ impl Checker for CircularReferenceChecker {
 
                         emit!(
                             result,
-                            file_ref.source_file,
+                            Arc::new(file_ref.source_file.clone()),
                             file_ref.line,
                             Severity::Warning,
                             Category::CircularReference,
@@ -164,18 +174,19 @@ mod tests {
 
     fn make_file(root: &std::path::Path, name: &str, refs: Vec<(&str, usize)>) -> ParsedFile {
         let path = root.join(name);
+        let file_refs: Vec<FileRef> = refs
+            .into_iter()
+            .map(|(r, line)| FileRef {
+                path: r.to_string(),
+                line,
+                source_file: path.clone(),
+            })
+            .collect();
         ParsedFile {
-            path: path.clone(),
+            path: std::sync::Arc::new(path),
             sections: vec![],
             tables: vec![],
-            file_refs: refs
-                .into_iter()
-                .map(|(r, line)| FileRef {
-                    path: r.to_string(),
-                    line,
-                    source_file: path.clone(),
-                })
-                .collect(),
+            file_refs,
             directives: vec![],
             suppress_comments: vec![],
             raw_lines: vec![],
