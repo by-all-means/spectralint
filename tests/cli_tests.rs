@@ -507,7 +507,16 @@ fn each_builtin_vague_pattern_detected() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
 
-        fs::write(root.join("CLAUDE.md"), format!("# Test\n\n{line}\n")).unwrap();
+        fs::write(
+            root.join("CLAUDE.md"),
+            format!("# Test\n\n{line}\n\n```\ncargo test\n```\n"),
+        )
+        .unwrap();
+        fs::write(
+            root.join(".spectralintrc.toml"),
+            "[checkers.vague_directive]\nenabled = true\n",
+        )
+        .unwrap();
 
         let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
         let diagnostics = parsed["diagnostics"].as_array().unwrap();
@@ -533,7 +542,7 @@ fn strict_vague_directive_flags_additional_patterns() {
 
     fs::write(
         root.join("CLAUDE.md"),
-        "# Instructions\n\nDo this when possible.\nConsider using caching.\n",
+        "# Instructions\n\nDo this when possible.\nConsider using caching.\n\n```\ncargo test\n```\n",
     )
     .unwrap();
 
@@ -790,7 +799,7 @@ fn extra_vague_patterns_via_config() {
 
     fs::write(
         root.join("CLAUDE.md"),
-        "# Instructions\n\nYou should maybe do this.\nThis is probably fine.\n",
+        "# Instructions\n\nYou should maybe do this.\nThis is probably fine.\n\n```\ncargo test\n```\n",
     )
     .unwrap();
 
@@ -894,7 +903,16 @@ fn github_output_uses_notice_for_info() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
 
-    fs::write(root.join("CLAUDE.md"), "# Test\n\nTry to be helpful.\n").unwrap();
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Test\n\nTry to be helpful.\n\n```\ncargo test\n```\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join(".spectralintrc.toml"),
+        "[checkers.vague_directive]\nenabled = true\n",
+    )
+    .unwrap();
 
     cmd()
         .args(["check", &root.display().to_string(), "--format", "github"])
@@ -2278,7 +2296,8 @@ fn missing_essential_sections_detected() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
 
-    // File with 10+ lines but no commands or setup sections
+    // File with 10+ lines, a code block (so it's not a reasoning prompt),
+    // but no build/test commands or setup sections
     fs::write(
         root.join("CLAUDE.md"),
         "# Guidelines\n\n\
@@ -2287,7 +2306,10 @@ fn missing_essential_sections_detected() {
          You must ensure code quality.\n\
          Never skip unit tests.\n\
          Use descriptive names.\n\
-         Handle errors properly.\n",
+         Handle errors properly.\n\n\
+         ```typescript\n\
+         const x = 1;\n\
+         ```\n",
     )
     .unwrap();
 
@@ -2897,7 +2919,7 @@ fn severity_override_promotes_info_to_error() {
 
     fs::write(
         root.join("CLAUDE.md"),
-        "# Test\n\nTry to be helpful when possible.\n",
+        "# Test\n\nTry to be helpful when possible.\n\n```\ncargo test\n```\n",
     )
     .unwrap();
     fs::write(
@@ -2929,16 +2951,16 @@ fn severity_override_affects_fail_on() {
 
     fs::write(
         root.join("CLAUDE.md"),
-        "# Test\n\nTry to be helpful when possible.\n",
+        "# Test\n\nTry to be helpful when possible.\n\n```\ncargo test\n```\n",
     )
     .unwrap();
-    // Without override: vague-directive is info, so --fail-on error should pass
+    // Without override: vague-directive is disabled by default, so should pass
     cmd()
         .args(["check", &root.display().to_string()])
         .assert()
         .success();
 
-    // With override: promote to error, should now fail
+    // With override: enable and promote to error, should now fail
     fs::write(
         root.join(".spectralintrc.toml"),
         "[checkers.vague_directive]\nenabled = true\nseverity = \"error\"\n",
@@ -2958,7 +2980,7 @@ fn severity_override_in_sarif_output() {
 
     fs::write(
         root.join("CLAUDE.md"),
-        "# Test\n\nTry to be helpful when possible.\n",
+        "# Test\n\nTry to be helpful when possible.\n\n```\ncargo test\n```\n",
     )
     .unwrap();
     fs::write(
@@ -3042,7 +3064,12 @@ fn valid_suppression_no_warnings() {
 
     fs::write(
         root.join("CLAUDE.md"),
-        "# Test\n\n<!-- spectralint-disable-next-line vague-directive -->\nTry to be helpful when possible.\n",
+        "# Test\n\n<!-- spectralint-disable-next-line vague-directive -->\nTry to be helpful when possible.\n\n```\ncargo test\n```\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join(".spectralintrc.toml"),
+        "[checkers.vague_directive]\nenabled = true\n",
     )
     .unwrap();
 
@@ -3060,5 +3087,445 @@ fn valid_suppression_no_warnings() {
         suppression_issues.is_empty(),
         "Valid, used suppression should not produce warnings: {:?}",
         suppression_issues
+    );
+}
+
+// ─── Reasoning Agent FP Regression Tests ───────────────────────────────
+// These tests reproduce false positives reported from FlowKit agent prompts.
+// Reasoning/workflow agents have different patterns than coding instructions:
+// - No code blocks, no file refs, no build commands
+// - Intentionally sparse outline headings for LLM fill-in
+// - Hedging language ("try to", "when possible") is valid nuance
+// - Generic instructions are domain-appropriate
+
+#[test]
+fn reasoning_agent_no_false_positives() {
+    // The fixture contains two reasoning agent files with:
+    // - Numbered outline headings (## 1. Topic)
+    // - Question headings (## What should we prioritize?)
+    // - Vague directives ("try to", "when possible", "use your judgment")
+    // - No code blocks, no file refs, no build commands
+    // Should produce zero diagnostics in default (non-strict) mode.
+    cmd()
+        .args(["check", "tests/fixtures/reasoning_agent"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("no issues found"));
+}
+
+#[test]
+fn reasoning_agent_json_zero_diagnostics() {
+    let parsed = json_output(&[
+        "check",
+        "tests/fixtures/reasoning_agent",
+        "--format",
+        "json",
+    ]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+    assert!(
+        diagnostics.is_empty(),
+        "Reasoning agent files should produce zero diagnostics in default mode, got: {:?}",
+        diagnostics
+    );
+}
+
+#[test]
+fn reasoning_agent_no_missing_essential_sections() {
+    // Even in strict mode, files with no code blocks should not flag
+    // "missing build/test commands"
+    let parsed = json_output(&[
+        "check",
+        "tests/fixtures/reasoning_agent",
+        "--strict",
+        "--format",
+        "json",
+    ]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+    let essential: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("missing-essential-sections"))
+        .collect();
+    assert!(
+        essential.is_empty(),
+        "Reasoning prompts should not flag missing-essential-sections, got: {:?}",
+        essential
+    );
+}
+
+#[test]
+fn reasoning_agent_no_orphaned_section_on_numbered_outlines() {
+    // Numbered headings like "## 1. Qualification Criteria" followed by
+    // "## 2. Scoring Model" should not flag as orphaned sections
+    let parsed = json_output(&[
+        "check",
+        "tests/fixtures/reasoning_agent",
+        "--strict",
+        "--format",
+        "json",
+    ]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+    let orphaned: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("orphaned-section"))
+        .collect();
+    assert!(
+        orphaned.is_empty(),
+        "Numbered outline headings should not flag as orphaned, got: {:?}",
+        orphaned
+    );
+}
+
+#[test]
+fn reasoning_agent_no_vague_directive_on_prompts() {
+    // "Try to", "when possible", "use your judgment" are valid in reasoning prompts
+    let parsed = json_output(&[
+        "check",
+        "tests/fixtures/reasoning_agent",
+        "--strict",
+        "--format",
+        "json",
+    ]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+    let vague: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("vague-directive"))
+        .collect();
+    assert!(
+        vague.is_empty(),
+        "Reasoning prompts should not flag vague-directive, got: {:?}",
+        vague
+    );
+}
+
+#[test]
+fn reasoning_agent_no_generic_instruction() {
+    // Domain-specific agents shouldn't flag generic-instruction
+    let parsed = json_output(&[
+        "check",
+        "tests/fixtures/reasoning_agent",
+        "--strict",
+        "--format",
+        "json",
+    ]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+    let generic: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("generic-instruction"))
+        .collect();
+    assert!(
+        generic.is_empty(),
+        "Reasoning prompts should not flag generic-instruction, got: {:?}",
+        generic
+    );
+}
+
+#[test]
+fn bare_directory_no_missing_standard_file() {
+    // A temp directory with no project root signals should not flag "missing CLAUDE.md"
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::write(root.join("AGENTS.md"), "# Agent\n\nDo stuff.\n").unwrap();
+
+    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+    let missing: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("missing-standard-file"))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "Bare directory without .git should not flag missing-standard-file, got: {:?}",
+        missing
+    );
+}
+
+// ─── Cache CLI flags ────────────────────────────────────────────────────
+
+#[test]
+fn no_cache_flag_accepted() {
+    // --no-cache should be accepted and produce the same results
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Test\n\nLoad `missing.md` here.\n",
+    )
+    .unwrap();
+
+    cmd()
+        .args(["check", &root.display().to_string(), "--no-cache"])
+        .assert()
+        .failure()
+        .code(1);
+}
+
+#[test]
+fn no_cache_flag_with_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Test\n\nLoad `missing.md` here.\n",
+    )
+    .unwrap();
+
+    let output = cmd()
+        .args([
+            "check",
+            &root.display().to_string(),
+            "--no-cache",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(!parsed["diagnostics"].as_array().unwrap().is_empty());
+}
+
+// ─── Rule filter ────────────────────────────────────────────────────────
+
+#[test]
+fn rule_filter_only_shows_matching_rules() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    // Create a file that triggers both dead-reference and something else
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Test\n\nLoad `missing.md` here.\n\nTry to be helpful.\n\n```\ncargo test\n```\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join(".spectralintrc.toml"),
+        "[checkers.vague_directive]\nenabled = true\n",
+    )
+    .unwrap();
+
+    let parsed = json_output(&[
+        "check",
+        &root.display().to_string(),
+        "--format",
+        "json",
+        "--rule",
+        "dead-reference",
+    ]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+
+    for d in diagnostics {
+        assert_eq!(
+            d["category"].as_str().unwrap(),
+            "dead-reference",
+            "Only dead-reference should appear when --rule=dead-reference is used"
+        );
+    }
+}
+
+// ─── SARIF output format ────────────────────────────────────────────────
+
+#[test]
+fn sarif_output_is_valid_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Test\n\nLoad `missing.md` here.\n",
+    )
+    .unwrap();
+
+    let output = cmd()
+        .args(["check", &root.display().to_string(), "--format", "sarif"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    // Validate basic SARIF structure
+    assert_eq!(parsed["version"].as_str().unwrap(), "2.1.0");
+    assert!(parsed["$schema"].as_str().is_some());
+    let runs = parsed["runs"].as_array().unwrap();
+    assert!(!runs.is_empty());
+    let tool = &runs[0]["tool"]["driver"];
+    assert_eq!(tool["name"].as_str().unwrap(), "spectralint");
+}
+
+#[test]
+fn sarif_output_has_results() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Test\n\nLoad `missing.md` here.\n",
+    )
+    .unwrap();
+
+    let output = cmd()
+        .args(["check", &root.display().to_string(), "--format", "sarif"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+    let results = parsed["runs"][0]["results"].as_array().unwrap();
+    assert!(
+        !results.is_empty(),
+        "SARIF should contain results for dead-reference"
+    );
+
+    // Each result should have ruleId, message, and locations
+    for result in results {
+        assert!(result["ruleId"].as_str().is_some());
+        assert!(result["message"]["text"].as_str().is_some());
+        let locations = result["locations"].as_array().unwrap();
+        assert!(!locations.is_empty());
+    }
+}
+
+// ─── Explain command ────────────────────────────────────────────────────
+
+#[test]
+fn explain_command_known_rule() {
+    cmd()
+        .args(["explain", "dead-reference"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("dead-reference"));
+}
+
+#[test]
+fn explain_command_unknown_rule() {
+    cmd()
+        .args(["explain", "nonexistent-rule-xyz"])
+        .assert()
+        .failure();
+}
+
+#[test]
+fn list_rules_command() {
+    cmd()
+        .args(["explain"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("dead-reference"))
+        .stdout(predicate::str::contains("vague-directive"))
+        .stdout(predicate::str::contains("token-budget"));
+}
+
+// ─── Severity filter ────────────────────────────────────────────────────
+
+#[test]
+fn fail_on_warning_ignores_info_for_exit_code() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    // Create a large file that triggers token-budget at Info level
+    let content = format!("# Big File\n\n{}\n", "x ".repeat(10000));
+    fs::write(root.join("CLAUDE.md"), content).unwrap();
+
+    // With --fail-on=warning (the default is error), info-only diagnostics
+    // should not cause a non-zero exit code.
+    cmd()
+        .args(["check", &root.display().to_string(), "--fail-on", "warning"])
+        .assert()
+        .success();
+}
+
+// ─── Empty directory ────────────────────────────────────────────────────
+
+#[test]
+fn empty_directory_exits_cleanly() {
+    let dir = tempfile::tempdir().unwrap();
+    // spectralint exits with code 1 when no markdown files are found
+    cmd()
+        .args(["check", &dir.path().display().to_string()])
+        .assert()
+        .failure()
+        .code(1);
+}
+
+// ─── Reasoning prompt with code blocks is NOT a reasoning prompt ────────
+
+#[test]
+fn reasoning_prompt_with_code_block_still_checked() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    // A file with vague language BUT with code blocks should still be checked
+    // (it's not a "reasoning prompt" because it has code blocks)
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Instructions\n\nTry to be helpful.\nDo your best.\nConsider caching.\n\n```bash\ncargo test\n```\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join(".spectralintrc.toml"),
+        "[checkers.vague_directive]\nenabled = true\n",
+    )
+    .unwrap();
+
+    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+
+    let vague: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("vague-directive"))
+        .collect();
+
+    assert!(
+        !vague.is_empty(),
+        "Files with code blocks should NOT be considered reasoning prompts and should still flag vague directives"
+    );
+}
+
+// ─── Strict mode enables strict-only checkers ───────────────────────────
+
+#[test]
+fn strict_mode_enables_strict_only_checkers() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    // Create a file with enough directive lines to trigger instruction-without-context
+    let mut lines = String::from("# Instructions\n\n");
+    for i in 0..15 {
+        lines.push_str(&format!("- Always follow rule number {i}\n"));
+    }
+    fs::write(root.join("CLAUDE.md"), &lines).unwrap();
+
+    // Without strict: instruction-without-context should not fire
+    let parsed = json_output(&[
+        "check",
+        &root.display().to_string(),
+        "--no-cache",
+        "--format",
+        "json",
+    ]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+    let iwc: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("instruction-without-context"))
+        .collect();
+    assert!(
+        iwc.is_empty(),
+        "instruction-without-context should NOT fire without --strict"
+    );
+
+    // With strict: it should fire
+    let parsed = json_output(&[
+        "check",
+        &root.display().to_string(),
+        "--no-cache",
+        "--strict",
+        "--format",
+        "json",
+    ]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+    let iwc: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("instruction-without-context"))
+        .collect();
+    assert!(
+        !iwc.is_empty(),
+        "instruction-without-context SHOULD fire with --strict"
     );
 }

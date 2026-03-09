@@ -1,0 +1,5 @@
+[checkers.agent_guidelines]
+enabled = false
+
+[checkers.instruction_without_context]
+enabled = false
