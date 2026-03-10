@@ -1,8 +1,9 @@
 use anyhow::Result;
 use clap::Parser;
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use notify::{recommended_watcher, RecursiveMode, Watcher};
+use std::path::Path;
+use std::sync::mpsc;
+use std::time::Duration;
 
 use spectralint::cli::{Cli, Commands, OutputFormat, Preset};
 use spectralint::config::Config;
@@ -44,7 +45,7 @@ fn run_check(
     if apply_fix {
         let fixed = engine::apply_fixes(&result.diagnostics);
         if fixed > 0 {
-            eprintln!("Applied {fixed} fix(es).");
+            tracing::info!("Applied {fixed} fix(es).");
         }
     }
 
@@ -73,21 +74,12 @@ fn run_check(
     Ok(result.has_severity_at_least(fail_on))
 }
 
-/// Collect modification times for all scanned files.
-fn collect_mtimes(files: &[PathBuf]) -> HashMap<PathBuf, SystemTime> {
-    files
-        .iter()
-        .filter_map(|p| {
-            std::fs::metadata(p)
-                .and_then(|m| m.modified())
-                .ok()
-                .map(|t| (p.clone(), t))
-        })
-        .collect()
-}
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
 
     match cli.command {
         Commands::Check {
@@ -140,33 +132,42 @@ fn main() -> Result<()> {
                 return Ok(());
             }
 
-            // Watch mode: poll for changes and re-run
-            let mut prev_mtimes = collect_mtimes(&engine::scanned_files(&project_root, &cfg));
+            // Watch mode: use filesystem notifications
+            let (tx, rx) = mpsc::channel();
+            let mut watcher = recommended_watcher(tx).expect("Failed to initialize file watcher");
+            watcher
+                .watch(project_root.as_ref(), RecursiveMode::Recursive)
+                .expect("Failed to watch directory");
 
             loop {
-                std::thread::sleep(std::time::Duration::from_secs(2));
+                // Block until we get a filesystem event
+                match rx.recv() {
+                    Ok(_) => {
+                        // Debounce: drain any additional events that arrived
+                        std::thread::sleep(Duration::from_millis(100));
+                        while rx.try_recv().is_ok() {}
 
-                let current_files = engine::scanned_files(&project_root, &cfg);
-                let current_mtimes = collect_mtimes(&current_files);
-
-                if current_mtimes != prev_mtimes {
-                    println!("\n--- Re-checking... ---\n");
-                    match run_check(
-                        &project_root,
-                        &cfg,
-                        config.as_deref(),
-                        &rule,
-                        output_format,
-                        quiet,
-                        count,
-                        fail_on,
-                        use_cache,
-                        fix,
-                    ) {
-                        Ok(_) => {}
-                        Err(e) => eprintln!("Error: {e}"),
+                        println!("\n--- Re-checking... ---\n");
+                        match run_check(
+                            &project_root,
+                            &cfg,
+                            config.as_deref(),
+                            &rule,
+                            output_format,
+                            quiet,
+                            count,
+                            fail_on,
+                            use_cache,
+                            fix,
+                        ) {
+                            Ok(_) => {}
+                            Err(e) => tracing::error!("Error: {e}"),
+                        }
                     }
-                    prev_mtimes = current_mtimes;
+                    Err(e) => {
+                        tracing::error!("Watch error: {e}");
+                        break;
+                    }
                 }
             }
         }

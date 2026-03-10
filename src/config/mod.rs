@@ -992,8 +992,9 @@ strict = true
             Category::BrokenAnchorLink => self.checkers.broken_anchor_link.severity,
             Category::LongParagraph => self.checkers.long_paragraph.severity,
             Category::XmlDocumentWrapper => self.checkers.xml_document_wrapper.severity,
-            Category::InvalidSuppression | Category::UnusedSuppression => None,
-            Category::CustomPattern(_) => None,
+            Category::InvalidSuppression
+            | Category::UnusedSuppression
+            | Category::CustomPattern(_) => None,
         }
     }
 }

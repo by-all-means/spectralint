@@ -32,36 +32,47 @@ pub fn run(
         anyhow::bail!("No markdown files found in {}", project_root.display());
     }
 
-    // Compute cache keys
-    let files_hash = if use_cache {
-        cache::compute_files_hash(&scan_result.files)
-    } else {
-        0
-    };
-    let config_hash = if use_cache {
-        cache::compute_config_hash(config_path, project_root)
-    } else {
-        0
-    };
-
-    // Try to load from cache
-    if use_cache {
-        if let Some(diagnostics) = cache::load(project_root, files_hash, config_hash) {
+    // Compute cache keys and try to load from cache
+    let (files_hash, config_hash) = if use_cache {
+        let fh = cache::compute_files_hash(&scan_result.files);
+        let ch = cache::compute_config_hash(config_path, project_root);
+        if let Some(diagnostics) = cache::load(project_root, fh, ch) {
             return Ok(CheckResult { diagnostics });
         }
-    }
+        (fh, ch)
+    } else {
+        (0, 0)
+    };
 
+    let total_files = scan_result.files.len();
     let parsed: Vec<_> = scan_result
         .files
         .par_iter()
         .filter_map(|p| match crate::parser::parse_file(p) {
             Ok(f) => Some(f),
             Err(e) => {
-                eprintln!("Warning: failed to parse {}: {e}", p.display());
+                tracing::warn!("Failed to parse {}: {e}", p.display());
                 None
             }
         })
         .collect();
+
+    let parse_failures = total_files - parsed.len();
+    if parsed.is_empty() {
+        anyhow::bail!(
+            "All {} markdown file(s) failed to parse in {}",
+            total_files,
+            project_root.display()
+        );
+    }
+    if parse_failures > 0 {
+        tracing::warn!(
+            "Checked {}/{} files ({} failed to parse)",
+            parsed.len(),
+            total_files,
+            parse_failures
+        );
+    }
 
     // Validate suppress comment rule names
     let known_rules = suppress::all_known_rule_names(&config.checkers.custom_patterns);

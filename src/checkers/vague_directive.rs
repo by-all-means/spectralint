@@ -41,7 +41,7 @@ impl VagueDirectiveChecker {
                 |p| match RegexBuilder::new(p).size_limit(REGEX_SIZE_LIMIT).build() {
                     Ok(r) => Some(r),
                     Err(e) => {
-                        eprintln!("Warning: invalid vague_directive extra_pattern \"{p}\": {e}");
+                        tracing::warn!("Invalid vague_directive extra_pattern \"{p}\": {e}");
                         None
                     }
                 },

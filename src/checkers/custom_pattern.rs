@@ -35,10 +35,7 @@ impl CustomPatternChecker {
                         message: c.message.clone(),
                     }),
                     Err(e) => {
-                        eprintln!(
-                            "Warning: invalid regex pattern for custom rule '{}': {e}",
-                            c.name
-                        );
+                        tracing::warn!("Invalid regex pattern for custom rule '{}': {e}", c.name);
                         None
                     }
                 }

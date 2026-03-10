@@ -7,6 +7,8 @@ use crate::types::{Category, Diagnostic, Fix, Severity};
 
 const CACHE_VERSION: &str = "1";
 const CACHE_FILE: &str = ".spectralint-cache.json";
+/// Maximum cache file size (50 MiB) to prevent memory exhaustion from crafted caches.
+const MAX_CACHE_SIZE: u64 = 50 * 1024 * 1024;
 
 /// On-disk cache format.
 #[derive(Debug, Serialize, Deserialize)]
@@ -74,10 +76,10 @@ impl CachedDiagnostic {
 
 /// Stable FNV-1a hash (deterministic across Rust versions, unlike DefaultHasher).
 fn fnv1a_hash(data: &[u8]) -> u64 {
-    let mut hash: u64 = 0xcbf29ce484222325;
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for &byte in data {
-        hash ^= byte as u64;
-        hash = hash.wrapping_mul(0x100000001b3);
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
     }
     hash
 }
@@ -96,19 +98,19 @@ pub(crate) fn compute_files_hash(files: &[PathBuf]) -> u64 {
         "files must be sorted"
     );
 
-    let mut combined: u64 = 0xcbf29ce484222325;
+    let mut combined: u64 = 0xcbf2_9ce4_8422_2325;
     for path in files {
         // Hash the path bytes directly (no allocation via display().to_string())
         let path_hash = fnv1a_hash(path.as_os_str().as_encoded_bytes());
         combined ^= path_hash;
-        combined = combined.wrapping_mul(0x100000001b3);
+        combined = combined.wrapping_mul(0x0100_0000_01b3);
 
         match std::fs::metadata(path) {
             Ok(meta) => {
                 // Hash file size
                 let size = meta.len();
                 combined ^= size;
-                combined = combined.wrapping_mul(0x100000001b3);
+                combined = combined.wrapping_mul(0x0100_0000_01b3);
 
                 // Hash mtime as seconds since UNIX_EPOCH
                 if let Ok(mtime) = meta.modified() {
@@ -117,16 +119,16 @@ pub(crate) fn compute_files_hash(files: &[PathBuf]) -> u64 {
                         .unwrap_or_default()
                         .as_secs();
                     combined ^= secs;
-                    combined = combined.wrapping_mul(0x100000001b3);
+                    combined = combined.wrapping_mul(0x0100_0000_01b3);
                 }
             }
             Err(_) => {
                 // File unreadable: incorporate a sentinel so the hash differs
                 // from the case where the file simply doesn't exist in the list.
-                combined ^= 0xdeadbeefdeadbeef;
-                combined = combined.wrapping_mul(0x100000001b3);
-                eprintln!(
-                    "Warning: cannot stat {}, cache hash may be inaccurate",
+                combined ^= 0xdead_beef_dead_beef;
+                combined = combined.wrapping_mul(0x0100_0000_01b3);
+                tracing::warn!(
+                    "Cannot stat {}, cache hash may be inaccurate",
                     path.display()
                 );
             }
@@ -141,11 +143,16 @@ pub(crate) fn compute_files_hash(files: &[PathBuf]) -> u64 {
 /// hash the serialized default.
 pub(crate) fn compute_config_hash(config_path: Option<&Path>, project_root: &Path) -> u64 {
     // Try explicit config path first, then auto-discovered path
-    let path = config_path
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| project_root.join(".spectralintrc.toml"));
+    let default_path;
+    let path = match config_path {
+        Some(p) => p,
+        None => {
+            default_path = project_root.join(".spectralintrc.toml");
+            &default_path
+        }
+    };
 
-    match std::fs::read_to_string(&path) {
+    match std::fs::read_to_string(path) {
         Ok(content) => hash_str(&content),
         Err(_) => hash_str("__default_config__"),
     }
@@ -160,6 +167,14 @@ pub(crate) fn load(
     config_hash: u64,
 ) -> Option<Vec<Diagnostic>> {
     let cache_path = project_root.join(CACHE_FILE);
+    let meta = std::fs::metadata(&cache_path).ok()?;
+    if meta.len() > MAX_CACHE_SIZE {
+        tracing::warn!(
+            "Cache file too large ({:.1} MiB), ignoring",
+            meta.len() as f64 / (1024.0 * 1024.0)
+        );
+        return None;
+    }
     let content = std::fs::read_to_string(&cache_path).ok()?;
     let cache: CacheFile = serde_json::from_str(&content).ok()?;
 
@@ -171,8 +186,7 @@ pub(crate) fn load(
         return None;
     }
 
-    let mut path_cache: std::collections::HashMap<String, Arc<PathBuf>> =
-        std::collections::HashMap::new();
+    let mut path_cache = std::collections::HashMap::<String, Arc<PathBuf>>::new();
     Some(
         cache
             .diagnostics
@@ -219,8 +233,11 @@ pub(crate) fn save(
 
     let cache_path = project_root.join(CACHE_FILE);
     if let Ok(json) = serde_json::to_string(&cache) {
-        // Best-effort write; don't fail the lint run if cache can't be saved
-        let _ = std::fs::write(&cache_path, json);
+        // Atomic write: write to temp file then rename to avoid corruption
+        let tmp_path = cache_path.with_extension("tmp");
+        if std::fs::write(&tmp_path, json).is_ok() {
+            let _ = std::fs::rename(&tmp_path, &cache_path);
+        }
     }
 }
 
@@ -501,7 +518,7 @@ mod tests {
     #[test]
     fn test_fnv1a_hash_known_value() {
         // FNV-1a 64-bit hash of empty string should be the offset basis
-        assert_eq!(fnv1a_hash(b""), 0xcbf29ce484222325);
+        assert_eq!(fnv1a_hash(b""), 0xcbf2_9ce4_8422_2325);
     }
 
     #[test]
