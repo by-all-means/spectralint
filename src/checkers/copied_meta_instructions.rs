@@ -74,6 +74,11 @@ impl Checker for CopiedMetaInstructionsChecker {
                     .trim_start_matches('.')
                     .trim_start();
 
+                // Strip markdown inline formatting so **bold** / *italic* don't break matching
+                let stripped: String = text.replace("**", "").replace("__", "");
+                let stripped = stripped.replace('*', "").replace('_', " ");
+                let text = stripped.trim();
+
                 for pattern in META_PATTERNS.iter() {
                     if pattern.is_match(text) {
                         emit!(
@@ -184,7 +189,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "FN: markdown emphasis (**bold**) inside boilerplate phrases breaks regex matching — checker does not strip inline formatting before pattern matching"]
     fn test_boilerplate_with_emphasis_still_flagged() {
         // Markdown emphasis around a word inside a known boilerplate phrase
         // should still be detected. Currently the regex does not account for
