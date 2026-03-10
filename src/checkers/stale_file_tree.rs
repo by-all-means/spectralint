@@ -145,8 +145,8 @@ impl Checker for StaleFileTreeChecker {
         RuleMeta {
             name: "stale-file-tree",
             description: "Flags ASCII directory trees with non-existent paths",
-            default_severity: Severity::Warning,
-            strict_only: false,
+            default_severity: Severity::Info,
+            strict_only: true,
         }
     }
 

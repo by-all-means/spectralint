@@ -16,8 +16,9 @@ static WINDOWS_PATH: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?-u)\b([a-zA-Z0-9_.]+(?:\\[a-zA-Z0-9_.]+){1,})\b").unwrap());
 
 /// Known regex/escape patterns to exclude (not paths).
+/// Also excludes Markdown escaped underscores (`\_`) and YAML newline escapes (`\n`).
 static REGEX_ESCAPE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\\[nrtbdswDSW0*+?{}()\[\]|^$.\\]").unwrap());
+    LazyLock::new(|| Regex::new(r"\\[nrtbdswDSW0*+?{}()\[\]|^$.\\_ ]").unwrap());
 
 pub(crate) struct HardcodedWindowsPathChecker {
     scope: ScopeFilter,
@@ -72,9 +73,14 @@ impl Checker for HardcodedWindowsPathChecker {
                         continue;
                     }
 
-                    // Skip single-backslash regex escapes (e.g., \d, \w)
-                    if matched.matches('\\').count() == 1 && REGEX_ESCAPE.is_match(matched) {
-                        continue;
+                    // Skip if ALL backslash sequences are known escapes
+                    // (regex: \d, \w; markdown: \_; YAML: \n, etc.)
+                    {
+                        let backslash_count = matched.matches('\\').count();
+                        let escape_count = REGEX_ESCAPE.find_iter(matched).count();
+                        if backslash_count > 0 && escape_count == backslash_count {
+                            continue;
+                        }
                     }
 
                     if inside_inline_code(line, match_start) {
@@ -180,5 +186,32 @@ mod tests {
     fn test_cursor_rules_path_flagged() {
         let result = check(&[r"Check .cursor\rules\formatting.mdc"]);
         assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_markdown_escaped_underscore_not_flagged() {
+        let result = check(&[r"Use $GITHUB\_TOKEN for authentication"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Markdown escaped underscores should not be flagged as Windows paths"
+        );
+    }
+
+    #[test]
+    fn test_multiple_markdown_escaped_underscores_not_flagged() {
+        let result = check(&[r"Never expose $CLAUDE\_CODE\_OAUTH\_TOKEN"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Multiple markdown escaped underscores should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_yaml_newline_escape_not_flagged() {
+        let result = check(&[r"question: report\n\nAnalysis results"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "YAML \\n escapes should not be flagged as Windows paths"
+        );
     }
 }

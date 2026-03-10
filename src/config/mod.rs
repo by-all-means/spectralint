@@ -79,6 +79,7 @@ pub struct CheckersConfig {
     pub stale_style_rule: ScopedCheckerConfig,
     pub hardcoded_windows_path: ScopedCheckerConfig,
     pub hardcoded_file_structure: ScopedCheckerConfig,
+    #[serde(default = "ScopedCheckerConfig::disabled")]
     pub stale_file_tree: ScopedCheckerConfig,
     pub command_validation: ScopedCheckerConfig,
     pub token_budget: TokenBudgetConfig,
@@ -169,7 +170,7 @@ impl Default for CheckersConfig {
             stale_style_rule: ScopedCheckerConfig::default(),
             hardcoded_windows_path: ScopedCheckerConfig::default(),
             hardcoded_file_structure: ScopedCheckerConfig::default(),
-            stale_file_tree: ScopedCheckerConfig::default(),
+            stale_file_tree: ScopedCheckerConfig::disabled(),
             command_validation: ScopedCheckerConfig::default(),
             token_budget: TokenBudgetConfig::default(),
             unversioned_stack_reference: ScopedCheckerConfig::disabled(),

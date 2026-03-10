@@ -25,7 +25,7 @@ static PLACEHOLDER_URLS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
         r"https?://(?:",
         // Well-known placeholder domains
-        r"(?:example\.com|example\.org|placeholder\.com|your-domain\.com|localhost:\d+|127\.0\.0\.1)",
+        r"(?:example\.com|example\.org|placeholder\.com|your-domain\.com)",
         r"|",
         // Placeholder API subdomains
         r"(?:api\.example|your-api|my-api|test-api)\.",
@@ -157,15 +157,21 @@ mod tests {
     }
 
     #[test]
-    fn test_localhost_flags() {
+    fn test_localhost_no_flag() {
         let result = run_check(&["Health check at http://localhost:3000/health"]);
-        assert_eq!(result.diagnostics.len(), 1);
+        assert!(
+            result.diagnostics.is_empty(),
+            "localhost URLs are intentional dev server addresses"
+        );
     }
 
     #[test]
-    fn test_loopback_flags() {
+    fn test_loopback_no_flag() {
         let result = run_check(&["Connect to http://127.0.0.1:8080"]);
-        assert_eq!(result.diagnostics.len(), 1);
+        assert!(
+            result.diagnostics.is_empty(),
+            "loopback URLs are intentional dev server addresses"
+        );
     }
 
     #[test]

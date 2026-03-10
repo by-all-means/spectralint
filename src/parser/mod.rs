@@ -8,12 +8,28 @@ use std::sync::{Arc, LazyLock};
 
 use types::{Directive, FileRef, InlineSuppress, ParsedFile, Section, SuppressKind, Table};
 
-/// Build a pre-computed mask of which lines are inside fenced code blocks.
-/// Fence markers themselves are marked `true` (excluded from non-code iteration).
+/// Build a pre-computed mask of which lines are inside fenced code blocks
+/// or YAML frontmatter. Fence markers and frontmatter delimiters are marked
+/// `true` (excluded from non-code iteration).
 pub(crate) fn build_code_block_mask(lines: &[String]) -> Vec<bool> {
     let mut mask = vec![false; lines.len()];
+
+    // Mask YAML frontmatter (must start at line 0 with "---")
+    let mut content_start = 0;
+    if lines.first().is_some_and(|l| l.trim() == "---") {
+        mask[0] = true;
+        for (i, line) in lines.iter().enumerate().skip(1) {
+            mask[i] = true;
+            if line.trim() == "---" {
+                content_start = i + 1;
+                break;
+            }
+        }
+    }
+
+    // Mask fenced code blocks
     let mut in_code_block = false;
-    for (i, line) in lines.iter().enumerate() {
+    for (i, line) in lines.iter().enumerate().skip(content_start) {
         if line.trim_start().starts_with("```") {
             mask[i] = true; // fence marker — excluded from both code and non-code
             in_code_block = !in_code_block;
@@ -38,9 +54,26 @@ pub(crate) fn non_code_lines_masked<'a>(
 
 /// Iterate non-code lines, computing fence state on the fly.
 /// Used during parsing before the pre-computed mask is available.
+/// Skips YAML frontmatter (lines between leading `---` delimiters).
 fn non_code_lines(lines: &[String]) -> impl Iterator<Item = (usize, &str)> {
+    // Pre-compute frontmatter end index
+    let fm_end = if lines.first().is_some_and(|l| l.trim() == "---") {
+        lines
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find(|(_, l)| l.trim() == "---")
+            .map(|(i, _)| i + 1)
+            .unwrap_or(0)
+    } else {
+        0
+    };
+
     let mut in_code_block = false;
     lines.iter().enumerate().filter_map(move |(i, line)| {
+        if i < fm_end {
+            return None;
+        }
         if line.trim_start().starts_with("```") {
             in_code_block = !in_code_block;
             return None;
@@ -182,6 +215,7 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
     let arena = Arena::new();
     let mut options = Options::default();
     options.extension.table = true;
+    options.extension.front_matter_delimiter = Some("---".to_owned());
     let root = parse_document(&arena, &content, &options);
 
     let mut sections = Vec::new();
@@ -661,5 +695,45 @@ mod tests {
         let parsed = parse_str("| Col |\n|-----|\n| val |\n");
         assert_eq!(parsed.tables.len(), 1);
         assert_eq!(parsed.tables[0].parent_section, None);
+    }
+
+    // ── YAML frontmatter handling ───────────────────────────────────────
+
+    #[test]
+    fn test_frontmatter_not_parsed_as_sections() {
+        let parsed =
+            parse_str("---\ndescription: A helpful tool\n# examples:\n---\n\n# Real Section\n");
+        assert_eq!(parsed.sections.len(), 1);
+        assert_eq!(parsed.sections[0].title, "Real Section");
+    }
+
+    #[test]
+    fn test_frontmatter_masked_in_code_block_mask() {
+        let lines: Vec<String> = vec![
+            "---",
+            "description: foo",
+            "# not a heading",
+            "---",
+            "",
+            "# Real",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let mask = build_code_block_mask(&lines);
+        assert!(mask[0], "frontmatter delimiter should be masked");
+        assert!(mask[1], "frontmatter content should be masked");
+        assert!(mask[2], "frontmatter comment should be masked");
+        assert!(mask[3], "closing delimiter should be masked");
+        assert!(!mask[4], "content after frontmatter should not be masked");
+        assert!(!mask[5], "heading after frontmatter should not be masked");
+    }
+
+    #[test]
+    fn test_frontmatter_directives_skipped() {
+        let parsed = parse_str("---\ndescription: Try to be helpful\n---\n\nTry to be helpful.\n");
+        // Only the non-frontmatter occurrence should be detected
+        assert_eq!(parsed.directives.len(), 1);
+        assert_eq!(parsed.directives[0].line, 5);
     }
 }

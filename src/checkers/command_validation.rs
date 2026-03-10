@@ -95,10 +95,10 @@ const TOOLCHAIN_RULES: &[ToolchainRule] = &[
     ToolchainRule {
         prefixes: &[
             "pytest",
-            "python ",
-            "python3 ",
             "pip install",
             "pip3 install",
+            "python -m ",
+            "python3 -m ",
         ],
         label: "Python",
         required_files: &[
@@ -111,7 +111,7 @@ const TOOLCHAIN_RULES: &[ToolchainRule] = &[
         check_extensions: false,
     },
     ToolchainRule {
-        prefixes: &["make"],
+        prefixes: &["make "],
         label: "Make",
         required_files: &["Makefile", "makefile", "GNUmakefile"],
         check_extensions: false,
@@ -310,9 +310,17 @@ fn check_command(
         return;
     }
 
+    // Skip global npm installs (no package.json needed)
+    if cmd.starts_with("npm install -g")
+        || cmd.starts_with("npm install --global")
+        || cmd.starts_with("npm i -g")
+    {
+        return;
+    }
+
     for rule in TOOLCHAIN_RULES {
         let matches = rule.prefixes.iter().any(|prefix| {
-            cmd.starts_with(prefix) || cmd == prefix.trim() // exact match for "make", "pytest", etc.
+            cmd.starts_with(prefix) || cmd == prefix.trim() // exact match for "pytest", etc.
         });
 
         if !matches {
@@ -479,5 +487,76 @@ mod tests {
     fn test_pytest_with_pyproject() {
         let result = run_check_with_file(&["```bash", "pytest", "```"], "pyproject.toml");
         assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_npm_global_install_no_flag() {
+        let result = run_check(&["```bash", "npm install -g firebase-tools", "```"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Global npm installs should not require package.json"
+        );
+    }
+
+    #[test]
+    fn test_npm_global_install_long_flag_no_flag() {
+        let result = run_check(&["```bash", "npm install --global typescript", "```"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Global npm installs (--global) should not require package.json"
+        );
+    }
+
+    #[test]
+    fn test_make_colon_colon_no_flag() {
+        // Rust module path `make::something` should not trigger Make rule
+        let result = run_check(&[
+            "```rust",
+            "make::js_identifier_binding(make::ident(\"x\"))",
+            "```",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Rust module paths like make:: should not trigger Make rule"
+        );
+    }
+
+    #[test]
+    fn test_python_script_no_flag() {
+        // Bare `python script.py` should not require dependency manifest
+        let result = run_check(&["```bash", "python scripts/update-docs.py", "```"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "python script.py should not require requirements.txt"
+        );
+    }
+
+    #[test]
+    fn test_python_dash_c_no_flag() {
+        let result = run_check(&[
+            "```bash",
+            "python -c \"import sys; print(sys.version)\"",
+            "```",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "python -c one-liners should not require requirements.txt"
+        );
+    }
+
+    #[test]
+    fn test_pip_install_still_flags() {
+        let result = run_check(&["```bash", "pip install requests", "```"]);
+        assert_eq!(result.diagnostics.len(), 1, "pip install should still flag");
+    }
+
+    #[test]
+    fn test_python_dash_m_still_flags() {
+        let result = run_check(&["```bash", "python -m pytest", "```"]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "python -m should still flag as it implies project tooling"
+        );
     }
 }

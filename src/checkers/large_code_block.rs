@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::config::LargeCodeBlockConfig;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
@@ -5,6 +7,13 @@ use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
 use super::utils::ScopeFilter;
 use super::Checker;
+
+/// Returns true if the file is a reference, agent definition, or similar file
+/// where large code blocks are expected and intentional.
+fn is_large_block_expected(path: &Path) -> bool {
+    let s = path.to_string_lossy();
+    s.contains("/references/") || s.contains("/reference/") || s.contains("/agents/")
+}
 
 pub(crate) struct LargeCodeBlockChecker {
     scope: ScopeFilter,
@@ -35,6 +44,11 @@ impl Checker for LargeCodeBlockChecker {
 
         for file in &ctx.files {
             if !self.scope.includes(&file.path, &ctx.project_root) {
+                continue;
+            }
+
+            // Reference and agent files intentionally contain large code examples
+            if is_large_block_expected(&file.path) {
                 continue;
             }
 
@@ -222,5 +236,20 @@ mod tests {
             1,
             "Indented fences should be recognized"
         );
+    }
+
+    #[test]
+    fn test_large_block_expected_detection() {
+        assert!(is_large_block_expected(Path::new(
+            ".claude/skills/my-skill/references/tools-reference.md"
+        )));
+        assert!(is_large_block_expected(Path::new("docs/reference/api.md")));
+        assert!(is_large_block_expected(Path::new(
+            ".claude/agents/phm-content-analyzer.md"
+        )));
+        assert!(!is_large_block_expected(Path::new("CLAUDE.md")));
+        assert!(!is_large_block_expected(Path::new(
+            ".claude/skills/my-skill/SKILL.md"
+        )));
     }
 }

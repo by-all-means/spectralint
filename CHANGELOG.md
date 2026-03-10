@@ -2,6 +2,73 @@
 
 All notable changes to spectralint will be documented in this file.
 
+## 0.5.0 (2026-03-09)
+
+### New Rules (3 added, 71 total)
+
+- **token-budget** — estimates context window cost per file; warns when approaching/exceeding configurable thresholds
+- **stale-file-tree** — validates ASCII directory trees in code blocks against the actual filesystem *(strict-only)*
+- **command-validation** — flags shell commands in code blocks that reference tools not found in PATH
+
+### New Features
+
+- **Autofix engine** — `--fix` flag applies structured text replacements (e.g., removing repeated words). Overlap detection prevents conflicting fixes.
+- **Watch mode** — `--watch` re-scans on file changes with 2-second polling
+- **Result caching** — automatic whole-project cache using FNV-1a hash with mtime+size-based invalidation. `--no-cache` to bypass.
+- **GitHub Action** — bundled `action.yml` for CI integration
+
+### Architecture
+
+- **RuleMeta** — self-describing checkers via `meta()` trait method. Each checker declares its name, description, default severity, and strict-only status, eliminating the 5-file-edit problem when adding new rules.
+- **Fix/Replacement types** — structured autofix data model with line/column ranges and replacement text
+- **Arc\<PathBuf\>** — shared path allocation across diagnostics (eliminates per-diagnostic path cloning)
+- **Category::as_str()** — zero-allocation string conversion for the hot path
+- **Category::FromStr** — typed rule filtering via `--rule` flag
+- **CustomPattern(Box\<str\>)** — reduced Category enum size from 32 to 16 bytes
+
+### Performance
+
+- **RegexSet pre-filter** — batch regex matching for conflict pair detection (conflicting-directives, cross-file-contradiction)
+- **Single-pass normalize_directive()** — 4 allocations reduced to 1
+- **normalize() without Vec\<char\>** — identifier normalization using char_indices iterator, no heap allocation
+- **Jaro-Winkler length pre-filter** — mathematically-derived bound skips pairs that can never match in redundant-directive O(n²) loop
+- **Cache path interning** — shared Arc\<PathBuf\> for diagnostics referencing the same file during cache load
+- **Redundant sort removed** — compute_files_hash no longer re-sorts already-sorted input
+- **serialize_arc_pathbuf** — format directly into serializer via collect_str, no intermediate String
+
+### Correctness
+
+- **YAML frontmatter support** — parser now recognizes `---` delimited frontmatter; prevents YAML comments from being mis-parsed as Markdown headings (eliminated 12 FPs across orphaned-section, hardcoded-windows-path, and other checkers)
+- **broken-anchor-link** — `heading_to_anchor()` no longer trims leading/trailing hyphens, matching GitHub's actual `github-slugger` behavior (fixes FP on emoji-prefixed headings like `🚀 Contributing` → `#-contributing`)
+- **command-validation** — `make` now requires word boundary (prevents FP on Rust `make::` module paths); `npm install -g` skipped (global installs don't need `package.json`); `python` prefix narrowed to `python -m` (bare `python script.py` doesn't require dependency manifest)
+- **hardcoded-windows-path** — recognizes Markdown escaped underscores (`\_`) and YAML `\n` escapes as non-path backslash sequences; handles multi-backslash matches correctly
+- **Reasoning prompt heuristic** — files with zero code blocks, zero file references, and zero shell commands are skipped by vague-directive, generic-instruction, and missing-essential-sections (eliminates false positives on FlowKit/workflow agent prompts)
+- **Shared is_reasoning_prompt()** — extracted to utils.rs from 3 duplicate implementations
+- **Serde default fix** — strict-only checkers now use `#[serde(default = "ScopedCheckerConfig::disabled")]` to prevent re-enabling when deserializing partial config
+- **inside_inline_code soundness** — fixed byte/char boundary issue by operating on bytes instead of chars
+- **orphaned-section** — intentionally-empty detection for numbered outlines and question headings (prevents FPs on LLM prompt templates)
+- **missing-standard-file** — only flags in project roots (directories with .git or package manifests)
+- **stale-file-tree** — moved to strict-only with Info severity after benchmark showed 580 false positives across 32 repos
+
+### Tests
+
+- **1,266 tests** (up from ~800 in v0.4.0) — 1,115 unit tests + 151 integration tests
+- New FP regression tests for YAML frontmatter, emoji anchors, `make::` Rust paths, `npm install -g`, `python -c`, markdown escaped underscores
+- Edge case tests covering cache invalidation, fix engine error paths, Category serde roundtrip, CLI flag combinations, SARIF validation, and reasoning prompt edge cases
+- 7 FP regression tests for reasoning agent scenarios
+
+### Noise Reduction
+
+- **hardcoded-file-structure** — skips generic task templates (plans, reports, prompts, BMad tasks, agent definitions) where paths are illustrative, not references to actual files (-49 findings)
+- **large-code-block** — skips `references/` and `agents/` directories where large code blocks are intentional output templates (-36 findings)
+- **placeholder-url** — no longer flags `localhost` or `127.0.0.1` URLs; these are intentional dev server addresses in instruction files (-7 findings)
+
+### Benchmark
+
+100 repos scanned — 297 findings (43% of repos affected). 44% are errors or warnings. 117 noise findings eliminated via FP fixes (25) and noise reduction (92). Dead references increased from 13 to 47 as repos grew their instruction files.
+
+---
+
 ## 0.4.0 (2026-03-05)
 
 ### New Rules (6 added, 68 total)

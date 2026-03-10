@@ -109,6 +109,19 @@ static EXAMPLE_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:example|e\.g\.|such as|for instance|for example|like)\b").unwrap()
 });
 
+/// Paths that indicate the instruction file is a generic task template
+/// (e.g., BMad tasks, plans, reports) where paths are illustrative.
+static TEMPLATE_FILE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?:/tasks/|/plans/|/reports/|/templates/|/prompts/|/commands/.*(?:tasks|bmad|agents|moai))").unwrap()
+});
+
+/// Returns true if the file path indicates a generic task template where
+/// source paths are illustrative examples, not references to actual files.
+fn is_template_instruction_file(file_path: &Path) -> bool {
+    let path_str = file_path.to_string_lossy();
+    TEMPLATE_FILE_PATTERN.is_match(&path_str)
+}
+
 fn should_skip_line(line: &str) -> bool {
     is_heading(line)
         || CREATION_VERB.is_match(line)
@@ -158,6 +171,11 @@ impl Checker for HardcodedFileStructureChecker {
 
         for file in &ctx.files {
             if !self.scope.includes(&file.path, &ctx.project_root) {
+                continue;
+            }
+
+            // Skip generic task templates where paths are illustrative
+            if is_template_instruction_file(&file.path) {
                 continue;
             }
 
@@ -438,5 +456,33 @@ mod tests {
         // "TypeScript/Node.js" is tech names with a slash, not a file path
         let result = run_check(&["- TypeScript/Node.js implementation"]);
         assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn test_template_task_file_no_flag() {
+        assert!(is_template_instruction_file(Path::new(
+            ".claude/commands/BMad/tasks/apply-qa-fixes.md"
+        )));
+        assert!(is_template_instruction_file(Path::new(
+            ".claude/plans/animated-installer.md"
+        )));
+        assert!(is_template_instruction_file(Path::new(
+            ".claude/reports/test-audit.md"
+        )));
+        assert!(is_template_instruction_file(Path::new(
+            ".claude/prompts/nl-unity-suite-t.md"
+        )));
+        assert!(is_template_instruction_file(Path::new(
+            ".claude/commands/moai/1-plan.md"
+        )));
+        // Regular instruction files should NOT be skipped
+        assert!(!is_template_instruction_file(Path::new("CLAUDE.md")));
+        assert!(!is_template_instruction_file(Path::new("AGENTS.md")));
+        assert!(!is_template_instruction_file(Path::new(
+            ".claude/skills/my-skill/SKILL.md"
+        )));
+        assert!(!is_template_instruction_file(Path::new(
+            ".claude/commands/deploy.md"
+        )));
     }
 }

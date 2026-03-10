@@ -19,8 +19,8 @@ static ANCHOR_LINK: LazyLock<Regex> =
 /// Mirrors GitHub's `github-slugger` algorithm: lowercase, keep only
 /// alphanumerics/spaces/hyphens, replace spaces with hyphens.
 /// Consecutive hyphens are NOT collapsed — GitHub preserves them.
-/// e.g. `Phase 0 — Discovery` → `phase-0--discovery` (em-dash stripped,
-/// surrounding spaces each become a hyphen).
+/// Leading/trailing hyphens are NOT trimmed — GitHub preserves them
+/// (e.g. heading `🚀 Contributing` → anchor `-contributing`).
 fn heading_to_anchor(title: &str) -> String {
     let mut slug = String::with_capacity(title.len());
     for c in title.chars() {
@@ -31,10 +31,9 @@ fn heading_to_anchor(title: &str) -> String {
         } else if c == ' ' || c == '-' {
             slug.push('-');
         }
-        // All other characters (em-dash, punctuation, etc.) are silently dropped
+        // All other characters (em-dash, punctuation, emoji, etc.) are silently dropped
     }
-    // Trim leading/trailing hyphens
-    slug.trim_matches('-').to_string()
+    slug
 }
 
 pub(crate) struct BrokenAnchorLinkChecker {
@@ -298,6 +297,12 @@ mod tests {
         assert_eq!(heading_to_anchor("Getting Started"), "getting-started");
         assert_eq!(heading_to_anchor("Build Commands"), "build-commands");
         assert_eq!(heading_to_anchor("Testing"), "testing");
+    }
+
+    #[test]
+    fn test_heading_to_anchor_emoji_prefix() {
+        // GitHub preserves leading hyphens from stripped emoji
+        assert_eq!(heading_to_anchor("\u{1f680} Contributing"), "-contributing");
     }
 
     #[test]

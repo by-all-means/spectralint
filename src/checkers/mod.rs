@@ -385,7 +385,7 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
             ),
         ));
     }
-    if config.checkers.stale_file_tree.enabled {
+    if config.strict || config.checkers.stale_file_tree.enabled {
         checkers.push(Box::new(stale_file_tree::StaleFileTreeChecker::new(
             &config.checkers.stale_file_tree.scope,
         )));

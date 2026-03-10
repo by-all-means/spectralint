@@ -34,26 +34,25 @@ We cloned the top 100 public GitHub repos containing `CLAUDE.md` (sorted by star
 Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_count`, top 100 results, February 2026. Full shallow clones, all instruction files scanned (CLAUDE.md, AGENTS.md, .claude/\*\*, .github/copilot-instructions.md). See [`benchmarks/`](benchmarks/) for the repo list and reproduction script.
 
 ```
-100 repos scanned → 139 findings (42% of repos)
+100 repos scanned → 297 findings (43% of repos)
 
-  hardcoded-file-structure      25   info      (source paths that don't exist on disk)
-  broken-anchor-link            17   warning   (in-file #anchor links with no matching heading)
-  large-code-block              16   info      (inline code >40 lines)
-  duplicate-instruction-file    15   warning   (near-duplicate files)
-  file-size                     14   info/warn (files exceeding 400/500 lines)
-  dead-reference                13   error     (files that genuinely don't exist)
-  placeholder-url                9   info      (example.com/localhost URLs left in)
-  vague-directive                7   info      ("try to", "when possible")
-  duplicate-section              7   warning   (repeated section headings)
-  stale-style-rule               3   info      (formatter-enforceable rules)
-  context-window-waste           3   info      (decorative elements wasting tokens)
-  generic-instruction            3   info      ("follow best practices")
-  missing-essential-sections     2   info      (no build/test commands)
+  hardcoded-file-structure       56   info      (source paths that don't exist on disk)
+  dead-reference                 47   error     (files that genuinely don't exist)
+  large-code-block               35   info      (inline code >40 lines)
+  token-budget                   31   info      (files approaching context window limits)
+  file-size                      20   info/warn (files exceeding 400/500 lines)
+  duplicate-instruction-file     17   warning   (near-duplicate files)
+  broken-anchor-link             16   error     (in-file #anchor links with no matching heading)
+  context-window-waste            8   info      (decorative elements wasting tokens)
+  broken-table                    8   warning   (malformed markdown tables)
+  duplicate-section               8   warning   (repeated section headings)
+  command-validation              8   warning   (shell commands that don't match installed tools)
+  stale-style-rule                7   info      (formatter-enforceable rules)
 ```
 
-**17% of repos had errors or warnings** — dead references to files that genuinely don't exist, duplicate instruction files, and broken anchor links. 74% fewer findings than v0.3.0 through false positive reduction.
+**44% of findings are errors or warnings** — dead references to files that genuinely don't exist, near-duplicate files, broken tables, and broken anchor links.
 
-## 68 Built-in Rules
+## 71 Built-in Rules
 
 | Rule | Severity | What it catches |
 |------|----------|-----------------|
@@ -69,11 +68,14 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 | `broken-table` | warning | Malformed markdown tables |
 | `duplicate-section` | warning | Repeated section headings in same file |
 | `broken-anchor-link` | warning | In-file `[text](#anchor)` links that don't match any heading |
+| `command-validation` | warning | Shell commands referencing tools not in PATH |
 | `hardcoded-windows-path` | warning | Backslash paths (`scripts\helper.py`) that break on non-Windows |
 | `unclosed-fence` | warning | Code blocks missing closing ` ``` ` |
 | `stale-reference` | warning | "After March 2025, use the new API" time bombs |
 | `file-size` | info/warn | Files exceeding 400/500 lines |
+| `token-budget` | info | Files approaching context window token limits |
 | `hardcoded-file-structure` | info | Source paths (`src/auth/handler.ts`) that don't exist on disk |
+| `stale-file-tree` | info | ASCII directory trees with non-existent paths *(strict)* |
 | `large-code-block` | info | Inline code blocks exceeding 40 lines |
 | `orphaned-section` | info | Sections with no actionable content |
 | `placeholder-url` | info | `example.com` URLs left in |
@@ -128,7 +130,7 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 
 ## Features
 
-- **68 built-in rules** covering security, consistency, content quality, and agent best practices
+- **71 built-in rules** covering security, consistency, content quality, and agent best practices
 <!-- spectralint-disable-next-line vague-directive -->
 - **Vague directive detection** — finds non-deterministic language ("try to", "when possible")
 - **Cross-file analysis** — naming inconsistency and enum drift across multiple files
@@ -136,6 +138,10 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 - **Custom regex patterns** — define your own lint rules in config
 - **Inline suppression** — disable rules with `<!-- spectralint-disable -->` comments; validates rule names and flags unused suppressions
 - **Multiple output formats** — text (colored), JSON, SARIF, and GitHub Actions annotations
+- **Autofix** — `--fix` applies structured fixes (repeated words, etc.)
+- **Watch mode** — `--watch` re-scans on file changes
+- **Caching** — automatic result caching for instant re-scans (`--no-cache` to bypass)
+- **Token budget** — estimates context window cost per file
 - **Fast** — parallel parsing via rayon, scans hundreds of files in milliseconds
 
 ## Install
@@ -182,6 +188,15 @@ spectralint check . --rule dead-reference  # only show specific rules
 spectralint check . --count               # summary counts only
 spectralint check . --quiet               # exit code only, no output
 spectralint check . --no-color            # disable colored output (also respects NO_COLOR env var)
+
+# Autofix
+spectralint check . --fix             # apply available fixes
+
+# Watch mode
+spectralint check . --watch           # re-scan on file changes
+
+# Cache control
+spectralint check . --no-cache        # bypass result cache
 
 # List all available rules
 spectralint explain
@@ -379,7 +394,7 @@ Add to your workflow:
 
 ## Strict Mode
 
-Enable 32 additional opinionated checkers (enum-drift, agent-guidelines, heading-hierarchy, emoji-density, missing-verification, negative-only-framing, cross-file-contradiction, missing-role-definition, redundant-directive, instruction-density, missing-examples, unbounded-scope, section-length-imbalance, untagged-code-block, emphasis-overuse, excessive-nesting, unversioned-stack-reference, missing-standard-file, bare-url, repeated-word, undocumented-env-var, empty-code-block, click-here-link, double-negation, imperative-heading, inconsistent-command-prefix, command-without-codeblock, missing-verification-step, long-paragraph, empty-heading, copied-meta-instructions, xml-document-wrapper):
+Enable 33 additional opinionated checkers (enum-drift, agent-guidelines, heading-hierarchy, emoji-density, missing-verification, negative-only-framing, cross-file-contradiction, missing-role-definition, redundant-directive, instruction-density, missing-examples, unbounded-scope, section-length-imbalance, untagged-code-block, emphasis-overuse, excessive-nesting, unversioned-stack-reference, missing-standard-file, bare-url, repeated-word, undocumented-env-var, empty-code-block, click-here-link, double-negation, imperative-heading, inconsistent-command-prefix, command-without-codeblock, missing-verification-step, long-paragraph, empty-heading, copied-meta-instructions, xml-document-wrapper, stale-file-tree):
 
 ```sh
 # Via CLI flag
