@@ -16,6 +16,9 @@ Thumbs.db
 # Internal docs (not for public repo)
 ROADMAP.md
 
+# Spectralint cache
+.spectralint-cache.json
+
 # Environment / secrets
 .env
 .env.*

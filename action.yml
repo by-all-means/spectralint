@@ -1,30 +1,135 @@
-name: "spectralint"
-description: "Static analysis for AI agent instruction files"
+name: "Spectralint"
+description: "Static analysis for AI agent instruction files (CLAUDE.md, AGENTS.md, etc.)"
+
 branding:
-  icon: "search"
-  color: "purple"
+  icon: "check-circle"
+  color: "blue"
 
 inputs:
   path:
-    description: "Project root to scan"
+    description: "Path to scan for agent instruction files"
     required: false
     default: "."
+  config:
+    description: "Path to .spectralintrc.toml config file"
+    required: false
+  fail-on:
+    description: "Minimum severity that causes a non-zero exit code (error, warning, info)"
+    required: false
+    default: "error"
+  strict:
+    description: "Enable strict mode (activates opinionated checkers)"
+    required: false
+    default: "false"
   version:
-    description: "spectralint version to install"
+    description: "Spectralint version to install (e.g., '0.4.0' or 'latest')"
     required: false
     default: "latest"
+  sarif:
+    description: "Upload SARIF results to GitHub Code Scanning"
+    required: false
+    default: "true"
 
 runs:
   using: "composite"
   steps:
-    - name: Install spectralint
+    # ── Install spectralint ──────────────────────────────────────────────
+    - name: Determine download URL
+      id: resolve
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        REPO="by-all-means/spectralint"
+
+        # Resolve the version tag
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          TAG=$(gh api "repos/${REPO}/releases/latest" --jq '.tag_name')
+        else
+          TAG="v${{ inputs.version }}"
+        fi
+        echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+        # Determine the platform artifact name
+        OS=$(uname -s)
+        ARCH=$(uname -m)
+        case "${OS}-${ARCH}" in
+          Linux-x86_64)   TARGET="x86_64-unknown-linux-gnu" ;;
+          Linux-aarch64)  TARGET="aarch64-unknown-linux-gnu" ;;
+          Darwin-x86_64)  TARGET="x86_64-apple-darwin" ;;
+          Darwin-arm64)   TARGET="aarch64-apple-darwin" ;;
+          *)              echo "::error::Unsupported platform: ${OS} ${ARCH}" && exit 1 ;;
+        esac
+
+        # cargo-dist names artifacts as: spectralint-<arch>-<target>.tar.xz
+        VERSION="${TAG#v}"
+        ASSET_NAME="spectralint-${TARGET}.tar.xz"
+        DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET_NAME}"
+
+        echo "url=${DOWNLOAD_URL}" >> "$GITHUB_OUTPUT"
+        echo "Installing spectralint ${TAG} for ${TARGET}"
+
+    - name: Download and install spectralint
       shell: bash
       run: |
-        if [ "${{ inputs.version }}" = "latest" ]; then
-          cargo install spectralint
-        else
-          cargo install spectralint@${{ inputs.version }}
-        fi
-    - name: Run spectralint
+        INSTALL_DIR="${HOME}/.spectralint/bin"
+        mkdir -p "${INSTALL_DIR}"
+
+        echo "Downloading from ${{ steps.resolve.outputs.url }}"
+        curl -fsSL "${{ steps.resolve.outputs.url }}" -o /tmp/spectralint.tar.xz
+        tar -xJf /tmp/spectralint.tar.xz -C /tmp
+        rm /tmp/spectralint.tar.xz
+
+        # cargo-dist extracts into a directory; find the binary
+        find /tmp -name "spectralint" -type f -executable -exec mv {} "${INSTALL_DIR}/spectralint" \;
+        chmod +x "${INSTALL_DIR}/spectralint"
+
+        echo "${INSTALL_DIR}" >> "$GITHUB_PATH"
+        echo "spectralint ${{ steps.resolve.outputs.tag }} installed to ${INSTALL_DIR}"
+
+    # ── Run spectralint (human-readable output) ──────────────────────────
+    - name: Run spectralint check
       shell: bash
-      run: spectralint check ${{ inputs.path }} --format github
+      run: |
+        ARGS="check ${{ inputs.path }}"
+        ARGS="${ARGS} --format github"
+        ARGS="${ARGS} --fail-on ${{ inputs.fail-on }}"
+
+        if [ "${{ inputs.config }}" != "" ]; then
+          ARGS="${ARGS} --config ${{ inputs.config }}"
+        fi
+
+        if [ "${{ inputs.strict }}" = "true" ]; then
+          ARGS="${ARGS} --strict"
+        fi
+
+        echo "Running: spectralint ${ARGS}"
+        spectralint ${ARGS}
+
+    # ── SARIF upload (optional) ──────────────────────────────────────────
+    - name: Generate SARIF report
+      if: inputs.sarif == 'true' && always()
+      shell: bash
+      run: |
+        ARGS="check ${{ inputs.path }}"
+        ARGS="${ARGS} --format sarif"
+        ARGS="${ARGS} --fail-on ${{ inputs.fail-on }}"
+
+        if [ "${{ inputs.config }}" != "" ]; then
+          ARGS="${ARGS} --config ${{ inputs.config }}"
+        fi
+
+        if [ "${{ inputs.strict }}" = "true" ]; then
+          ARGS="${ARGS} --strict"
+        fi
+
+        # SARIF run may exit non-zero on findings; capture output regardless
+        spectralint ${ARGS} > spectralint-results.sarif || true
+        echo "SARIF report written to spectralint-results.sarif"
+
+    - name: Upload SARIF to GitHub Code Scanning
+      if: inputs.sarif == 'true' && always()
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: spectralint-results.sarif
+        category: spectralint

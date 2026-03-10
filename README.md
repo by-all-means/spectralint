@@ -34,23 +34,21 @@ We cloned the top 100 public GitHub repos containing `CLAUDE.md` (sorted by star
 Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_count`, top 100 results, February 2026. Full shallow clones, all instruction files scanned (CLAUDE.md, AGENTS.md, .claude/\*\*, .github/copilot-instructions.md). See [`benchmarks/`](benchmarks/) for the repo list and reproduction script.
 
 ```
-100 repos scanned → 297 findings (43% of repos)
+100 repos scanned → 141 findings (38% of repos)
 
-  hardcoded-file-structure       56   info      (source paths that don't exist on disk)
-  dead-reference                 47   error     (files that genuinely don't exist)
-  large-code-block               35   info      (inline code >40 lines)
-  token-budget                   31   info      (files approaching context window limits)
-  file-size                      20   info/warn (files exceeding 400/500 lines)
-  duplicate-instruction-file     17   warning   (near-duplicate files)
-  broken-anchor-link             16   error     (in-file #anchor links with no matching heading)
-  context-window-waste            8   info      (decorative elements wasting tokens)
-  broken-table                    8   warning   (malformed markdown tables)
-  duplicate-section               8   warning   (repeated section headings)
-  command-validation              8   warning   (shell commands that don't match installed tools)
-  stale-style-rule                7   info      (formatter-enforceable rules)
+  hardcoded-file-structure       25   info      (source paths that don't exist on disk)
+  token-budget                   20   info      (files approaching context window limits)
+  broken-anchor-link             18   error     (in-file #anchor links with no matching heading)
+  large-code-block               16   info      (inline code >40 lines)
+  duplicate-instruction-file     15   warning   (near-duplicate files)
+  file-size                      14   info/warn (files exceeding 400/500 lines)
+  dead-reference                 13   error     (files that genuinely don't exist)
+  duplicate-section               7   warning   (repeated section headings)
+  stale-style-rule                3   info      (formatter-enforceable rules)
+  context-window-waste            3   info      (decorative elements wasting tokens)
 ```
 
-**44% of findings are errors or warnings** — dead references to files that genuinely don't exist, near-duplicate files, broken tables, and broken anchor links.
+**43% of findings are errors or warnings** — dead references to files that genuinely don't exist, near-duplicate files, and broken anchor links.
 
 ## 71 Built-in Rules
 
@@ -67,7 +65,7 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 | `circular-reference` | warning | A→B→C→A file reference cycles |
 | `broken-table` | warning | Malformed markdown tables |
 | `duplicate-section` | warning | Repeated section headings in same file |
-| `broken-anchor-link` | warning | In-file `[text](#anchor)` links that don't match any heading |
+| `broken-anchor-link` | error | In-file `[text](#anchor)` links that don't match any heading |
 | `command-validation` | warning | Shell commands referencing tools not in PATH |
 | `hardcoded-windows-path` | warning | Backslash paths (`scripts\helper.py`) that break on non-Windows |
 | `unclosed-fence` | warning | Code blocks missing closing ` ``` ` |
@@ -139,10 +137,10 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 - **Inline suppression** — disable rules with `<!-- spectralint-disable -->` comments; validates rule names and flags unused suppressions
 - **Multiple output formats** — text (colored), JSON, SARIF, and GitHub Actions annotations
 - **Autofix** — `--fix` applies structured fixes (repeated words, etc.)
-- **Watch mode** — `--watch` re-scans on file changes
-- **Caching** — automatic result caching for instant re-scans (`--no-cache` to bypass)
+- **Watch mode** — `--watch` re-scans on file changes using native filesystem events
+- **Caching** — automatic result caching with atomic writes for instant re-scans (`--no-cache` to bypass)
 - **Token budget** — estimates context window cost per file
-- **Fast** — parallel parsing via rayon, scans hundreds of files in milliseconds
+- **Fast** — parallel parsing and checking via rayon, scans hundreds of files in milliseconds
 
 ## Install
 
@@ -382,15 +380,15 @@ The server communicates over stdin/stdout and provides diagnostics on file open 
 Add to your workflow:
 
 ```yaml
+# Option 1: Bundled GitHub Action (recommended)
+- uses: by-all-means/spectralint@v1
+
+# Option 2: Manual install
 - name: Install spectralint
   run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/by-all-means/spectralint/releases/latest/download/spectralint-installer.sh | sh
 - name: Lint agent instructions
   run: spectralint check . --format github
 ```
-
-<!-- Bundled GitHub Action coming in a future release:
-- uses: by-all-means/spectralint@v1
--->
 
 ## Strict Mode
 
