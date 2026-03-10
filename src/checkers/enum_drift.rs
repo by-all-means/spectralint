@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use strsim::jaro_winkler;
 
@@ -60,17 +60,35 @@ impl Checker for EnumDriftChecker {
             })
             .collect();
 
-        for i in 0..table_refs.len() {
-            for j in (i + 1)..table_refs.len() {
-                let a = &table_refs[i];
-                let b = &table_refs[j];
-
-                if a.file_idx == b.file_idx || !tables_match(a, b) {
-                    continue;
-                }
-
-                check_drift(ctx, a, b, &mut result, &mut seen);
+        // Build inverted index: header → table indices that contain it.
+        // This lets us skip comparing tables with zero shared headers entirely.
+        let mut header_to_tables: HashMap<&str, Vec<usize>> = HashMap::new();
+        for (idx, tr) in table_refs.iter().enumerate() {
+            for h in &tr.normalized_headers {
+                header_to_tables.entry(h.as_str()).or_default().push(idx);
             }
+        }
+
+        // Collect unique candidate pairs (tables sharing at least one header)
+        let mut candidate_pairs: HashSet<(usize, usize)> = HashSet::new();
+        for tables in header_to_tables.values() {
+            for (pos, &i) in tables.iter().enumerate() {
+                for &j in &tables[pos + 1..] {
+                    let (lo, hi) = if i < j { (i, j) } else { (j, i) };
+                    candidate_pairs.insert((lo, hi));
+                }
+            }
+        }
+
+        for (i, j) in candidate_pairs {
+            let a = &table_refs[i];
+            let b = &table_refs[j];
+
+            if a.file_idx == b.file_idx || !tables_match(a, b) {
+                continue;
+            }
+
+            check_drift(ctx, a, b, &mut result, &mut seen);
         }
 
         result

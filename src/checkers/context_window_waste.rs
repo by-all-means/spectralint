@@ -62,39 +62,72 @@ impl Checker for ContextWindowWasteChecker {
                 continue;
             }
 
-            check_blank_lines(file, &mut result);
-            check_decorative_dividers(file, &mut result);
-            check_decorative_comments(file, &mut result);
+            check_waste(file, &mut result);
         }
 
         result
     }
 }
 
-fn check_blank_lines(file: &ParsedFile, result: &mut CheckResult) {
-    let mut consecutive_blanks = 0;
-    let mut run_start = 0;
+/// Single-pass check for blank line runs, decorative dividers, and decorative comments.
+fn check_waste(file: &ParsedFile, result: &mut CheckResult) {
+    let mut consecutive_blanks: usize = 0;
+    let mut run_start: usize = 0;
 
     for (i, line) in file.non_code_lines() {
-        if line.trim().is_empty() {
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() {
             if consecutive_blanks == 0 {
                 run_start = i;
             }
             consecutive_blanks += 1;
-        } else {
-            if consecutive_blanks >= 3 {
-                emit!(
-                    result,
-                    file.path,
-                    run_start + 1,
-                    Severity::Info,
-                    Category::ContextWindowWaste,
-                    suggest: "Reduce to a single blank line",
-                    "{} consecutive blank lines waste context window tokens",
-                    consecutive_blanks
-                );
-            }
-            consecutive_blanks = 0;
+            continue;
+        }
+
+        // Flush any pending blank-line run
+        if consecutive_blanks >= 3 {
+            emit!(
+                result,
+                file.path,
+                run_start + 1,
+                Severity::Info,
+                Category::ContextWindowWaste,
+                suggest: "Reduce to a single blank line",
+                "{} consecutive blank lines waste context window tokens",
+                consecutive_blanks
+            );
+        }
+        consecutive_blanks = 0;
+
+        // Decorative dividers (skip standard markdown HR)
+        if trimmed != "---"
+            && trimmed != "***"
+            && trimmed != "___"
+            && DECORATIVE_DIVIDER.is_match(trimmed)
+        {
+            emit!(
+                result,
+                file.path,
+                i + 1,
+                Severity::Info,
+                Category::ContextWindowWaste,
+                suggest: "Remove decorative divider — use markdown headings for structure",
+                "Decorative divider wastes context window tokens"
+            );
+        }
+
+        // Decorative HTML comments
+        if DECORATIVE_COMMENT.is_match(line) {
+            emit!(
+                result,
+                file.path,
+                i + 1,
+                Severity::Info,
+                Category::ContextWindowWaste,
+                suggest: "Remove decorative comment",
+                "Decorative HTML comment wastes context window tokens"
+            );
         }
     }
 
@@ -110,45 +143,6 @@ fn check_blank_lines(file: &ParsedFile, result: &mut CheckResult) {
             "{} consecutive blank lines waste context window tokens",
             consecutive_blanks
         );
-    }
-}
-
-fn check_decorative_dividers(file: &ParsedFile, result: &mut CheckResult) {
-    for (idx, line) in file.non_code_lines() {
-        let trimmed = line.trim();
-
-        // Skip standard markdown HR (exactly "---" or "***" or "___")
-        if trimmed == "---" || trimmed == "***" || trimmed == "___" {
-            continue;
-        }
-
-        if DECORATIVE_DIVIDER.is_match(trimmed) {
-            emit!(
-                result,
-                file.path,
-                idx + 1,
-                Severity::Info,
-                Category::ContextWindowWaste,
-                suggest: "Remove decorative divider — use markdown headings for structure",
-                "Decorative divider wastes context window tokens"
-            );
-        }
-    }
-}
-
-fn check_decorative_comments(file: &ParsedFile, result: &mut CheckResult) {
-    for (idx, line) in file.non_code_lines() {
-        if DECORATIVE_COMMENT.is_match(line) {
-            emit!(
-                result,
-                file.path,
-                idx + 1,
-                Severity::Info,
-                Category::ContextWindowWaste,
-                suggest: "Remove decorative comment",
-                "Decorative HTML comment wastes context window tokens"
-            );
-        }
     }
 }
 

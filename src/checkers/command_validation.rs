@@ -193,8 +193,32 @@ fn normalize_command(line: &str) -> &str {
 
 /// Check if a line contains a docker execution prefix (commands run inside containers).
 fn is_docker_command(line: &str) -> bool {
-    let lower = line.to_lowercase();
-    lower.contains("docker run") || lower.contains("docker exec")
+    let haystack = line.as_bytes();
+    if haystack.len() < 10 {
+        return false;
+    }
+
+    let is_word_boundary =
+        |pos: usize| -> bool { pos >= haystack.len() || !haystack[pos].is_ascii_alphanumeric() };
+    let is_start_boundary =
+        |pos: usize| -> bool { pos == 0 || !haystack[pos - 1].is_ascii_alphanumeric() };
+
+    for i in 0..=haystack.len() - 10 {
+        if haystack[i..i + 10].eq_ignore_ascii_case(b"docker run")
+            && is_start_boundary(i)
+            && is_word_boundary(i + 10)
+        {
+            return true;
+        }
+        if i + 11 <= haystack.len()
+            && haystack[i..i + 11].eq_ignore_ascii_case(b"docker exec")
+            && is_start_boundary(i)
+            && is_word_boundary(i + 11)
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// Extract commands from inline backticks in a non-code line.
@@ -205,24 +229,23 @@ fn toolchain_present(
     project_root: &std::path::Path,
     filename_index: &HashSet<String>,
 ) -> bool {
-    // Check specific required files at project root
+    // Check specific required files (O(1) HashSet lookup before filesystem syscall)
     for req in rule.required_files {
-        if project_root.join(req).exists() {
+        if filename_index.contains(*req) {
             return true;
         }
-        // Also check if file exists anywhere in tree
-        if filename_index.contains(*req) {
+        if project_root.join(req).exists() {
             return true;
         }
     }
 
-    // For .NET: check extensions in filename_index
-    if rule.check_extensions {
-        for ext in DOTNET_EXTENSIONS {
-            if filename_index.iter().any(|f| f.ends_with(ext)) {
-                return true;
-            }
-        }
+    // For .NET: single pass over filename_index checking all extensions
+    if rule.check_extensions
+        && filename_index
+            .iter()
+            .any(|f| DOTNET_EXTENSIONS.iter().any(|ext| f.ends_with(ext)))
+    {
+        return true;
     }
 
     false
@@ -302,7 +325,7 @@ fn check_command(
     line_num: usize,
     project_root: &std::path::Path,
     filename_index: &HashSet<String>,
-    file_path: &std::path::Path,
+    file_path: &Arc<std::path::PathBuf>,
     flagged: &mut HashSet<&'static str>,
     result: &mut CheckResult,
 ) {
@@ -341,7 +364,7 @@ fn check_command(
             };
             emit!(
                 result,
-                Arc::new(file_path.to_path_buf()),
+                file_path,
                 line_num,
                 Severity::Warning,
                 Category::CommandValidation,

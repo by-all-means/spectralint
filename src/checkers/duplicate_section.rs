@@ -37,7 +37,7 @@ impl Checker for DuplicateSectionChecker {
                 continue;
             }
 
-            // parents[level] = most recent heading at that level (scopes duplicate detection)
+            // parents[level] = lowercased title of most recent heading at that level
             let mut parents: [String; 7] = Default::default();
             let mut seen: HashMap<String, usize> = HashMap::new();
 
@@ -50,12 +50,8 @@ impl Checker for DuplicateSectionChecker {
 
                 // h3+ scoped to parent (parallel structure), h2 compared globally
                 let parent = if level > 2 { &parents[level - 1] } else { "" };
-                let key = format!(
-                    "h{}:{}:{}",
-                    level,
-                    parent.to_lowercase(),
-                    section.title.to_lowercase()
-                );
+                let title_lower = section.title.to_lowercase();
+                let key = format!("h{level}:{parent}:{title_lower}");
 
                 if let Some(&first_line) = seen.get(&key) {
                     emit!(
@@ -73,7 +69,8 @@ impl Checker for DuplicateSectionChecker {
                     seen.insert(key, section.line);
                 }
 
-                parents[level] = section.title.clone();
+                // Store lowercased title so we don't re-lowercase in the key format
+                parents[level] = title_lower;
             }
         }
 

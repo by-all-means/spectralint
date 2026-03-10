@@ -1,10 +1,11 @@
 use std::collections::HashSet;
 
-use crate::emit;
+use rayon::prelude::*;
+
 use crate::engine::cross_ref::CheckerContext;
 use crate::parser::is_directive_line;
 use crate::parser::types::ParsedFile;
-use crate::types::{Category, CheckResult, RuleMeta, Severity};
+use crate::types::{Category, CheckResult, Diagnostic, RuleMeta, Severity};
 
 use super::utils::{is_instruction_file, normalize_directive, ScopeFilter, MIN_DIRECTIVE_LINES};
 use super::Checker;
@@ -77,26 +78,37 @@ impl Checker for DuplicateInstructionFileChecker {
             })
             .collect();
 
-        for (i, set_a_opt) in file_directives.iter().enumerate() {
-            let Some(ref set_a) = set_a_opt else {
-                continue;
-            };
-            for (j, set_b_opt) in file_directives.iter().enumerate().skip(i + 1) {
-                let Some(ref set_b) = set_b_opt else {
-                    continue;
-                };
+        // Collect indices of files that have valid directive sets
+        let valid_indices: Vec<usize> = file_directives
+            .iter()
+            .enumerate()
+            .filter_map(|(i, opt)| opt.as_ref().map(|_| i))
+            .collect();
+
+        // Generate all (i, j) pairs from valid indices where i < j
+        let pairs: Vec<(usize, usize)> = valid_indices
+            .iter()
+            .enumerate()
+            .flat_map(|(pos, &i)| valid_indices[pos + 1..].iter().map(move |&j| (i, j)))
+            .collect();
+
+        let pair_diagnostics: Vec<Diagnostic> = pairs
+            .par_iter()
+            .filter_map(|&(i, j)| {
+                let set_a = file_directives[i].as_ref().unwrap();
+                let set_b = file_directives[j].as_ref().unwrap();
 
                 if references_other(&ctx.files[i], &ctx.files[j])
                     || references_other(&ctx.files[j], &ctx.files[i])
                 {
-                    continue;
+                    return None;
                 }
 
                 let intersection = set_a.intersection(set_b).count();
                 let min_size = set_a.len().min(set_b.len());
 
                 if min_size == 0 {
-                    continue;
+                    return None;
                 }
 
                 let overlap = intersection as f64 / min_size as f64;
@@ -108,20 +120,32 @@ impl Checker for DuplicateInstructionFileChecker {
                         (&ctx.files[j], &ctx.files[i])
                     };
 
-                    emit!(
-                        result,
-                        emit_file.path,
-                        1,
-                        Severity::Warning,
-                        Category::DuplicateInstructionFile,
-                        suggest: "Consolidate into one file or split responsibilities clearly",
-                        "{:.0}% overlap with {} — these files may be near-duplicates",
-                        overlap * 100.0,
-                        other_file.path.display()
-                    );
+                    Some(Diagnostic {
+                        file: emit_file.path.clone(),
+                        line: 1,
+                        column: None,
+                        end_line: None,
+                        end_column: None,
+                        severity: Severity::Warning,
+                        category: Category::DuplicateInstructionFile,
+                        message: format!(
+                            "{:.0}% overlap with {} \u{2014} these files may be near-duplicates",
+                            overlap * 100.0,
+                            other_file.path.display()
+                        ),
+                        suggestion: Some(
+                            "Consolidate into one file or split responsibilities clearly"
+                                .to_string(),
+                        ),
+                        fix: None,
+                    })
+                } else {
+                    None
                 }
-            }
-        }
+            })
+            .collect();
+
+        result.diagnostics.extend(pair_diagnostics);
 
         result
     }

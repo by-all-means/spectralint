@@ -40,25 +40,21 @@ impl Checker for ConflictingDirectivesChecker {
             // Pre-filter: use RegexSet to build a bitmask of which pair sides
             // appear anywhere in this file, then only run individual regexes
             // for pairs that have both sides present.
-            let num_pairs = CONFLICT_PAIRS.len();
-            let mut pair_has_a = vec![false; num_pairs];
-            let mut pair_has_b = vec![false; num_pairs];
-
+            let mut mask: u64 = 0;
             for &(_, line) in &directive_lines {
                 let matches = match_conflict_patterns(line);
                 for idx in matches.iter() {
-                    let pair_idx = idx / 2;
-                    if idx % 2 == 0 {
-                        pair_has_a[pair_idx] = true;
-                    } else {
-                        pair_has_b[pair_idx] = true;
+                    if idx < 64 {
+                        mask |= 1u64 << idx;
                     }
                 }
             }
 
             for (pair_idx, pair) in CONFLICT_PAIRS.iter().enumerate() {
+                let a_bit = 1u64 << (2 * pair_idx);
+                let b_bit = 1u64 << (2 * pair_idx + 1);
                 // Skip pairs where one side is entirely absent
-                if !pair_has_a[pair_idx] || !pair_has_b[pair_idx] {
+                if mask & a_bit == 0 || mask & b_bit == 0 {
                     continue;
                 }
 

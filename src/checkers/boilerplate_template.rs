@@ -111,9 +111,7 @@ mod tests {
             "",
             "This file provides guidance to Claude Code when working with this repo.",
         ];
-        for _ in 0..20 {
-            lines.push("- Do something specific");
-        }
+        lines.resize(lines.len() + 20, "- Do something specific");
         let result = run_check(&lines);
         assert!(result.diagnostics.is_empty());
     }
@@ -145,9 +143,7 @@ mod tests {
     fn test_exactly_20_non_empty_still_flags() {
         let mut lines: Vec<&str> = Vec::new();
         lines.push("This file provides guidance to Claude Code.");
-        for _ in 0..19 {
-            lines.push("- item");
-        }
+        lines.resize(lines.len() + 19, "- item");
         let result = run_check(&lines);
         assert_eq!(result.diagnostics.len(), 1);
     }
@@ -156,9 +152,7 @@ mod tests {
     fn test_21_non_empty_no_flag() {
         let mut lines: Vec<&str> = Vec::new();
         lines.push("This file provides guidance to Claude Code.");
-        for _ in 0..20 {
-            lines.push("- item");
-        }
+        lines.resize(lines.len() + 20, "- item");
         let result = run_check(&lines);
         assert!(result.diagnostics.is_empty());
     }

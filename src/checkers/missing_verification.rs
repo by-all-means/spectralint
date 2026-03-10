@@ -88,8 +88,8 @@ static CMD_REF_LIST_MARKER: LazyLock<Regex> =
 /// Returns true if >60% of content lines in a section start with a backtick
 /// after stripping list markers. Indicates a command-reference section.
 fn is_command_reference(section_lines: &[String], mask: &[bool], offset: usize) -> bool {
-    let mut content_lines = 0;
-    let mut backtick_lines = 0;
+    let mut content_lines: usize = 0;
+    let mut backtick_lines: usize = 0;
 
     for (i, line) in section_lines.iter().enumerate() {
         if *mask.get(offset + i).unwrap_or(&false) {
@@ -106,7 +106,8 @@ fn is_command_reference(section_lines: &[String], mask: &[bool], offset: usize) 
         }
     }
 
-    content_lines >= 3 && backtick_lines as f64 / content_lines as f64 > 0.6
+    // >60% backtick-leading lines with at least 3 content lines
+    content_lines >= 3 && backtick_lines * 5 > content_lines * 3
 }
 
 fn check_sections(file: &ParsedFile, min_action_verbs: usize, result: &mut CheckResult) {

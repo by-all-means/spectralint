@@ -177,9 +177,7 @@ mod tests {
     fn test_default_threshold_10() {
         // 10 markers should not flag (threshold is >10)
         let mut lines: Vec<&str> = Vec::new();
-        for _ in 0..10 {
-            lines.push("**IMPORTANT**: something");
-        }
+        lines.resize(10, "**IMPORTANT**: something");
         let result = run_check_with_threshold(&lines, 10);
         assert!(result.diagnostics.is_empty());
 

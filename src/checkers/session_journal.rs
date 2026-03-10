@@ -23,47 +23,45 @@ impl SessionJournalChecker {
 /// Strong markers: unambiguously indicate a session journal.
 /// These patterns are highly unlikely to appear in legitimate instruction files.
 static STRONG_MARKERS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
-    [
-        (
-            r"(?i)\bwhat we (?:accomplished|completed|did|built|fixed)\b",
-            "retrospective heading",
-        ),
-        (
-            r"(?i)\bsession (?:progress|summary|notes|log)\b",
-            "session log heading",
-        ),
-        (r"(?i)\bwhat we just\b", "recent-action heading"),
-        (r"(?i)\bprevious session\b", "session reference"),
-        (
-            r"(?i)\bfiles? (?:modified|changed|updated|created|removed|touched)\s+(?:this|last|in this)\b",
-            "session file changelog",
-        ),
+    vec![
+        (Regex::new(r"(?i)\bwhat we (?:accomplished|completed|did|built|fixed)\b").unwrap(), "retrospective heading"),
+        (Regex::new(r"(?i)\bsession (?:progress|summary|notes|log)\b").unwrap(), "session log heading"),
+        (Regex::new(r"(?i)\bwhat we just\b").unwrap(), "recent-action heading"),
+        (Regex::new(r"(?i)\bprevious session\b").unwrap(), "session reference"),
+        (Regex::new(r"(?i)\bfiles? (?:modified|changed|updated|created|removed|touched)\s+(?:this|last|in this)\b").unwrap(), "session file changelog"),
     ]
-    .iter()
-    .map(|(p, label)| (Regex::new(p).unwrap(), *label))
-    .collect()
 });
 
 /// Weak markers: could appear in legitimate files but reinforce the signal
 /// when combined with strong markers.
 static WEAK_MARKERS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
-    [
+    vec![
         (
-            r"(?i)\bfiles? (?:modified|changed|updated|created|removed|touched)\b",
+            Regex::new(r"(?i)\bfiles? (?:modified|changed|updated|created|removed|touched)\b")
+                .unwrap(),
             "file changelog",
         ),
-        (r"(?i)\b(?:PR|pull request) (?:status|#\d+)\b", "PR status"),
-        (r"(?i)\bnext steps? after\b", "post-session todo"),
-        (r"(?i)\bcurrent status\b", "status section"),
         (
-            r"(?i)\bexpected (?:performance |)impact\b",
+            Regex::new(r"(?i)\b(?:PR|pull request) (?:status|#\d+)\b").unwrap(),
+            "PR status",
+        ),
+        (
+            Regex::new(r"(?i)\bnext steps? after\b").unwrap(),
+            "post-session todo",
+        ),
+        (
+            Regex::new(r"(?i)\bcurrent status\b").unwrap(),
+            "status section",
+        ),
+        (
+            Regex::new(r"(?i)\bexpected (?:performance |)impact\b").unwrap(),
             "impact assessment",
         ),
-        (r"(?i)\bkey decisions? made\b", "decision log"),
+        (
+            Regex::new(r"(?i)\bkey decisions? made\b").unwrap(),
+            "decision log",
+        ),
     ]
-    .iter()
-    .map(|(p, label)| (Regex::new(p).unwrap(), *label))
-    .collect()
 });
 
 fn count_checkmarks(line: &str) -> usize {
@@ -126,10 +124,11 @@ impl Checker for SessionJournalChecker {
             if strong_markers.len() >= 3
                 || (strong_markers.len() >= STRONG_MARKER_THRESHOLD && has_additional_signal)
             {
-                let mut all_markers: Vec<&str> = Vec::new();
-                all_markers.extend(&strong_markers);
-                all_markers.extend(&weak_markers);
-                all_markers.sort();
+                let mut all_markers: Vec<&str> =
+                    Vec::with_capacity(strong_markers.len() + weak_markers.len());
+                all_markers.extend_from_slice(&strong_markers);
+                all_markers.extend_from_slice(&weak_markers);
+                all_markers.sort_unstable();
                 emit!(
                     result,
                     file.path,

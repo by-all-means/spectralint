@@ -51,9 +51,12 @@ fn is_tree_char_line(name: &str) -> bool {
 /// Returns true if the name contains placeholder patterns.
 fn is_placeholder(name: &str) -> bool {
     name.contains("...")
-        || name.contains("<")
-        || name.contains("{")
-        || name.to_lowercase().contains("xxx")
+        || name.contains('<')
+        || name.contains('{')
+        || name
+            .as_bytes()
+            .windows(3)
+            .any(|w| w.eq_ignore_ascii_case(b"xxx"))
 }
 
 /// Parse a code block into (depth, name) entries for tree lines.
@@ -81,19 +84,18 @@ fn parse_tree_block(lines: &[&str]) -> Option<Vec<(usize, String, bool)>> {
         // Check for tree-structured line
         if let Some(caps) = TREE_LINE.captures(line) {
             let prefix = &caps[1];
-            let name = caps[2].trim().to_string();
+            let raw_name = caps[2].trim();
 
             // Skip pure decoration lines
-            if is_tree_char_line(&name) {
+            if is_tree_char_line(raw_name) {
                 continue;
             }
 
             // Strip trailing comment like "# main entry point"
-            let name = name
+            let name = raw_name
                 .split_once('#')
-                .or_else(|| name.split_once("//"))
-                .map(|(n, _)| n.trim().to_string())
-                .unwrap_or(name);
+                .or_else(|| raw_name.split_once("//"))
+                .map_or(raw_name, |(n, _)| n.trim());
 
             if name.is_empty() {
                 continue;
@@ -119,21 +121,23 @@ fn parse_tree_block(lines: &[&str]) -> Option<Vec<(usize, String, bool)>> {
 
 /// Convert parsed tree entries into relative file paths.
 fn build_paths(entries: &[(usize, String, bool)]) -> Vec<(String, bool)> {
-    let mut paths: Vec<(String, bool)> = Vec::new();
-    let mut stack: Vec<(usize, String)> = Vec::new();
+    let mut paths: Vec<(String, bool)> = Vec::with_capacity(entries.len());
+    let mut stack: Vec<(usize, &str)> = Vec::new();
 
     for (depth, name, is_dir) in entries {
         // Pop stack to parent level
         while stack.last().is_some_and(|(d, _)| *d >= *depth) {
             stack.pop();
         }
-        stack.push((*depth, name.clone()));
+        stack.push((*depth, name));
 
-        let full_path: String = stack
-            .iter()
-            .map(|(_, n)| n.as_str())
-            .collect::<Vec<_>>()
-            .join("/");
+        let mut full_path = String::new();
+        for (i, (_, seg)) in stack.iter().enumerate() {
+            if i > 0 {
+                full_path.push('/');
+            }
+            full_path.push_str(seg);
+        }
         paths.push((full_path, *is_dir));
     }
 
@@ -227,7 +231,20 @@ impl Checker for StaleFileTreeChecker {
                                 continue;
                             }
 
-                            // Check root-relative
+                            // Check if basename exists in filename index (O(1) HashSet lookup before syscall)
+                            if !*is_dir {
+                                let basename = path.rsplit('/').next().unwrap_or(path);
+                                if ctx.filename_index.contains(basename) {
+                                    continue;
+                                }
+                            }
+
+                            // Reject path traversal (e.g. "../../etc/passwd") without
+                            // canonicalizing — the file may not exist yet, which is fine.
+                            if path.contains("..") {
+                                continue;
+                            }
+
                             let full_path = ctx.project_root.join(path);
                             if *is_dir {
                                 if full_path.is_dir() {
@@ -235,14 +252,6 @@ impl Checker for StaleFileTreeChecker {
                                 }
                             } else if full_path.exists() {
                                 continue;
-                            }
-
-                            // Check if basename exists in filename index (for files)
-                            if !*is_dir {
-                                let basename = path.rsplit('/').next().unwrap_or(path);
-                                if ctx.filename_index.contains(basename) {
-                                    continue;
-                                }
                             }
 
                             emit!(
@@ -295,7 +304,7 @@ mod tests {
     fn test_missing_file_in_tree() {
         let result = run_check(&["```", "src/", "├── main.rs", "└── lib.rs", "```"]);
         assert!(
-            result.diagnostics.len() >= 1,
+            !result.diagnostics.is_empty(),
             "Should flag missing files in tree: got {:?}",
             result.diagnostics
         );

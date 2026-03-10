@@ -1,6 +1,7 @@
-use crate::emit;
+use rayon::prelude::*;
+
 use crate::engine::cross_ref::CheckerContext;
-use crate::types::{Category, CheckResult, RuleMeta, Severity};
+use crate::types::{Category, CheckResult, Diagnostic, RuleMeta, Severity};
 
 use super::utils::{match_conflict_patterns, ScopeFilter, CONFLICT_PAIRS};
 use super::Checker;
@@ -20,13 +21,11 @@ impl CrossFileContradictionChecker {
 /// Returns true if `ancestor` is a directory ancestor of `descendant`.
 /// Both paths should be absolute or both relative to the same root.
 fn is_ancestor_descendant(ancestor: &std::path::Path, descendant: &std::path::Path) -> bool {
-    let ancestor_dir = match ancestor.parent() {
-        Some(p) => p,
-        None => return false,
+    let Some(ancestor_dir) = ancestor.parent() else {
+        return false;
     };
-    let descendant_dir = match descendant.parent() {
-        Some(p) => p,
-        None => return false,
+    let Some(descendant_dir) = descendant.parent() else {
+        return false;
     };
 
     // descendant_dir must start with ancestor_dir and be deeper
@@ -75,34 +74,47 @@ impl Checker for CrossFileContradictionChecker {
             })
             .collect();
 
-        for i in 0..ctx.files.len() {
-            if !self.scope.includes(&ctx.files[i].path, &ctx.project_root) {
-                continue;
-            }
-            for j in (i + 1)..ctx.files.len() {
-                if !self.scope.includes(&ctx.files[j].path, &ctx.project_root) {
-                    continue;
-                }
+        // Generate all (i, j) pairs where i < j and both are in scope
+        let pairs: Vec<(usize, usize)> = (0..ctx.files.len())
+            .filter(|&i| self.scope.includes(&ctx.files[i].path, &ctx.project_root))
+            .flat_map(|i| {
+                ((i + 1)..ctx.files.len())
+                    .filter(|&j| self.scope.includes(&ctx.files[j].path, &ctx.project_root))
+                    .map(move |j| (i, j))
+            })
+            .collect();
 
+        let pair_diagnostics: Vec<Diagnostic> = pairs
+            .par_iter()
+            .filter_map(|&(i, j)| {
                 // Only compare ancestor-descendant pairs
                 if !is_ancestor_descendant(&ctx.files[i].path, &ctx.files[j].path)
                     && !is_ancestor_descendant(&ctx.files[j].path, &ctx.files[i].path)
                 {
-                    continue;
+                    return None;
                 }
 
                 // Skip if no overlapping conflict patterns between the two files.
-                // Files need i.a&j.b or i.b&j.a for any pair to contradict.
-                let has_overlap = (0..CONFLICT_PAIRS.len().min(32)).any(|pair_idx| {
-                    let a_bit = 1u64 << (2 * pair_idx);
-                    let b_bit = 1u64 << (2 * pair_idx + 1);
-                    (file_masks[i] & a_bit != 0 && file_masks[j] & b_bit != 0)
-                        || (file_masks[i] & b_bit != 0 && file_masks[j] & a_bit != 0)
-                });
+                // For each pair N, a_bit = 2*N, b_bit = 2*N+1.
+                // Contradiction requires (i.a & j.b) or (i.b & j.a).
+                // Build "even" and "odd" masks by shifting: even bits = side A, odd bits = side B.
+                let mi = file_masks[i];
+                let mj = file_masks[j];
+                // Check if any pair has i's A matching j's B or i's B matching j's A
+                let even_mask: u64 = 0x5555_5555_5555_5555; // bits 0,2,4,...
+                let odd_mask: u64 = 0xAAAA_AAAA_AAAA_AAAA; // bits 1,3,5,...
+                let i_has_a = mi & even_mask;
+                let i_has_b = mi & odd_mask;
+                let j_has_a = mj & even_mask;
+                let j_has_b = mj & odd_mask;
+                // Shift odd bits down to align with even bits for comparison
+                let has_overlap =
+                    (i_has_a & (j_has_b >> 1)) != 0 || ((i_has_b >> 1) & j_has_a) != 0;
                 if !has_overlap {
-                    continue;
+                    return None;
                 }
 
+                // Find the first contradiction (at most one diagnostic per file pair)
                 for (pair_idx, pair) in CONFLICT_PAIRS.iter().enumerate() {
                     if pair_idx >= 32 {
                         break;
@@ -131,26 +143,36 @@ impl Checker for CrossFileContradictionChecker {
                                 .path
                                 .strip_prefix(&ctx.project_root)
                                 .unwrap_or(&ctx.files[j].path);
-                            emit!(
-                                result,
-                                ctx.files[i].path,
-                                *line_i,
-                                Severity::Warning,
-                                Category::CrossFileContradiction,
-                                suggest: "Resolve the contradiction or add a comment explaining the intentional override",
-                                "Cross-file contradiction ({}): {} line {} vs {} line {}",
-                                pair.description,
-                                rel_i.display(),
-                                line_i,
-                                rel_j.display(),
-                                line_j
-                            );
-                            break;
+                            return Some(Diagnostic {
+                                file: ctx.files[i].path.clone(),
+                                line: *line_i,
+                                column: None,
+                                end_line: None,
+                                end_column: None,
+                                severity: Severity::Warning,
+                                category: Category::CrossFileContradiction,
+                                message: format!(
+                                    "Cross-file contradiction ({}): {} line {} vs {} line {}",
+                                    pair.description,
+                                    rel_i.display(),
+                                    line_i,
+                                    rel_j.display(),
+                                    line_j
+                                ),
+                                suggestion: Some(
+                                    "Resolve the contradiction or add a comment explaining the intentional override".to_string(),
+                                ),
+                                fix: None,
+                            });
                         }
                     }
                 }
-            }
-        }
+
+                None
+            })
+            .collect();
+
+        result.diagnostics.extend(pair_diagnostics);
 
         result
     }

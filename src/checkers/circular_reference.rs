@@ -30,7 +30,13 @@ fn resolve_ref(
     let source_dir = source_file.parent().unwrap_or(project_root);
 
     [source_dir, project_root].into_iter().find_map(|base| {
-        base.join(ref_path)
+        let joined = base.join(ref_path);
+        // Try raw path first (no I/O syscall)
+        if let Some(&idx) = path_to_idx.get(&joined) {
+            return Some(idx);
+        }
+        // Fall back to canonicalization for symlinks / .. resolution
+        joined
             .canonicalize()
             .ok()
             .and_then(|canonical| path_to_idx.get(&canonical).copied())
@@ -57,18 +63,15 @@ impl Checker for CircularReferenceChecker {
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
-        let path_to_idx: HashMap<PathBuf, usize> = ctx
-            .files
-            .iter()
-            .enumerate()
-            .map(|(idx, file)| {
-                let key = file
-                    .path
-                    .canonicalize()
-                    .unwrap_or_else(|_| (*file.path).clone());
-                (key, idx)
-            })
-            .collect();
+        // Build map with both raw and canonical paths so resolve_ref can
+        // skip canonicalize syscalls for the common case (no symlinks).
+        let mut path_to_idx: HashMap<PathBuf, usize> = HashMap::with_capacity(ctx.files.len() * 2);
+        for (idx, file) in ctx.files.iter().enumerate() {
+            path_to_idx.insert((*file.path).clone(), idx);
+            if let Ok(canonical) = file.path.canonicalize() {
+                path_to_idx.insert(canonical, idx);
+            }
+        }
 
         let n = ctx.files.len();
         let mut adj: Vec<Vec<(usize, usize)>> = vec![vec![]; n];
