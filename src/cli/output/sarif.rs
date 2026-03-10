@@ -157,7 +157,11 @@ fn build_output(result: &CheckResult, project_root: &Path) -> SarifLog {
 
 pub fn render(result: &CheckResult, project_root: &Path) {
     let output = build_output(result, project_root);
-    println!("{}", serde_json::to_string_pretty(&output).unwrap());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&output)
+            .expect("SARIF serialization of diagnostics cannot fail")
+    );
 }
 
 #[cfg(test)]

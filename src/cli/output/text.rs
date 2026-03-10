@@ -25,9 +25,7 @@ pub fn render(result: &CheckResult, project_root: &Path) {
         by_category.entry(d.category.as_str()).or_default().push(d);
     }
 
-    let errors = result.error_count();
-    let warnings = result.warning_count();
-    let infos = result.info_count();
+    let (errors, warnings, infos) = result.severity_counts();
 
     println!();
     println!("  {}", styled!("\u{2501}".repeat(50), dimmed));

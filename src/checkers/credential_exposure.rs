@@ -92,10 +92,15 @@ impl Checker for CredentialExposureChecker {
                         }
                     }
 
-                    // Redact to avoid leaking the credential value in output.
-                    let display = match matched.char_indices().nth(4) {
-                        Some((byte_pos, _)) => format!("{}***", &matched[..byte_pos]),
-                        None => matched.to_string(),
+                    // Redact to avoid leaking the credential value in any output format.
+                    // Show only the type prefix (e.g., "sk-***", "ghp_***", "AKIA***").
+                    let display = if let Some(delim) = matched.find(['=', ':']) {
+                        let key = matched[..delim].trim();
+                        format!("{key}=***")
+                    } else if let Some((byte_pos, _)) = matched.char_indices().nth(4) {
+                        format!("{}***", &matched[..byte_pos])
+                    } else {
+                        "****".to_string()
                     };
                     emit!(
                         result,

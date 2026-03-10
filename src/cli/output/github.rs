@@ -18,9 +18,10 @@ pub fn render(result: &CheckResult, project_root: &Path) {
         };
 
         let msg = sanitize_annotation(&d.message);
-        let suffix = d.suggestion.as_ref().map_or(String::new(), |s| {
-            format!("%0Ahelp: {}", sanitize_annotation(s))
-        });
+        let suffix = match d.suggestion.as_deref() {
+            Some(s) => format!("%0Ahelp: {}", sanitize_annotation(s)),
+            None => String::new(),
+        };
         let rel = sanitize_annotation(&rel);
         let category = sanitize_annotation(&d.category.to_string());
         println!(

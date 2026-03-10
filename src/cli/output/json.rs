@@ -13,6 +13,12 @@ struct JsonOutput<'a> {
 struct JsonDiagnostic<'a> {
     file: String,
     line: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    column: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    end_line: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    end_column: Option<usize>,
     severity: &'a Severity,
     category: &'a Category,
     message: &'a str,
@@ -34,6 +40,9 @@ fn build_output<'a>(result: &'a CheckResult, project_root: &Path) -> JsonOutput<
         .map(|d| JsonDiagnostic {
             file: super::relative_path(&d.file, project_root),
             line: d.line,
+            column: d.column,
+            end_line: d.end_line,
+            end_column: d.end_column,
             severity: &d.severity,
             category: &d.category,
             message: &d.message,
@@ -41,19 +50,24 @@ fn build_output<'a>(result: &'a CheckResult, project_root: &Path) -> JsonOutput<
         })
         .collect();
 
+    let (errors, warnings, info) = result.severity_counts();
     JsonOutput {
         diagnostics,
         summary: JsonSummary {
-            errors: result.error_count(),
-            warnings: result.warning_count(),
-            info: result.info_count(),
+            errors,
+            warnings,
+            info,
         },
     }
 }
 
 pub fn render(result: &CheckResult, project_root: &Path) {
     let output = build_output(result, project_root);
-    println!("{}", serde_json::to_string_pretty(&output).unwrap());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&output)
+            .expect("JSON serialization of diagnostics cannot fail")
+    );
 }
 
 #[cfg(test)]

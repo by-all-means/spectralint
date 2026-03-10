@@ -24,9 +24,9 @@ static EXAMPLE_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
-/// Arrow mappings (→, ->, =>) indicate routing tables, not dependencies.
+/// Arrow mappings (→, ->, =>, ~>) indicate routing tables, not dependencies.
 fn has_arrow_mapping(line: &str) -> bool {
-    line.contains("→") || line.contains("->") || line.contains("=>")
+    line.contains('→') || line.contains("->") || line.contains("=>") || line.contains("~>")
 }
 
 /// Exclusion context — files listed as things NOT to touch.
