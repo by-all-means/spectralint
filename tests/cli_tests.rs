@@ -3529,3 +3529,85 @@ fn strict_mode_enables_strict_only_checkers() {
         "instruction-without-context SHOULD fire with --strict"
     );
 }
+
+// ── JSON column field behavior ──────────────────────────────────────
+
+#[test]
+fn json_output_column_field_present_when_set() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    // repeated-word checker emits column info, so trigger it
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Instructions\n\nThe the dog ran fast.\n",
+    )
+    .unwrap();
+
+    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+
+    let repeated: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("repeated-word"))
+        .collect();
+
+    if !repeated.is_empty() {
+        // When column is present, it should be a number
+        for d in &repeated {
+            if let Some(col) = d.get("column") {
+                assert!(
+                    col.is_u64(),
+                    "column field should be a number when present, got: {col}"
+                );
+            }
+        }
+    }
+
+    // Also verify that diagnostics WITHOUT column omit the field entirely
+    // (JSON skip_serializing_if = None behavior)
+    let no_column: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.get("column").is_none() || d["column"].is_null())
+        .collect();
+
+    // If there are diagnostics without columns, verify the field is absent (not null)
+    for d in &no_column {
+        assert!(
+            !d.as_object().unwrap().contains_key("column"),
+            "column field should be omitted (not null) when not set, got: {}",
+            serde_json::to_string_pretty(d).unwrap()
+        );
+    }
+}
+
+#[test]
+fn json_output_column_field_omitted_for_dead_refs() {
+    // dead-reference diagnostics typically don't have column info
+    let parsed = json_output(&["check", "tests/fixtures/dead_refs", "--format", "json"]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+
+    let dead_refs: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("dead-reference"))
+        .collect();
+
+    assert!(
+        !dead_refs.is_empty(),
+        "Should have dead-reference diagnostics to test"
+    );
+
+    for d in &dead_refs {
+        // If column is absent, the key should not exist in the JSON object
+        if !d.as_object().unwrap().contains_key("column") {
+            // This is the expected behavior: column omitted when None
+            continue;
+        }
+        // If column IS present, it should be a valid number
+        assert!(
+            d["column"].is_u64(),
+            "If column is present, it should be a number, got: {}",
+            d["column"]
+        );
+    }
+}

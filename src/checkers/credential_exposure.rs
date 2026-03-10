@@ -280,4 +280,31 @@ mod tests {
             "Real-looking credentials outside test context should still be flagged"
         );
     }
+
+    // --- FP/FN regression tests ---
+
+    #[test]
+    fn test_hashed_value_not_flagged() {
+        // SHA256 hashes look like long hex strings but are not credentials.
+        let result = run_check(&[
+            "sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "SHA256 hash values should not be flagged as credentials"
+        );
+    }
+
+    #[test]
+    fn test_jwt_in_example_context() {
+        // A JWT that would normally match the credential pattern, but appears
+        // in an "Example" context line and should be suppressed.
+        let result = run_check(&[
+            "# Example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4iLCJpYXQiOjE1MTYyMzkwMjJ9",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "JWT in an example context line should not be flagged"
+        );
+    }
 }

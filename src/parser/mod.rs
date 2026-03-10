@@ -761,4 +761,211 @@ mod tests {
         assert_eq!(parsed.directives.len(), 1);
         assert_eq!(parsed.directives[0].line, 5);
     }
+
+    #[test]
+    fn test_yaml_ellipsis_closing_delimiter() {
+        // Test that `...` closes YAML frontmatter just like `---`
+        let lines = vec![
+            "---".to_string(),
+            "title: Test".to_string(),
+            "...".to_string(),
+            "# Content".to_string(),
+            "Some text".to_string(),
+        ];
+        let mask = build_code_block_mask(&lines);
+        assert!(mask[0], "opening --- should be masked");
+        assert!(mask[1], "YAML content should be masked");
+        assert!(mask[2], "closing ... should be masked");
+        assert!(!mask[3], "content after frontmatter should not be masked");
+        assert!(!mask[4], "text after frontmatter should not be masked");
+    }
+
+    // ── Edge case tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_frontmatter_only_file() {
+        let parsed = parse_str("---\ntitle: Hello\ndescription: World\n---\n");
+        assert!(
+            parsed.sections.is_empty(),
+            "File with only frontmatter should have no sections"
+        );
+        assert!(
+            parsed.directives.is_empty(),
+            "File with only frontmatter should have no directives"
+        );
+        assert!(
+            parsed.tables.is_empty(),
+            "File with only frontmatter should have no tables"
+        );
+        assert!(
+            parsed.file_refs.is_empty(),
+            "File with only frontmatter should have no file refs"
+        );
+        // Frontmatter lines should all be masked
+        for (i, masked) in parsed.in_code_block.iter().enumerate() {
+            assert!(masked, "Frontmatter line {} should be masked", i);
+        }
+    }
+
+    #[test]
+    fn test_nested_code_blocks_in_blockquote() {
+        // Code fences prefixed with `> ` are not detected by the mask because
+        // trim_start only strips whitespace, not the `>` blockquote marker.
+        // This means the blockquoted code fence lines remain unmasked, which
+        // is the correct behavior since checkers already skip blockquoted lines
+        // via is_directive_line().
+        let lines: Vec<String> = vec![
+            "> Some quoted text",
+            "> ```",
+            "> let x = 1;",
+            "> ```",
+            "> More quoted text",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let mask = build_code_block_mask(&lines);
+        // All lines start with `>`, so trim_start yields `> ...` which does
+        // not start with ``` — none of them are masked.
+        for (i, &masked) in mask.iter().enumerate() {
+            assert!(
+                !masked,
+                "Line {} should not be masked; blockquote prefix prevents fence detection",
+                i
+            );
+        }
+    }
+
+    #[test]
+    fn test_unclosed_yaml_frontmatter() {
+        // File starts with --- but never closes: entire file should NOT be masked
+        let lines: Vec<String> = vec![
+            "---",
+            "title: Unclosed",
+            "key: value",
+            "# A heading",
+            "Normal content here",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let mask = build_code_block_mask(&lines);
+        for (i, &masked) in mask.iter().enumerate() {
+            assert!(
+                !masked,
+                "Line {} should not be masked when frontmatter is unclosed",
+                i
+            );
+        }
+    }
+
+    #[test]
+    fn test_code_block_with_indented_fence() {
+        // CommonMark allows up to 3 leading spaces on a code fence
+        let lines: Vec<String> = vec![
+            "Normal text",
+            "   ```python",
+            "   x = 42",
+            "   ```",
+            "After code block",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let mask = build_code_block_mask(&lines);
+        assert!(!mask[0], "Normal text should not be masked");
+        assert!(mask[1], "Indented opening fence should be masked");
+        assert!(mask[2], "Indented code content should be masked");
+        assert!(mask[3], "Indented closing fence should be masked");
+        assert!(!mask[4], "Text after code block should not be masked");
+    }
+
+    #[test]
+    fn test_empty_file() {
+        let parsed = parse_str("");
+        assert!(
+            parsed.sections.is_empty(),
+            "Empty file should have no sections"
+        );
+        assert!(parsed.tables.is_empty(), "Empty file should have no tables");
+        assert!(
+            parsed.file_refs.is_empty(),
+            "Empty file should have no file refs"
+        );
+        assert!(
+            parsed.directives.is_empty(),
+            "Empty file should have no directives"
+        );
+        assert!(
+            parsed.suppress_comments.is_empty(),
+            "Empty file should have no suppress comments"
+        );
+    }
+
+    #[test]
+    fn test_file_with_only_whitespace() {
+        let parsed = parse_str("   \n\n   \n  \n");
+        assert!(
+            parsed.sections.is_empty(),
+            "Whitespace-only file should have no sections"
+        );
+        assert!(
+            parsed.tables.is_empty(),
+            "Whitespace-only file should have no tables"
+        );
+        assert!(
+            parsed.file_refs.is_empty(),
+            "Whitespace-only file should have no file refs"
+        );
+        assert!(
+            parsed.directives.is_empty(),
+            "Whitespace-only file should have no directives"
+        );
+        assert!(
+            parsed.suppress_comments.is_empty(),
+            "Whitespace-only file should have no suppress comments"
+        );
+    }
+
+    #[test]
+    fn test_frontmatter_with_triple_dash_in_content() {
+        // --- appearing in normal content (not at line 0) should not be treated
+        // as frontmatter by the mask. The mask only looks at line 0 for the
+        // opening delimiter.
+        let lines: Vec<String> = vec![
+            "# My Document",
+            "",
+            "Some text here.",
+            "---",
+            "More text after horizontal rule.",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let mask = build_code_block_mask(&lines);
+        for (i, &masked) in mask.iter().enumerate() {
+            assert!(
+                !masked,
+                "Line {} should not be masked; --- in content is not frontmatter",
+                i
+            );
+        }
+        // Verify parsing: the --- is not frontmatter, content is normal markdown.
+        // Note: comrak may interpret --- as a setext heading underline for the
+        // preceding paragraph text, which is standard CommonMark behavior.
+        let parsed =
+            parse_str("# My Document\n\nSome text here.\n---\nMore text after horizontal rule.\n");
+        assert_eq!(
+            parsed.sections[0].title, "My Document",
+            "First section should be the explicit heading"
+        );
+        // The key assertion: no lines are masked as frontmatter
+        for (i, &masked) in parsed.in_code_block.iter().enumerate() {
+            assert!(
+                !masked,
+                "Line {} should not be masked; mid-file --- is not frontmatter",
+                i
+            );
+        }
+    }
 }

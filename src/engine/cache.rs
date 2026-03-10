@@ -548,4 +548,140 @@ mod tests {
         // Unsorted input should trigger debug assertion
         compute_files_hash(&[f2, f1]);
     }
+
+    #[test]
+    fn test_cache_rejected_when_exceeds_max_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join(CACHE_FILE);
+
+        // Create a cache file larger than MAX_CACHE_SIZE (50 MiB).
+        // We use a sparse/allocated file by writing a single byte past the limit.
+        let f = std::fs::File::create(&cache_path).unwrap();
+        f.set_len(MAX_CACHE_SIZE + 1).unwrap();
+        drop(f);
+
+        let result = load(dir.path(), 0, 0);
+        assert!(
+            result.is_none(),
+            "Cache file exceeding MAX_CACHE_SIZE should be rejected"
+        );
+    }
+
+    #[test]
+    fn test_cache_corrupted_file_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join(CACHE_FILE);
+
+        // Write invalid JSON to simulate a corrupted cache file
+        std::fs::write(&cache_path, "{{not valid json at all!@#$%").unwrap();
+
+        let result = load(dir.path(), 0, 0);
+        assert!(
+            result.is_none(),
+            "Corrupted cache file should return None gracefully"
+        );
+    }
+
+    #[test]
+    fn test_cache_roundtrip_with_suggestions() {
+        use crate::types::{Fix, Replacement};
+
+        let dir = tempfile::tempdir().unwrap();
+        let diags = vec![
+            Diagnostic {
+                file: Arc::new(PathBuf::from("CLAUDE.md")),
+                line: 5,
+                column: Some(10),
+                end_line: Some(5),
+                end_column: Some(20),
+                severity: Severity::Warning,
+                category: Category::RepeatedWord,
+                message: "repeated 'the'".to_string(),
+                suggestion: Some("Remove the duplicate word".to_string()),
+                fix: Some(Box::new(Fix {
+                    description: "Remove duplicate".to_string(),
+                    replacements: vec![Replacement {
+                        line: 5,
+                        start_col: 10,
+                        end_col: 14,
+                        new_text: String::new(),
+                    }],
+                })),
+            },
+            Diagnostic {
+                file: Arc::new(PathBuf::from("AGENTS.md")),
+                line: 20,
+                column: None,
+                end_line: None,
+                end_column: None,
+                severity: Severity::Info,
+                category: Category::VagueDirective,
+                message: "vague language".to_string(),
+                suggestion: Some("Be more specific about what to do".to_string()),
+                fix: None,
+            },
+        ];
+
+        save(dir.path(), 100, 200, &diags);
+        let loaded = load(dir.path(), 100, 200).unwrap();
+
+        assert_eq!(loaded.len(), 2);
+
+        // First diagnostic: check suggestion and fix survive roundtrip
+        assert_eq!(
+            loaded[0].suggestion,
+            Some("Remove the duplicate word".to_string())
+        );
+        assert!(loaded[0].fix.is_some());
+        let fix = loaded[0].fix.as_ref().unwrap();
+        assert_eq!(fix.description, "Remove duplicate");
+        assert_eq!(fix.replacements.len(), 1);
+        assert_eq!(fix.replacements[0].line, 5);
+        assert_eq!(fix.replacements[0].start_col, 10);
+        assert_eq!(fix.replacements[0].end_col, 14);
+        assert_eq!(fix.replacements[0].new_text, "");
+
+        // Second diagnostic: check suggestion survives, fix is None
+        assert_eq!(
+            loaded[1].suggestion,
+            Some("Be more specific about what to do".to_string())
+        );
+        assert!(loaded[1].fix.is_none());
+    }
+
+    #[test]
+    fn test_cache_invalidated_by_file_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let original_files_hash: u64 = 12345;
+        let config_hash: u64 = 67890;
+
+        // Save cache with the original files_hash
+        let diags = vec![Diagnostic {
+            file: Arc::new(PathBuf::from("CLAUDE.md")),
+            line: 1,
+            column: None,
+            end_line: None,
+            end_column: None,
+            severity: Severity::Error,
+            category: Category::DeadReference,
+            message: "dead ref".to_string(),
+            suggestion: None,
+            fix: None,
+        }];
+
+        save(dir.path(), original_files_hash, config_hash, &diags);
+
+        // Verify cache loads with original hash
+        let loaded = load(dir.path(), original_files_hash, config_hash);
+        assert!(loaded.is_some(), "Cache should load with matching hashes");
+        assert_eq!(loaded.unwrap().len(), 1);
+
+        // Now try to load with a different files_hash (simulating a file change)
+        let changed_files_hash: u64 = 99999;
+        let loaded = load(dir.path(), changed_files_hash, config_hash);
+        assert!(
+            loaded.is_none(),
+            "Cache should be invalidated when files_hash changes"
+        );
+    }
 }

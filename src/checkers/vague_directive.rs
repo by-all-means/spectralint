@@ -500,4 +500,37 @@ mod tests {
             "Reasoning agent prompts (pure prose, no code/commands/file refs) should not be flagged"
         );
     }
+
+    // --- FP/FN regression tests ---
+
+    #[test]
+    fn test_negated_vague_not_flagged() {
+        // "Do not try to override" contains "try to" but in a negation
+        // context. The parser's NEGATED_TRY_TO pattern should prevent it
+        // from being extracted as a directive, so the checker should not
+        // flag it. We use parse_file to test the full pipeline.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let file_path = root.join("instructions.md");
+        std::fs::write(&file_path, "Do not try to override the safety checks.\n").unwrap();
+
+        let parsed = crate::parser::parse_file(&file_path).unwrap();
+
+        let ctx = CheckerContext {
+            files: vec![parsed],
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = VagueDirectiveChecker::new(false, &[], &[]);
+        let result = checker.check(&ctx);
+
+        assert!(
+            result.diagnostics.is_empty(),
+            "Negated 'try to' (e.g. 'Do not try to') should not be flagged as vague"
+        );
+    }
 }

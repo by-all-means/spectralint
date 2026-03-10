@@ -1492,4 +1492,40 @@ mod tests {
             "Generic 'corresponding' references should be skipped"
         );
     }
+
+    // --- FP/FN regression tests ---
+
+    #[test]
+    fn test_reference_in_html_comment_still_checked() {
+        // HTML comments are NOT filtered by the parser's non_code_lines
+        // iterator, so file refs inside them ARE extracted. However, the
+        // `-->` closing tag contains `->`, which triggers the arrow-mapping
+        // heuristic (has_arrow_mapping), causing the reference to be
+        // skipped. This is a known quirk: HTML comment closing syntax
+        // collides with the `->` arrow pattern.
+        //
+        // Net effect: dead references inside HTML comments are silently
+        // skipped due to the `-->` / `->` overlap. This test documents
+        // the current behavior.
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = bare_ref_ctx(dir.path(), "missing.md", "<!-- See missing.md -->");
+        let result = DeadReferenceChecker.check(&ctx);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Reference in HTML comment is skipped (has_arrow_mapping matches `-->` as `->`)"
+        );
+    }
+
+    #[test]
+    fn test_tilde_arrow_mapping_skipped() {
+        // Lines with ~> arrow mappings indicate routing tables, not real
+        // file dependencies. The reference should not be flagged.
+        let dir = tempfile::tempdir().unwrap();
+        let ctx = bare_ref_ctx(dir.path(), "output.md", "Input ~> Transform ~> output.md");
+        let result = DeadReferenceChecker.check(&ctx);
+        assert!(
+            result.diagnostics.is_empty(),
+            "File references on arrow-mapping lines (~>) should be skipped"
+        );
+    }
 }

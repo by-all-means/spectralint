@@ -169,4 +169,31 @@ mod tests {
         let result = check(&["- You are a helpful assistant that helps with tasks."]);
         assert_eq!(result.diagnostics.len(), 1);
     }
+
+    // --- FP/FN regression tests ---
+
+    #[test]
+    fn test_boilerplate_in_code_block_not_flagged() {
+        // Boilerplate text inside a fenced code block should not be flagged,
+        // since it may be a quoted example or configuration snippet.
+        let result = check(&["```", "You are a helpful assistant", "```"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Boilerplate inside a code block should not be flagged"
+        );
+    }
+
+    #[test]
+    #[ignore = "FN: markdown emphasis (**bold**) inside boilerplate phrases breaks regex matching — checker does not strip inline formatting before pattern matching"]
+    fn test_boilerplate_with_emphasis_still_flagged() {
+        // Markdown emphasis around a word inside a known boilerplate phrase
+        // should still be detected. Currently the regex does not account for
+        // inline formatting like **bold** or *italic*, causing a false negative.
+        let result = check(&["You are a **helpful** AI assistant"]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Boilerplate with markdown emphasis should still be flagged"
+        );
+    }
 }

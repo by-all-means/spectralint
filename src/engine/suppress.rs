@@ -504,4 +504,106 @@ mod tests {
         let diags = validate_suppress_rules(&[file], &known);
         assert!(diags.is_empty());
     }
+
+    #[test]
+    fn test_overlapping_suppress_ranges() {
+        // Two disable/enable blocks that overlap:
+        // Block 1: lines 3-10 (all rules)
+        // Block 2: lines 5-8 (dead-reference only)
+        let comments = vec![
+            InlineSuppress {
+                line: 3,
+                kind: SuppressKind::Disable,
+                rule: None,
+            },
+            InlineSuppress {
+                line: 5,
+                kind: SuppressKind::Disable,
+                rule: Some("dead-reference".to_string()),
+            },
+            InlineSuppress {
+                line: 8,
+                kind: SuppressKind::Enable,
+                rule: Some("dead-reference".to_string()),
+            },
+            InlineSuppress {
+                line: 10,
+                kind: SuppressKind::Enable,
+                rule: None,
+            },
+        ];
+        let ranges = build_ranges(&comments, 20);
+        assert_eq!(ranges.len(), 2, "Should produce two suppression ranges");
+
+        let mut map = HashMap::new();
+        let key = Arc::new(PathBuf::from("test.md"));
+        map.insert(key.clone(), ranges);
+
+        // Line 4: inside global block only → all rules suppressed
+        assert!(is_suppressed(&map, &key, 4, &Category::DeadReference));
+        assert!(is_suppressed(&map, &key, 4, &Category::VagueDirective));
+
+        // Line 6: inside both blocks → all rules suppressed (global covers everything)
+        assert!(is_suppressed(&map, &key, 6, &Category::DeadReference));
+        assert!(is_suppressed(&map, &key, 6, &Category::VagueDirective));
+
+        // Line 9: inside global block (3-10) but outside dead-reference block (5-8)
+        // → all rules still suppressed because global block is active
+        assert!(is_suppressed(&map, &key, 9, &Category::DeadReference));
+        assert!(is_suppressed(&map, &key, 9, &Category::VagueDirective));
+
+        // Line 11: outside both blocks → nothing suppressed
+        assert!(!is_suppressed(&map, &key, 11, &Category::DeadReference));
+        assert!(!is_suppressed(&map, &key, 11, &Category::VagueDirective));
+    }
+
+    #[test]
+    fn test_suppress_custom_pattern() {
+        // Suppress a custom:my-rule pattern
+        let comments = vec![
+            InlineSuppress {
+                line: 5,
+                kind: SuppressKind::Disable,
+                rule: Some("custom:my-rule".to_string()),
+            },
+            InlineSuppress {
+                line: 10,
+                kind: SuppressKind::Enable,
+                rule: Some("custom:my-rule".to_string()),
+            },
+        ];
+        let ranges = build_ranges(&comments, 20);
+        assert_eq!(ranges.len(), 1);
+
+        let mut map = HashMap::new();
+        let key = Arc::new(PathBuf::from("test.md"));
+        map.insert(key.clone(), ranges);
+
+        let custom_category = Category::CustomPattern("my-rule".into());
+
+        // Line 7: inside the suppress block → custom:my-rule should be suppressed
+        assert!(
+            is_suppressed(&map, &key, 7, &custom_category),
+            "custom:my-rule should be suppressed within the disable block"
+        );
+
+        // Other categories should NOT be suppressed
+        assert!(
+            !is_suppressed(&map, &key, 7, &Category::DeadReference),
+            "dead-reference should not be suppressed by custom:my-rule disable"
+        );
+
+        // A different custom pattern should NOT be suppressed
+        let other_custom = Category::CustomPattern("other-rule".into());
+        assert!(
+            !is_suppressed(&map, &key, 7, &other_custom),
+            "custom:other-rule should not be suppressed by custom:my-rule disable"
+        );
+
+        // Outside the block → not suppressed
+        assert!(
+            !is_suppressed(&map, &key, 11, &custom_category),
+            "custom:my-rule should not be suppressed outside the block"
+        );
+    }
 }

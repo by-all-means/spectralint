@@ -485,6 +485,34 @@ mod tests {
     }
 
     #[test]
+    fn test_apply_fix_with_crlf_line_endings() {
+        let tmp = NamedTempFile::new().unwrap();
+        // Write a file with CRLF line endings
+        std::fs::write(tmp.path(), "The the dog\r\nhello world\r\n").unwrap();
+
+        let diag = make_fix_diagnostic(
+            tmp.path().to_path_buf(),
+            Fix {
+                description: "Remove duplicate word".to_string(),
+                replacements: vec![Replacement {
+                    line: 1,
+                    start_col: 4,
+                    end_col: 8,
+                    new_text: String::new(),
+                }],
+            },
+        );
+
+        let fixed = apply_fixes(&[diag]);
+        assert_eq!(fixed, 1);
+
+        let content = std::fs::read_to_string(tmp.path()).unwrap();
+        // The fix engine uses .lines() which strips \r\n, then joins with \n.
+        // So CRLF endings are normalized to LF — verify the fix was applied correctly.
+        assert_eq!(content, "The dog\nhello world\n");
+    }
+
+    #[test]
     fn test_line_zero_treated_as_out_of_bounds() {
         let tmp = NamedTempFile::new().unwrap();
         std::fs::write(tmp.path(), "hello world\n").unwrap();
@@ -506,5 +534,86 @@ mod tests {
         // This is actually valid by the current logic (0.saturating_sub(1) = 0, which is a valid index)
         // But we test that it doesn't panic
         let _fixed = apply_fixes(&[diag]);
+    }
+
+    #[test]
+    fn test_replacement_at_last_line() {
+        let tmp = NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), "first line\nsecond line\nthird line\n").unwrap();
+
+        let diag = make_fix_diagnostic(
+            tmp.path().to_path_buf(),
+            Fix {
+                description: "Fix last line".to_string(),
+                replacements: vec![Replacement {
+                    line: 3, // last line
+                    start_col: 0,
+                    end_col: 5,
+                    new_text: "THIRD".to_string(),
+                }],
+            },
+        );
+
+        let fixed = apply_fixes(&[diag]);
+        assert_eq!(fixed, 1);
+
+        let content = std::fs::read_to_string(tmp.path()).unwrap();
+        assert_eq!(content, "first line\nsecond line\nTHIRD line\n");
+    }
+
+    #[test]
+    fn test_empty_file_fix_skipped() {
+        let tmp = NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), "").unwrap();
+
+        let diag = make_fix_diagnostic(
+            tmp.path().to_path_buf(),
+            Fix {
+                description: "Fix on empty file".to_string(),
+                replacements: vec![Replacement {
+                    line: 1,
+                    start_col: 0,
+                    end_col: 3,
+                    new_text: "xxx".to_string(),
+                }],
+            },
+        );
+
+        let fixed = apply_fixes(&[diag]);
+        assert_eq!(fixed, 0, "Fix targeting an empty file should be skipped");
+
+        let content = std::fs::read_to_string(tmp.path()).unwrap();
+        assert_eq!(content, "", "Empty file should remain unchanged");
+    }
+
+    #[test]
+    fn test_unicode_content_fix() {
+        let tmp = NamedTempFile::new().unwrap();
+        // "café résumé" contains multi-byte UTF-8 characters (é = 2 bytes each)
+        // c(1) a(1) f(1) é(2) = 5 bytes for "café"
+        // space = 1 byte at offset 5
+        // r(1) é(2) s(1) u(1) m(1) é(2) = 8 bytes for "résumé"
+        let line = "café résumé\n";
+        std::fs::write(tmp.path(), line).unwrap();
+
+        // Replace "café" (bytes 0..5) with an emoji
+        let diag = make_fix_diagnostic(
+            tmp.path().to_path_buf(),
+            Fix {
+                description: "Replace with emoji".to_string(),
+                replacements: vec![Replacement {
+                    line: 1,
+                    start_col: 0,
+                    end_col: 5, // "café" is 5 bytes (é is 2 bytes in UTF-8)
+                    new_text: "\u{1F600}".to_string(), // 😀
+                }],
+            },
+        );
+
+        let fixed = apply_fixes(&[diag]);
+        assert_eq!(fixed, 1);
+
+        let content = std::fs::read_to_string(tmp.path()).unwrap();
+        assert_eq!(content, "\u{1F600} résumé\n");
     }
 }
