@@ -110,17 +110,15 @@ pub(super) fn is_suppressed(
 
 /// Collect all known rule names from built-in categories and custom patterns.
 /// Derives from `AVAILABLE_RULES` in explain.rs to avoid maintaining a separate list.
-/// Custom patterns are included as `"custom:<name>"` via `Box::leak` (bounded startup cost).
 pub(super) fn all_known_rule_names(
     custom_patterns: &[crate::config::CustomPattern],
-) -> HashSet<&'static str> {
-    let mut names: HashSet<&'static str> = crate::cli::explain::AVAILABLE_RULES
+) -> HashSet<String> {
+    let mut names: HashSet<String> = crate::cli::explain::AVAILABLE_RULES
         .iter()
-        .map(|(name, _)| *name)
+        .map(|(name, _)| (*name).to_string())
         .collect();
     for pat in custom_patterns {
-        let leaked: &'static str = format!("custom:{}", pat.name).leak();
-        names.insert(leaked);
+        names.insert(format!("custom:{}", pat.name));
     }
     names
 }
@@ -129,7 +127,7 @@ pub(super) fn all_known_rule_names(
 /// Returns diagnostics for unrecognized rule names.
 pub(super) fn validate_suppress_rules(
     files: &[ParsedFile],
-    known_rules: &HashSet<&'static str>,
+    known_rules: &HashSet<String>,
 ) -> Vec<crate::types::Diagnostic> {
     let mut result = crate::types::CheckResult::default();
     for file in files {

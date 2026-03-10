@@ -142,6 +142,10 @@ pub(crate) static CONFLICT_PAIRS: LazyLock<Vec<ConflictPair>> = LazyLock::new(||
 /// matching. Pattern at index `2*N` corresponds to `CONFLICT_PAIRS[N].a` and
 /// pattern at index `2*N+1` corresponds to `CONFLICT_PAIRS[N].b`.
 pub(crate) static CONFLICT_REGEX_SET: LazyLock<RegexSet> = LazyLock::new(|| {
+    assert!(
+        CONFLICT_PAIRS.len() <= 32,
+        "CONFLICT_PAIRS exceeds 32 entries — cross_file_contradiction bitmask needs updating"
+    );
     let patterns: Vec<&str> = CONFLICT_PAIRS
         .iter()
         .flat_map(|pair| [pair.a.as_str(), pair.b.as_str()])
@@ -223,12 +227,9 @@ pub(crate) fn is_heading(line: &str) -> bool {
 /// UTF-8 character.
 #[must_use]
 pub(crate) fn inside_inline_code(line: &str, pos: usize) -> bool {
-    line.as_bytes()[..pos]
-        .iter()
-        .filter(|&&b| b == b'`')
-        .count()
-        % 2
-        == 1
+    let bytes = line.as_bytes();
+    let end = pos.min(bytes.len());
+    bytes[..end].iter().filter(|&&b| b == b'`').count() % 2 == 1
 }
 
 /// Returns true if text after a regex match contains elaboration (colon, em dash, etc.),
@@ -236,7 +237,8 @@ pub(crate) fn inside_inline_code(line: &str, pos: usize) -> bool {
 /// Used by `generic_instruction` and `ambiguous_scope_reference`.
 #[must_use]
 pub(crate) fn has_elaboration_after(line: &str, match_end: usize) -> bool {
-    let rest = line[match_end..].trim_start();
+    let end = match_end.min(line.len());
+    let rest = line[end..].trim_start();
     rest.starts_with(':')
         || rest.starts_with("—")
         || rest.starts_with("- ")
@@ -355,64 +357,91 @@ impl ScopeFilter {
 ///
 /// Handles all-caps acronyms: `HTTPRequest` -> `http_request`, `APIKey` -> `api_key`.
 pub(crate) fn normalize(name: &str) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    let mut current = String::new();
+    let mut out = String::with_capacity(name.len());
+    let mut current_len = 0usize; // length of current word segment in `out`
     let mut iter = name.char_indices().peekable();
+
+    // Helper: push "_" separator if there's a previous word
+    macro_rules! sep {
+        ($out:expr, $current_len:expr) => {
+            if !$out.is_empty() && $current_len == 0 {
+                $out.push('_');
+            }
+        };
+    }
 
     while let Some((_i, c)) = iter.next() {
         if c == '_' || c == '-' || c == ' ' {
-            if !current.is_empty() {
-                parts.push(std::mem::take(&mut current));
+            if current_len > 0 {
+                current_len = 0;
             }
             continue;
         }
 
         if c.is_uppercase() {
-            // Count consecutive uppercase chars (including this one)
-            let mut upper_chars = vec![c];
+            // Collect consecutive uppercase chars into a stack-allocated buffer.
+            // Acronyms are typically short (2-5 chars), so 16 is generous.
+            let mut upper_buf = ['\0'; 16];
+            upper_buf[0] = c;
+            let mut upper_len = 1;
             while iter.peek().is_some_and(|&(_, nc)| nc.is_uppercase()) {
-                upper_chars.push(iter.next().unwrap().1);
+                if upper_len < upper_buf.len() {
+                    upper_buf[upper_len] = iter.next().unwrap().1;
+                    upper_len += 1;
+                } else {
+                    // Extremely long uppercase run; just push and continue
+                    break;
+                }
             }
+            let upper_chars = &upper_buf[..upper_len];
 
-            if upper_chars.len() > 1 {
+            if upper_len > 1 {
                 // Multi-char uppercase run (acronym)
-                if !current.is_empty() {
-                    parts.push(std::mem::take(&mut current));
+                if current_len > 0 {
+                    current_len = 0;
                 }
                 if iter.peek().is_some_and(|&(_, nc)| nc.is_lowercase()) {
                     // Last uppercase char starts the next word (e.g., HTTPRequest -> http + request)
-                    let last = upper_chars.pop().unwrap();
-                    let acronym: String = upper_chars
-                        .iter()
-                        .flat_map(|ch| ch.to_lowercase())
-                        .collect();
-                    parts.push(acronym);
-                    current.push(last.to_ascii_lowercase());
+                    let last = upper_chars[upper_len - 1];
+                    sep!(out, current_len);
+                    for &ch in &upper_chars[..upper_len - 1] {
+                        for lc in ch.to_lowercase() {
+                            out.push(lc);
+                        }
+                    }
+                    current_len = 0;
+                    sep!(out, current_len);
+                    out.push(last.to_ascii_lowercase());
+                    current_len = 1;
                 } else {
                     // Trailing acronym (e.g., requestAPI -> request + api)
-                    let acronym: String = upper_chars
-                        .iter()
-                        .flat_map(|ch| ch.to_lowercase())
-                        .collect();
-                    parts.push(acronym);
+                    sep!(out, current_len);
+                    for &ch in upper_chars {
+                        for lc in ch.to_lowercase() {
+                            out.push(lc);
+                        }
+                    }
+                    current_len = 0;
                 }
             } else {
                 // Single uppercase char starts a new word
-                if !current.is_empty() {
-                    parts.push(std::mem::take(&mut current));
+                if current_len > 0 {
+                    current_len = 0;
                 }
-                current.push(c.to_ascii_lowercase());
+                sep!(out, current_len);
+                out.push(c.to_ascii_lowercase());
+                current_len = 1;
             }
         } else {
-            current.push(c.to_ascii_lowercase());
+            if current_len == 0 {
+                sep!(out, current_len);
+            }
+            out.push(c.to_ascii_lowercase());
+            current_len += 1;
         }
     }
 
-    if !current.is_empty() {
-        parts.push(current);
-    }
-
-    parts.join("_")
+    out
 }
 
 #[cfg(test)]

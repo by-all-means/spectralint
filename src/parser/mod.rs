@@ -15,15 +15,23 @@ pub(crate) fn build_code_block_mask(lines: &[String]) -> Vec<bool> {
     let mut mask = vec![false; lines.len()];
 
     // Mask YAML frontmatter (must start at line 0 with "---")
+    // Only mask if a closing "---" is found; otherwise treat as normal content.
     let mut content_start = 0;
     if lines.first().is_some_and(|l| l.trim() == "---") {
-        mask[0] = true;
-        for (i, line) in lines.iter().enumerate().skip(1) {
-            mask[i] = true;
-            if line.trim() == "---" {
-                content_start = i + 1;
-                break;
+        if let Some(close) = lines
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find(|(_, l)| {
+                let trimmed = l.trim();
+                trimmed == "---" || trimmed == "..."
+            })
+            .map(|(i, _)| i)
+        {
+            for item in mask.iter_mut().take(close + 1) {
+                *item = true;
             }
+            content_start = close + 1;
         }
     }
 
@@ -62,9 +70,11 @@ fn non_code_lines(lines: &[String]) -> impl Iterator<Item = (usize, &str)> {
             .iter()
             .enumerate()
             .skip(1)
-            .find(|(_, l)| l.trim() == "---")
-            .map(|(i, _)| i + 1)
-            .unwrap_or(0)
+            .find(|(_, l)| {
+                let trimmed = l.trim();
+                trimmed == "---" || trimmed == "..."
+            })
+            .map_or(0, |(i, _)| i + 1)
     } else {
         0
     };
@@ -199,6 +209,7 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
 
     // Skip MediaWiki markup files (not standard markdown — causes false positives)
     if is_mediawiki_content(&content) {
+        tracing::info!("Skipping MediaWiki markup: {}", path.display());
         let in_code_block = build_code_block_mask(&raw_lines);
         return Ok(ParsedFile {
             path: Arc::new(path.to_path_buf()),
@@ -727,6 +738,20 @@ mod tests {
         assert!(mask[3], "closing delimiter should be masked");
         assert!(!mask[4], "content after frontmatter should not be masked");
         assert!(!mask[5], "heading after frontmatter should not be masked");
+    }
+
+    #[test]
+    fn test_unclosed_frontmatter_not_masked() {
+        // If a file starts with --- but has no closing ---, nothing should be masked
+        let lines: Vec<String> = vec!["---", "description: foo", "# Real heading", "Some content"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let mask = build_code_block_mask(&lines);
+        assert!(
+            !mask[0] && !mask[1] && !mask[2] && !mask[3],
+            "Unclosed frontmatter should not mask any lines"
+        );
     }
 
     #[test]

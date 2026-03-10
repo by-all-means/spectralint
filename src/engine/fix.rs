@@ -31,7 +31,7 @@ pub fn apply_fixes(diagnostics: &[Diagnostic]) -> usize {
         let content = match std::fs::read_to_string(path.as_ref()) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("Warning: could not read {} for fixing: {e}", path.display());
+                tracing::warn!("Could not read {} for fixing: {e}", path.display());
                 continue;
             }
         };
@@ -63,11 +63,12 @@ pub fn apply_fixes(diagnostics: &[Diagnostic]) -> usize {
         let mut safe_boundary: HashMap<usize, usize> = HashMap::new();
 
         let mut applied = 0;
+        let mut skipped = 0;
         for r in &replacements {
             let line_idx = r.line.saturating_sub(1); // 1-based to 0-based
             if line_idx >= lines.len() {
-                eprintln!(
-                    "Warning: fix references line {} but {} has only {} lines",
+                tracing::warn!(
+                    "Fix references line {} but {} has only {} lines",
                     r.line,
                     path.display(),
                     lines.len()
@@ -76,9 +77,14 @@ pub fn apply_fixes(diagnostics: &[Diagnostic]) -> usize {
             }
 
             let line = &lines[line_idx];
-            if r.start_col > line.len() || r.end_col > line.len() || r.start_col > r.end_col {
-                eprintln!(
-                    "Warning: fix has invalid column range {}..{} for line {} (length {})",
+            if r.start_col > line.len()
+                || r.end_col > line.len()
+                || r.start_col > r.end_col
+                || !line.is_char_boundary(r.start_col)
+                || !line.is_char_boundary(r.end_col)
+            {
+                tracing::warn!(
+                    "Fix has invalid column range {}..{} for line {} (length {})",
                     r.start_col,
                     r.end_col,
                     r.line,
@@ -90,6 +96,7 @@ pub fn apply_fixes(diagnostics: &[Diagnostic]) -> usize {
             // Skip if this replacement overlaps with one already applied on this line
             if let Some(&boundary) = safe_boundary.get(&line_idx) {
                 if r.end_col > boundary {
+                    skipped += 1;
                     continue;
                 }
             }
@@ -104,15 +111,23 @@ pub fn apply_fixes(diagnostics: &[Diagnostic]) -> usize {
             applied += 1;
         }
 
+        if skipped > 0 {
+            tracing::warn!(
+                "Skipped {} overlapping fix(es) in {}",
+                skipped,
+                path.display()
+            );
+        }
+
         if applied > 0 {
             let mut output = lines.join("\n");
             if trailing_newline {
                 output.push('\n');
             }
             if let Err(e) = std::fs::write(path.as_ref(), output) {
-                eprintln!("Warning: could not write fix to {}: {e}", path.display());
+                tracing::warn!("Could not write fix to {}: {e}", path.display());
             } else {
-                eprintln!("  Fixed {} issue(s) in {}", applied, path.display());
+                tracing::info!("Fixed {} issue(s) in {}", applied, path.display());
                 total_fixed += applied;
             }
         }

@@ -33,10 +33,10 @@ impl SpectralintServer {
         };
         let cfg = self.config.lock().await.clone();
 
-        let run_root = root.clone();
-        let result =
-            tokio::task::spawn_blocking(move || crate::engine::run(&run_root, &cfg, false, None))
-                .await;
+        let result = {
+            let root = root.clone();
+            tokio::task::spawn_blocking(move || crate::engine::run(&root, &cfg, false, None)).await
+        };
 
         let check_result = match result {
             Ok(Ok(r)) => r,
@@ -54,14 +54,23 @@ impl SpectralintServer {
             }
         };
 
-        // Group diagnostics by file
+        // Group diagnostics by file, validating paths stay within workspace
+        let canonical_root = root.canonicalize().ok();
         let mut by_file: HashMap<PathBuf, Vec<Diagnostic>> = HashMap::new();
         for d in &check_result.diagnostics {
             let abs_path = if d.file.is_absolute() {
                 (*d.file).clone()
             } else {
-                root.join(d.file.as_ref() as &std::path::Path)
+                root.join(d.file.as_ref())
             };
+            // Ensure diagnostic paths stay within the workspace root
+            if let Some(ref canon_root) = canonical_root {
+                if let Ok(canon_path) = abs_path.canonicalize() {
+                    if !canon_path.starts_with(canon_root) {
+                        continue;
+                    }
+                }
+            }
             by_file
                 .entry(abs_path)
                 .or_default()
@@ -106,10 +115,11 @@ fn to_lsp_diagnostic(d: &SpectralDiag) -> Diagnostic {
         message.push_str(suggestion);
     }
 
+    let line_u32 = u32::try_from(line).unwrap_or(u32::MAX);
     Diagnostic {
         range: Range {
-            start: Position::new(line as u32, 0),
-            end: Position::new(line as u32, u32::MAX),
+            start: Position::new(line_u32, 0),
+            end: Position::new(line_u32, u32::MAX),
         },
         severity,
         code: Some(NumberOrString::String(d.category.to_string())),

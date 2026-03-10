@@ -1,6 +1,7 @@
-use regex::Regex;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
+
+use regex::Regex;
 
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
@@ -24,7 +25,7 @@ static ANCHOR_LINK: LazyLock<Regex> =
 fn heading_to_anchor(title: &str) -> String {
     let mut slug = String::with_capacity(title.len());
     for c in title.chars() {
-        if c.is_alphanumeric() {
+        if c.is_alphanumeric() || c == '_' {
             for lc in c.to_lowercase() {
                 slug.push(lc);
             }
@@ -66,11 +67,20 @@ impl Checker for BrokenAnchorLinkChecker {
                 continue;
             }
 
-            let anchors: HashSet<String> = file
-                .sections
-                .iter()
-                .map(|s| heading_to_anchor(&s.title))
-                .collect();
+            // Build anchor set with GitHub-style deduplication (-1, -2, etc.)
+            let mut anchor_counts: HashMap<String, usize> =
+                HashMap::with_capacity(file.sections.len());
+            let mut anchors: HashSet<String> = HashSet::with_capacity(file.sections.len());
+            for section in &file.sections {
+                let base = heading_to_anchor(&section.title);
+                let count = anchor_counts.entry(base.clone()).or_insert(0);
+                if *count == 0 {
+                    anchors.insert(base);
+                } else {
+                    anchors.insert(format!("{base}-{count}"));
+                }
+                *count += 1;
+            }
 
             for (i, line) in non_code_lines_masked(&file.raw_lines, &file.in_code_block) {
                 let line_num = i + 1;
@@ -338,6 +348,65 @@ mod tests {
     }
 
     #[test]
+    fn test_heading_to_anchor_underscore() {
+        // GitHub preserves underscores in anchors
+        assert_eq!(heading_to_anchor("my_function"), "my_function");
+        assert_eq!(heading_to_anchor("api_key_name"), "api_key_name");
+    }
+
+    #[test]
+    fn test_duplicate_heading_anchors() {
+        // GitHub appends -1, -2 for duplicate headings
+        let sections = vec![
+            Section {
+                level: 2,
+                title: "API".to_string(),
+                line: 1,
+                end_line: 5,
+            },
+            Section {
+                level: 2,
+                title: "API".to_string(),
+                line: 6,
+                end_line: 10,
+            },
+            Section {
+                level: 2,
+                title: "API".to_string(),
+                line: 11,
+                end_line: 15,
+            },
+        ];
+        // Link to #api-1 (second occurrence) should be valid
+        let result = check_with_sections(
+            &[
+                "## API",
+                "",
+                "first",
+                "",
+                "",
+                "## API",
+                "",
+                "second",
+                "",
+                "",
+                "## API",
+                "",
+                "third",
+                "",
+                "",
+                "See [second](#api-1) and [third](#api-2).",
+            ],
+            sections,
+        );
+        assert_eq!(
+            result.diagnostics.len(),
+            0,
+            "Links to duplicate heading anchors (#api-1, #api-2) should be valid"
+        );
+    }
+
+    #[test]
     fn test_no_sections_no_crash() {
         let result = check_with_sections(&["See [link](#somewhere)."], vec![]);
         assert_eq!(result.diagnostics.len(), 1);
@@ -371,5 +440,60 @@ mod tests {
             }],
         );
         assert_eq!(result.diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_heading_to_anchor_period_dropped() {
+        assert_eq!(heading_to_anchor("v2.0 Release"), "v20-release");
+    }
+
+    #[test]
+    fn test_heading_to_anchor_backticks_dropped() {
+        assert_eq!(heading_to_anchor("Using `cargo test`"), "using-cargo-test");
+    }
+
+    #[test]
+    fn test_heading_to_anchor_tilde_dropped() {
+        assert_eq!(heading_to_anchor("~/.config Setup"), "config-setup");
+    }
+
+    #[test]
+    fn test_duplicate_heading_zero_suffix_invalid() {
+        // GitHub never produces #api-0 — first occurrence is just #api
+        let sections = vec![
+            Section {
+                level: 2,
+                title: "API".to_string(),
+                line: 1,
+                end_line: 5,
+            },
+            Section {
+                level: 2,
+                title: "API".to_string(),
+                line: 6,
+                end_line: 10,
+            },
+        ];
+        let result = check_with_sections(
+            &[
+                "## API",
+                "",
+                "first",
+                "",
+                "",
+                "## API",
+                "",
+                "second",
+                "",
+                "",
+                "See [wrong](#api-0).",
+            ],
+            sections,
+        );
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "#api-0 should be invalid — first occurrence is just #api"
+        );
     }
 }
