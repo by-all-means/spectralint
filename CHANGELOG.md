@@ -2,7 +2,7 @@
 
 All notable changes to spectralint will be documented in this file.
 
-## 0.5.0 (2026-03-09)
+## 0.5.0 (2026-03-10)
 
 ### New Rules (3 added, 71 total)
 
@@ -13,9 +13,10 @@ All notable changes to spectralint will be documented in this file.
 ### New Features
 
 - **Autofix engine** — `--fix` flag applies structured text replacements (e.g., removing repeated words). Overlap detection prevents conflicting fixes.
-- **Watch mode** — `--watch` re-scans on file changes with 2-second polling
-- **Result caching** — automatic whole-project cache using FNV-1a hash with mtime+size-based invalidation. `--no-cache` to bypass.
+- **Watch mode** — `--watch` re-scans on file changes using native filesystem events (via `notify` crate) with 100ms debounce
+- **Result caching** — automatic whole-project cache using FNV-1a hash with mtime+size-based invalidation. `--no-cache` to bypass. Atomic writes (tmp + rename) prevent corruption. 50 MiB size limit guards against malicious cache files.
 - **GitHub Action** — bundled `action.yml` for CI integration
+- **Structured logging** — internal diagnostics via `tracing` crate, gated by `RUST_LOG` env var (silent by default)
 
 ### Architecture
 
@@ -25,36 +26,55 @@ All notable changes to spectralint will be documented in this file.
 - **Category::as_str()** — zero-allocation string conversion for the hot path
 - **Category::FromStr** — typed rule filtering via `--rule` flag
 - **CustomPattern(Box\<str\>)** — reduced Category enum size from 32 to 16 bytes
+- **emit! macro** — simplified from 9 arms to 3 (removed unused column/span variants)
 
 ### Performance
 
-- **RegexSet pre-filter** — batch regex matching for conflict pair detection (conflicting-directives, cross-file-contradiction)
+- **Rayon parallelization** — cross_file_contradiction and duplicate_instruction_file now process file pairs in parallel
+- **Inverted header index** — enum_drift uses header-based lookup instead of O(n²) all-pairs comparison
+- **u64 bitmask operations** — conflicting_directives replaces `Vec<bool>` with bitwise ops; cross_file_contradiction uses O(1) bitwise overlap detection
+- **Dual-key path map** — circular_reference stores both raw and canonical paths, avoiding redundant `canonicalize()` syscalls
+- **Single-pass algorithms** — context_window_waste merges 3 iteration passes into 1; output formatters use single-pass `severity_counts()`
+- **Stack-allocated normalize()** — eliminates per-call heap allocation with fixed `[char; 16]` buffer for acronym runs
+- **Zero-allocation matching** — `is_docker_command` uses byte-level scanning instead of `to_lowercase().contains()`; `heading_to_anchor` avoids intermediate `Vec`
+- **Integer arithmetic** — missing_verification replaces float comparison with equivalent integer expression
+- **Pre-allocation** — `with_capacity` added to HashMaps, Vecs, and HashSets across 6 checkers
+- **RegexSet pre-filter** — batch regex matching for conflict pair detection
 - **Single-pass normalize_directive()** — 4 allocations reduced to 1
-- **normalize() without Vec\<char\>** — identifier normalization using char_indices iterator, no heap allocation
-- **Jaro-Winkler length pre-filter** — mathematically-derived bound skips pairs that can never match in redundant-directive O(n²) loop
+- **Jaro-Winkler length pre-filter** — mathematically-derived bound skips pairs that can never match
 - **Cache path interning** — shared Arc\<PathBuf\> for diagnostics referencing the same file during cache load
-- **Redundant sort removed** — compute_files_hash no longer re-sorts already-sorted input
-- **serialize_arc_pathbuf** — format directly into serializer via collect_str, no intermediate String
 
 ### Correctness
 
-- **YAML frontmatter support** — parser now recognizes `---` delimited frontmatter; prevents YAML comments from being mis-parsed as Markdown headings (eliminated 12 FPs across orphaned-section, hardcoded-windows-path, and other checkers)
-- **broken-anchor-link** — `heading_to_anchor()` no longer trims leading/trailing hyphens, matching GitHub's actual `github-slugger` behavior (fixes FP on emoji-prefixed headings like `🚀 Contributing` → `#-contributing`)
-- **command-validation** — `make` now requires word boundary (prevents FP on Rust `make::` module paths); `npm install -g` skipped (global installs don't need `package.json`); `python` prefix narrowed to `python -m` (bare `python script.py` doesn't require dependency manifest)
-- **hardcoded-windows-path** — recognizes Markdown escaped underscores (`\_`) and YAML `\n` escapes as non-path backslash sequences; handles multi-backslash matches correctly
-- **Reasoning prompt heuristic** — files with zero code blocks, zero file references, and zero shell commands are skipped by vague-directive, generic-instruction, and missing-essential-sections (eliminates false positives on FlowKit/workflow agent prompts)
-- **Shared is_reasoning_prompt()** — extracted to utils.rs from 3 duplicate implementations
-- **Serde default fix** — strict-only checkers now use `#[serde(default = "ScopedCheckerConfig::disabled")]` to prevent re-enabling when deserializing partial config
-- **inside_inline_code soundness** — fixed byte/char boundary issue by operating on bytes instead of chars
-- **orphaned-section** — intentionally-empty detection for numbered outlines and question headings (prevents FPs on LLM prompt templates)
-- **missing-standard-file** — only flags in project roots (directories with .git or package manifests)
-- **stale-file-tree** — moved to strict-only with Info severity after benchmark showed 580 false positives across 32 repos
+- **YAML frontmatter** — parser recognizes both `---` and `...` closing delimiters per YAML spec; unclosed frontmatter no longer masks entire file content
+- **broken-anchor-link** — preserves underscores in heading anchors; deduplicates repeated headings with `-1`, `-2` suffixes (matching GitHub's `github-slugger`)
+- **Fix engine safety** — validates UTF-8 char boundaries before applying replacements; logs skipped overlapping fixes
+- **Bounds safety** — `inside_inline_code` and `has_elaboration_after` clamp positions to prevent panics on out-of-bounds access
+- **Memory leak fix** — eliminated `Box::leak` in suppress rule name collection, replaced with owned `HashSet<String>`
+- **LSP security** — workspace path containment check via canonicalization; safe `u32` line number conversion
+- **Parse failure reporting** — warns when files fail to parse ("Checked 95/100 files, 5 failed to parse")
+- **CONFLICT_PAIRS assertion** — runtime guard ensures bitmask doesn't exceed 32 conflict pairs
+- **dead-reference** — recognizes `~>` arrow mapping (HCL/Terraform version constraints)
+- **credential-exposure** — improved redaction shows `key=***` for key-value patterns instead of partial value leak
+- **command-validation** — `make` requires word boundary; `npm install -g` skipped; `python` narrowed to `python -m`
+- **hardcoded-windows-path** — recognizes markdown escaped underscores and YAML `\n` escapes
+- **Reasoning prompt heuristic** — skips vague-directive, generic-instruction, missing-essential-sections on pure-prose files
+- **Serde default fix** — strict-only checkers use disabled default to prevent re-enabling on partial config
+
+### Output
+
+- **JSON** — now includes `column`, `end_line`, `end_column` fields (omitted when null for backward compatibility)
+- **Credential redaction** — key-value patterns show `key=***`; bare tokens show first 4 chars + `***`
+- **SARIF/JSON** — `.expect()` with descriptive messages instead of `.unwrap()`
 
 ### Tests
 
-- **1,266 tests** (up from ~800 in v0.4.0) — 1,115 unit tests + 151 integration tests
-- New FP regression tests for YAML frontmatter, emoji anchors, `make::` Rust paths, `npm install -g`, `python -c`, markdown escaped underscores
-- Edge case tests covering cache invalidation, fix engine error paths, Category serde roundtrip, CLI flag combinations, SARIF validation, and reasoning prompt edge cases
+- **1,461 tests** (up from ~800 in v0.4.0) — 1,308 unit tests + 153 integration tests
+- **Engine orchestration** — 19 tests for `run()` deduplication, severity overrides, suppression filtering, cache integration
+- **CLI output formatters** — 22 tests for text/JSON/SARIF renderers (empty results, field serialization, severity mapping, path normalization)
+- **Cross-ref & scanner** — 30 tests (filename index, historical detection, symlinks, glob patterns, nested directories)
+- **Checker edge cases** — 81 tests across 15 checker modules (boundary conditions, config variations, scope filtering)
+- FP regression tests for YAML frontmatter, emoji anchors, `make::` Rust paths, `npm install -g`, `python -c`, markdown escaped underscores
 - 7 FP regression tests for reasoning agent scenarios
 
 ### Noise Reduction
@@ -65,7 +85,7 @@ All notable changes to spectralint will be documented in this file.
 
 ### Benchmark
 
-100 repos scanned — 297 findings (43% of repos affected). 44% are errors or warnings. 117 noise findings eliminated via FP fixes (25) and noise reduction (92). Dead references increased from 13 to 47 as repos grew their instruction files.
+100 repos scanned — 141 findings (38% of repos affected). 43% are errors or warnings. Noise reduction from v0.4.0's 139 findings: placeholder-url down from 9 to 1, hardcoded-file-structure held at 25 despite new repos. Token-budget (20) and command-validation (8) are new v0.5.0 rules.
 
 ---
 
