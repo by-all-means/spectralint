@@ -129,4 +129,63 @@ mod tests {
         let result = check(&["```", "some content"]);
         assert_eq!(result.diagnostics.len(), 0);
     }
+
+    #[test]
+    fn test_code_block_with_only_tabs_and_spaces_flagged() {
+        let result = check(&["```", "\t", "   \t  ", "```"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_code_block_with_blank_lines_only_flagged() {
+        let result = check(&["```", "", "", "", "```"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_language_tag_with_options_but_no_content() {
+        // Some code blocks use extended info strings like ```rust,no_run
+        let result = check(&["```rust,no_run", "```"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_nested_code_block_in_blockquote() {
+        // Code fences inside blockquotes (> ```) are still fences
+        // The checker works on raw lines, so indented fences still match
+        let result = check(&["> ```bash", "> ```"]);
+        // The checker trims leading whitespace before checking for ```,
+        // but blockquote markers ("> ") are not whitespace — these don't match
+        assert_eq!(result.diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_consecutive_empty_code_blocks() {
+        // Two empty code blocks immediately adjacent
+        let result = check(&["```", "```", "```python", "```"]);
+        assert_eq!(result.diagnostics.len(), 2);
+    }
+
+    #[test]
+    fn test_code_block_with_single_space_line_flagged() {
+        let result = check(&["```", " ", "```"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_empty_then_nonempty_code_blocks() {
+        let result = check(&["```", "```", "", "```bash", "echo hello", "```"]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "only the first empty block flags"
+        );
+    }
+
+    #[test]
+    fn test_indented_fence_empty_block() {
+        // Fences can be indented up to 3 spaces in markdown
+        let result = check(&["   ```", "   ```"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
 }

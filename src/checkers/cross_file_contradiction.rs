@@ -309,4 +309,70 @@ mod tests {
             &root.join("AGENTS.md")
         ));
     }
+
+    #[test]
+    fn test_files_with_no_overlapping_topics() {
+        // Two ancestor-descendant files that talk about completely different things
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let files = vec![
+            make_file(root, "CLAUDE.md", &["Use Python 3.11 for all scripts."]),
+            make_file(
+                root,
+                "backend/CLAUDE.md",
+                &["Database migrations go in the db/ folder."],
+            ),
+        ];
+        let result = run_check(files, root);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Files with no overlapping conflict topics should not flag"
+        );
+    }
+
+    #[test]
+    fn test_files_with_exact_same_content() {
+        // Two ancestor-descendant files with identical content — no contradiction
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let files = vec![
+            make_file(root, "CLAUDE.md", &["Always use formal tone."]),
+            make_file(root, "backend/CLAUDE.md", &["Always use formal tone."]),
+        ];
+        let result = run_check(files, root);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Files with the exact same content should not contradict each other"
+        );
+    }
+
+    #[test]
+    fn test_three_way_contradiction() {
+        // Root says formal, child says casual, grandchild says formal again.
+        // Should detect contradiction between root<->child and child<->grandchild.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let files = vec![
+            make_file(root, "CLAUDE.md", &["Always use formal tone."]),
+            make_file(root, "src/CLAUDE.md", &["Keep it casual and friendly."]),
+            make_file(root, "src/api/CLAUDE.md", &["Always use formal tone."]),
+        ];
+        let result = run_check(files, root);
+        // Root<->src/CLAUDE.md: formal vs casual (contradiction)
+        // src/CLAUDE.md<->src/api/CLAUDE.md: casual vs formal (contradiction)
+        // Root<->src/api/CLAUDE.md: same direction (no contradiction)
+        assert!(
+            result.diagnostics.len() >= 2,
+            "Three-way contradiction should detect at least 2 contradictions, got {}",
+            result.diagnostics.len()
+        );
+        // All diagnostics should be about tone
+        for d in &result.diagnostics {
+            assert!(
+                d.message.contains("tone"),
+                "Expected tone contradiction, got: {}",
+                d.message
+            );
+        }
+    }
 }

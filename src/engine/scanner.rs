@@ -259,4 +259,262 @@ mod tests {
         let files = scan(dir.path(), &config).files;
         assert!(files.is_empty());
     }
+
+    #[test]
+    fn test_scan_empty_directory() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let config = all_md_config();
+        let result = scan(dir.path(), &config);
+
+        assert!(result.files.is_empty());
+        assert!(result.filename_index.is_empty());
+    }
+
+    #[test]
+    fn test_scan_deeply_nested_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("a/b/c/d/e")).unwrap();
+        fs::write(dir.path().join("a/b/c/d/e/deep.md"), "# Deep").unwrap();
+        fs::write(dir.path().join("a/mid.md"), "# Mid").unwrap();
+        fs::write(dir.path().join("root.md"), "# Root").unwrap();
+
+        let config = all_md_config();
+        let files = scan(dir.path(), &config).files;
+
+        assert_eq!(files.len(), 3);
+        assert!(files.iter().any(|f| f.ends_with("deep.md")));
+        assert!(files.iter().any(|f| f.ends_with("mid.md")));
+        assert!(files.iter().any(|f| f.ends_with("root.md")));
+    }
+
+    #[test]
+    fn test_scan_filename_index_includes_non_md_files() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("CLAUDE.md"), "# Hello").unwrap();
+        fs::write(dir.path().join("main.rs"), "fn main() {}").unwrap();
+        fs::write(dir.path().join("Cargo.toml"), "[package]").unwrap();
+        fs::create_dir(dir.path().join("src")).unwrap();
+        fs::write(dir.path().join("src/lib.rs"), "// lib").unwrap();
+
+        let config = all_md_config();
+        let result = scan(dir.path(), &config);
+
+        // Only .md files in the files list
+        assert_eq!(result.files.len(), 1);
+        // But the filename_index has all files
+        assert!(result.filename_index.contains("CLAUDE.md"));
+        assert!(result.filename_index.contains("main.rs"));
+        assert!(result.filename_index.contains("Cargo.toml"));
+        assert!(result.filename_index.contains("lib.rs"));
+        assert_eq!(result.filename_index.len(), 4);
+    }
+
+    #[test]
+    fn test_scan_canonical_root_is_populated() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("CLAUDE.md"), "# Hello").unwrap();
+
+        let config = Config::default();
+        let result = scan(dir.path(), &config);
+
+        // The canonical root should be set (tempdir exists on disk)
+        assert!(result.canonical_root.is_some());
+    }
+
+    #[test]
+    fn test_scan_files_are_sorted() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("z_last.md"), "# Z").unwrap();
+        fs::write(dir.path().join("a_first.md"), "# A").unwrap();
+        fs::write(dir.path().join("m_middle.md"), "# M").unwrap();
+
+        let config = all_md_config();
+        let files = scan(dir.path(), &config).files;
+
+        assert_eq!(files.len(), 3);
+        // Files should be sorted
+        let names: Vec<&str> = files
+            .iter()
+            .map(|f| f.file_name().unwrap().to_str().unwrap())
+            .collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(names, sorted);
+    }
+
+    #[test]
+    fn test_scan_skips_all_known_skip_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("root.md"), "# Root").unwrap();
+
+        for skip_dir in SKIP_DIRS {
+            fs::create_dir(dir.path().join(skip_dir)).unwrap();
+            fs::write(dir.path().join(skip_dir).join("hidden.md"), "# Hidden").unwrap();
+        }
+
+        let config = all_md_config();
+        let files = scan(dir.path(), &config).files;
+
+        assert_eq!(files.len(), 1);
+        assert!(files[0].ends_with("root.md"));
+    }
+
+    #[test]
+    fn test_scan_include_specific_pattern() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("CLAUDE.md"), "# Claude").unwrap();
+        fs::write(dir.path().join("AGENTS.md"), "# Agents").unwrap();
+        fs::write(dir.path().join("readme.md"), "# Readme").unwrap();
+        fs::write(dir.path().join("notes.md"), "# Notes").unwrap();
+
+        // Only include CLAUDE.md pattern
+        let config = Config {
+            include: vec!["CLAUDE.md".to_string()],
+            ..Config::default()
+        };
+        let files = scan(dir.path(), &config).files;
+
+        assert_eq!(files.len(), 1);
+        assert!(files[0].ends_with("CLAUDE.md"));
+    }
+
+    #[test]
+    fn test_scan_no_md_files_returns_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("main.rs"), "fn main() {}").unwrap();
+        fs::write(dir.path().join("Cargo.toml"), "[package]").unwrap();
+        fs::write(dir.path().join("data.json"), "{}").unwrap();
+
+        let config = all_md_config();
+        let files = scan(dir.path(), &config).files;
+
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_scan_ignore_directory_pattern_does_not_affect_sibling() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir(dir.path().join("docs")).unwrap();
+        fs::write(dir.path().join("docs/guide.md"), "# Guide").unwrap();
+        fs::create_dir(dir.path().join("tmp")).unwrap();
+        fs::write(dir.path().join("tmp/scratch.md"), "# Scratch").unwrap();
+        fs::write(dir.path().join("root.md"), "# Root").unwrap();
+
+        let mut config = all_md_config();
+        config.ignore.push("tmp".to_string());
+        let files = scan(dir.path(), &config).files;
+
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().any(|f| f.ends_with("guide.md")));
+        assert!(files.iter().any(|f| f.ends_with("root.md")));
+        assert!(!files.iter().any(|f| f.ends_with("scratch.md")));
+    }
+
+    #[test]
+    fn test_scan_nested_include_pattern() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("docs/api")).unwrap();
+        fs::write(dir.path().join("docs/api/spec.md"), "# Spec").unwrap();
+        fs::write(dir.path().join("docs/guide.md"), "# Guide").unwrap();
+        fs::write(dir.path().join("readme.md"), "# Readme").unwrap();
+
+        let config = Config {
+            include: vec!["docs/**".to_string()],
+            ..Config::default()
+        };
+        let files = scan(dir.path(), &config).files;
+
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().any(|f| f.ends_with("spec.md")));
+        assert!(files.iter().any(|f| f.ends_with("guide.md")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_scan_symlinked_file_within_project() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("real.md"), "# Real").unwrap();
+
+        // Create a symlink to a file within the project
+        std::os::unix::fs::symlink(dir.path().join("real.md"), dir.path().join("link.md")).unwrap();
+
+        let config = all_md_config();
+        let files = scan(dir.path(), &config).files;
+
+        // The symlinked file should be included since it resolves within the project
+        assert!(files.iter().any(|f| f.ends_with("real.md")));
+        assert!(files.iter().any(|f| f.ends_with("link.md")));
+        assert_eq!(files.len(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_scan_symlinked_file_outside_project() {
+        let project_dir = tempfile::tempdir().unwrap();
+        let external_dir = tempfile::tempdir().unwrap();
+
+        fs::write(project_dir.path().join("CLAUDE.md"), "# Root").unwrap();
+        fs::write(external_dir.path().join("external.md"), "# External").unwrap();
+
+        // Create a symlink pointing outside the project
+        std::os::unix::fs::symlink(
+            external_dir.path().join("external.md"),
+            project_dir.path().join("ext_link.md"),
+        )
+        .unwrap();
+
+        let config = all_md_config();
+        let files = scan(project_dir.path(), &config).files;
+
+        // Symlinked file outside project should be skipped
+        assert!(!files.iter().any(|f| f.ends_with("ext_link.md")));
+        assert_eq!(files.len(), 1);
+    }
+
+    #[test]
+    fn test_matches_glob_by_filename() {
+        let root = Path::new("/project");
+        let set = build_glob_set(&["*.md".to_string()]);
+
+        assert!(matches_glob(Path::new("/project/readme.md"), root, &set));
+        assert!(!matches_glob(Path::new("/project/main.rs"), root, &set));
+    }
+
+    #[test]
+    fn test_matches_glob_by_relative_path() {
+        let root = Path::new("/project");
+        let set = build_glob_set(&["docs/**".to_string()]);
+
+        assert!(matches_glob(
+            Path::new("/project/docs/guide.md"),
+            root,
+            &set
+        ));
+        assert!(!matches_glob(Path::new("/project/src/main.rs"), root, &set));
+    }
+
+    #[test]
+    fn test_matches_glob_empty_set() {
+        let root = Path::new("/project");
+        let set = build_glob_set(&[]);
+
+        assert!(!matches_glob(Path::new("/project/anything.md"), root, &set));
+    }
+
+    #[test]
+    fn test_scan_ignore_files_does_not_remove_from_filename_index() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("readme.md"), "# Hello").unwrap();
+        fs::write(dir.path().join("changelog.md"), "# Changes").unwrap();
+
+        let mut config = all_md_config();
+        config.ignore_files.push("changelog.md".to_string());
+        let result = scan(dir.path(), &config);
+
+        // changelog.md should be excluded from files but remain in the filename index
+        assert_eq!(result.files.len(), 1);
+        assert!(result.filename_index.contains("changelog.md"));
+        assert!(result.filename_index.contains("readme.md"));
+    }
 }

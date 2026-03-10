@@ -485,4 +485,106 @@ mod tests {
             "'Files Modified This Session' is strong, + 1 strong + 1 weak = fires"
         );
     }
+
+    #[test]
+    fn test_timestamps_without_session_content_no_diagnostic() {
+        // A file with timestamps but no session-journal patterns
+        let result = run_check(&[
+            "# Release Notes",
+            "## 2025-01-15",
+            "- Added new feature",
+            "## 2025-01-10",
+            "- Fixed critical bug",
+            "## 2025-01-05",
+            "- Improved performance",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Timestamps alone without session markers should not trigger"
+        );
+    }
+
+    #[test]
+    fn test_session_markers_in_code_blocks_not_counted() {
+        // All strong markers are inside a code block — should not trigger
+        let result = run_check(&[
+            "# Example Template",
+            "Here is a template for session notes:",
+            "```",
+            "## Session Progress",
+            "## What We Accomplished",
+            "## What We Just Completed",
+            "## Files Modified This Session",
+            "```",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Markers inside code blocks should be completely ignored"
+        );
+    }
+
+    #[test]
+    fn test_exactly_two_strong_markers_no_weak_no_checkmarks() {
+        // 2 strong markers with zero weak markers and zero checkmarks
+        // The condition is: 2+ strong AND has_additional_signal
+        // has_additional_signal = !weak_markers.is_empty() || checkmark_count > 0
+        // With 0 weak and 0 checkmarks, has_additional_signal = false → should NOT fire
+        let result = run_check(&["## What We Accomplished", "## Session Summary"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "2 strong markers alone without any additional signal should NOT trigger"
+        );
+    }
+
+    #[test]
+    fn test_two_strong_plus_single_checkmark_fires() {
+        // 2 strong markers + 1 checkmark (below density threshold, but checkmark_count > 0)
+        let result = run_check(&[
+            "## What We Accomplished",
+            "## Session Summary",
+            "- \u{2705} Fixed the bug",
+        ]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "2 strong + any checkmarks (even 1) = has_additional_signal = fires"
+        );
+    }
+
+    #[test]
+    fn test_mixed_code_and_prose_markers() {
+        // One strong marker in code block (ignored), two in prose → only 2 strong counted
+        // Plus a weak marker to trigger
+        let result = run_check(&[
+            "# Notes",
+            "```",
+            "## What We Just Completed",
+            "```",
+            "## What We Accomplished",
+            "## Session Summary",
+            "## Current Status",
+        ]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Only prose markers should be counted; code block marker ignored"
+        );
+    }
+
+    #[test]
+    fn test_legitimate_file_with_status_section() {
+        // A real instruction file that happens to mention "Current Status"
+        let result = run_check(&[
+            "# Deployment Guide",
+            "## Current Status",
+            "The service is running on Kubernetes.",
+            "## Commands",
+            "- Run `kubectl apply -f deploy.yaml`",
+            "- Check with `kubectl get pods`",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "A single weak marker in a legitimate file should not trigger"
+        );
+    }
 }

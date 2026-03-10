@@ -605,4 +605,111 @@ mod tests {
             "Summary sections should be skipped as informational"
         );
     }
+
+    #[test]
+    fn test_section_with_verification_at_end() {
+        // Verification keyword at the very end of the section should still count
+        let result = run_check_with_sections(
+            &[
+                "# Deploy",
+                "",
+                "Run the build command.",
+                "Execute the migration script.",
+                "Install the dependencies.",
+                "Create the output directory.",
+                "Finally, verify the deployment succeeded.",
+                "",
+                "# Other",
+                "",
+                "Info.",
+            ],
+            vec![
+                Section {
+                    level: 1,
+                    title: "Deploy".to_string(),
+                    line: 1,
+                    end_line: 8,
+                },
+                Section {
+                    level: 1,
+                    title: "Other".to_string(),
+                    line: 9,
+                    end_line: 11,
+                },
+            ],
+        );
+        assert!(
+            result.diagnostics.is_empty(),
+            "Section with verify keyword at end should pass"
+        );
+    }
+
+    #[test]
+    fn test_section_with_no_steps() {
+        // A section with no action verbs at all should not flag
+        let result = run_check_with_sections(
+            &[
+                "# Notes",
+                "",
+                "This section has no actionable steps.",
+                "Just some information here.",
+                "",
+                "# Other",
+                "",
+                "Info.",
+            ],
+            vec![
+                Section {
+                    level: 1,
+                    title: "Notes".to_string(),
+                    line: 1,
+                    end_line: 5,
+                },
+                Section {
+                    level: 1,
+                    title: "Other".to_string(),
+                    line: 6,
+                    end_line: 8,
+                },
+            ],
+        );
+        assert!(
+            result.diagnostics.is_empty(),
+            "Section with no action verbs should not flag"
+        );
+    }
+
+    #[test]
+    fn test_section_with_single_step() {
+        // A section with only one action verb (below threshold of 4) should not flag
+        let result = run_check_with_sections(
+            &[
+                "# Quick Fix",
+                "",
+                "Run the repair script.",
+                "",
+                "# Other",
+                "",
+                "Info.",
+            ],
+            vec![
+                Section {
+                    level: 1,
+                    title: "Quick Fix".to_string(),
+                    line: 1,
+                    end_line: 4,
+                },
+                Section {
+                    level: 1,
+                    title: "Other".to_string(),
+                    line: 5,
+                    end_line: 7,
+                },
+            ],
+        );
+        assert!(
+            result.diagnostics.is_empty(),
+            "Section with a single action verb should not flag (below threshold)"
+        );
+    }
 }

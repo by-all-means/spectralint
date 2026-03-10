@@ -161,4 +161,138 @@ mod tests {
         );
         assert_eq!(result.diagnostics[0].line, result.diagnostics[1].line);
     }
+
+    #[test]
+    fn test_invalid_regex_mixed_with_valid() {
+        let checker = CustomPatternChecker::new(&[
+            CustomPattern {
+                name: "bad".to_string(),
+                pattern: r"(unclosed".to_string(),
+                severity: Severity::Warning,
+                message: "bad pattern".to_string(),
+            },
+            CustomPattern {
+                name: "good".to_string(),
+                pattern: r"\bHACK\b".to_string(),
+                severity: Severity::Warning,
+                message: "HACK found".to_string(),
+            },
+        ]);
+        assert_eq!(
+            checker.patterns.len(),
+            1,
+            "Invalid regex should be skipped but valid patterns kept"
+        );
+        assert_eq!(checker.patterns[0].name, "good");
+    }
+
+    #[test]
+    fn test_pattern_matching_across_multiple_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let raw_a: Vec<String> = vec!["# File A".to_string(), "HACK: quick workaround".to_string()];
+        let raw_b: Vec<String> = vec![
+            "# File B".to_string(),
+            "This is clean".to_string(),
+            "HACK: another one".to_string(),
+        ];
+        let mask_a = crate::parser::build_code_block_mask(&raw_a);
+        let mask_b = crate::parser::build_code_block_mask(&raw_b);
+        use crate::parser::types::ParsedFile;
+        use std::collections::HashSet;
+        let file_a = ParsedFile {
+            path: std::sync::Arc::new(root.join("a.md")),
+            sections: vec![],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: raw_a,
+            in_code_block: mask_a,
+        };
+        let file_b = ParsedFile {
+            path: std::sync::Arc::new(root.join("b.md")),
+            sections: vec![],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: raw_b,
+            in_code_block: mask_b,
+        };
+        let ctx = crate::engine::cross_ref::CheckerContext {
+            files: vec![file_a, file_b],
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+        let patterns = vec![CustomPattern {
+            name: "hack".to_string(),
+            pattern: r"\bHACK\b".to_string(),
+            severity: Severity::Warning,
+            message: "HACK found".to_string(),
+        }];
+        let result = CustomPatternChecker::new(&patterns).check(&ctx);
+        assert_eq!(
+            result.diagnostics.len(),
+            2,
+            "Pattern should match in both files"
+        );
+    }
+
+    #[test]
+    fn test_case_sensitive_pattern() {
+        // Pattern without (?i) should be case-sensitive
+        let result = run_check(
+            &["# Title", "todo: lowercase", "TODO: uppercase"],
+            &[CustomPattern {
+                name: "todo-exact".to_string(),
+                pattern: r"\bTODO\b".to_string(),
+                severity: Severity::Warning,
+                message: "uppercase TODO found".to_string(),
+            }],
+        );
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Case-sensitive pattern should only match exact case"
+        );
+        assert_eq!(result.diagnostics[0].line, 3);
+    }
+
+    #[test]
+    fn test_pattern_in_fenced_code_block_skipped() {
+        let result = run_check(
+            &[
+                "# Instructions",
+                "```python",
+                "# TODO: implement this function",
+                "def foo(): pass",
+                "```",
+                "TODO: real task outside code block",
+            ],
+            &[CustomPattern {
+                name: "todo".to_string(),
+                pattern: r"\bTODO\b".to_string(),
+                severity: Severity::Warning,
+                message: "TODO found".to_string(),
+            }],
+        );
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Pattern inside code block should be skipped, only prose match reported"
+        );
+        assert_eq!(result.diagnostics[0].line, 6);
+    }
+
+    #[test]
+    fn test_no_patterns_no_diagnostics() {
+        let result = run_check(&["# Title", "TODO: something"], &[]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "No patterns configured should produce no diagnostics"
+        );
+    }
 }

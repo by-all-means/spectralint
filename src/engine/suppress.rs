@@ -9,10 +9,10 @@ use crate::types::Category;
 
 #[derive(Debug)]
 pub(super) struct SuppressedRange {
-    rule: Option<String>,
-    start_line: usize,
-    end_line: usize,
-    used: Cell<bool>,
+    pub(super) rule: Option<String>,
+    pub(super) start_line: usize,
+    pub(super) end_line: usize,
+    pub(super) used: Cell<bool>,
     /// The line where the disable comment appears (for unused suppression diagnostics).
     pub(super) comment_line: usize,
 }

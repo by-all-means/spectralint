@@ -372,4 +372,196 @@ mod tests {
             "Template/glob refs should be skipped"
         );
     }
+
+    #[test]
+    fn test_four_node_cycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        fs::write(root.join("a.md"), "# A").unwrap();
+        fs::write(root.join("b.md"), "# B").unwrap();
+        fs::write(root.join("c.md"), "# C").unwrap();
+        fs::write(root.join("d.md"), "# D").unwrap();
+
+        let files = vec![
+            make_file(root, "a.md", vec![("b.md", 1)]),
+            make_file(root, "b.md", vec![("c.md", 1)]),
+            make_file(root, "c.md", vec![("d.md", 1)]),
+            make_file(root, "d.md", vec![("a.md", 1)]),
+        ];
+
+        let ctx = CheckerContext {
+            files,
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = CircularReferenceChecker::new(&[]);
+        let result = checker.check(&ctx);
+
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "A 4-node cycle should produce exactly one diagnostic"
+        );
+        let msg = &result.diagnostics[0].message;
+        assert!(msg.contains("a.md"), "Cycle should include a.md");
+        assert!(msg.contains("d.md"), "Cycle should include d.md");
+    }
+
+    #[test]
+    fn test_broken_chain_no_cycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        // a.md -> b.md -> nonexistent.md: chain is broken, no cycle
+        fs::write(root.join("a.md"), "# A").unwrap();
+        fs::write(root.join("b.md"), "# B").unwrap();
+        // nonexistent.md is NOT created
+
+        let files = vec![
+            make_file(root, "a.md", vec![("b.md", 1)]),
+            make_file(root, "b.md", vec![("nonexistent.md", 1)]),
+        ];
+
+        let ctx = CheckerContext {
+            files,
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = CircularReferenceChecker::new(&[]);
+        let result = checker.check(&ctx);
+
+        assert!(
+            result.diagnostics.is_empty(),
+            "A broken chain (missing file) should not produce a cycle diagnostic"
+        );
+    }
+
+    #[test]
+    fn test_subdirectory_relative_ref_cycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        fs::create_dir_all(root.join("sub")).unwrap();
+        fs::write(root.join("a.md"), "# A\nSee sub/b.md").unwrap();
+        fs::write(root.join("sub/b.md"), "# B\nSee a.md").unwrap();
+
+        let a_path = root.join("a.md");
+        let b_path = root.join("sub/b.md");
+
+        let files = vec![
+            ParsedFile {
+                path: std::sync::Arc::new(a_path.clone()),
+                sections: vec![],
+                tables: vec![],
+                file_refs: vec![FileRef {
+                    path: "sub/b.md".to_string(),
+                    line: 2,
+                    source_file: a_path.clone(),
+                }],
+                directives: vec![],
+                suppress_comments: vec![],
+                raw_lines: vec![],
+                in_code_block: vec![],
+            },
+            ParsedFile {
+                path: std::sync::Arc::new(b_path.clone()),
+                sections: vec![],
+                tables: vec![],
+                file_refs: vec![FileRef {
+                    path: "a.md".to_string(),
+                    line: 2,
+                    source_file: b_path.clone(),
+                }],
+                directives: vec![],
+                suppress_comments: vec![],
+                raw_lines: vec![],
+                in_code_block: vec![],
+            },
+        ];
+
+        let ctx = CheckerContext {
+            files,
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = CircularReferenceChecker::new(&[]);
+        let result = checker.check(&ctx);
+
+        // b.md references "a.md" which resolves relative to its own dir (sub/)
+        // or relative to the project root. If it resolves, we get a cycle.
+        // The resolve_ref function tries both the source dir and project root.
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Cross-directory cycle via relative paths should be detected"
+        );
+    }
+
+    #[test]
+    fn test_multiple_independent_cycles() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        fs::write(root.join("a.md"), "# A").unwrap();
+        fs::write(root.join("b.md"), "# B").unwrap();
+        fs::write(root.join("c.md"), "# C").unwrap();
+        fs::write(root.join("d.md"), "# D").unwrap();
+
+        // Two independent cycles: a<->b and c<->d
+        let files = vec![
+            make_file(root, "a.md", vec![("b.md", 1)]),
+            make_file(root, "b.md", vec![("a.md", 1)]),
+            make_file(root, "c.md", vec![("d.md", 1)]),
+            make_file(root, "d.md", vec![("c.md", 1)]),
+        ];
+
+        let ctx = CheckerContext {
+            files,
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = CircularReferenceChecker::new(&[]);
+        let result = checker.check(&ctx);
+
+        assert_eq!(
+            result.diagnostics.len(),
+            2,
+            "Two independent cycles should produce two diagnostics"
+        );
+    }
+
+    #[test]
+    fn test_no_files_no_crash() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let ctx = CheckerContext {
+            files: vec![],
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = CircularReferenceChecker::new(&[]);
+        let result = checker.check(&ctx);
+
+        assert!(
+            result.diagnostics.is_empty(),
+            "Empty file set should produce no diagnostics"
+        );
+    }
 }

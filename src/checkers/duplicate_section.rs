@@ -211,4 +211,104 @@ mod tests {
             "Duplicate h2 sections should flag even under different h1 parents"
         );
     }
+
+    #[test]
+    fn test_case_variants_mixed_case_duplicate() {
+        // "TESTING" vs "Testing" vs "testing" — all should be duplicates
+        let result = run_check(vec![
+            section("TESTING", 2, 1, 5),
+            section("Testing", 2, 6, 10),
+            section("testing", 2, 11, 15),
+        ]);
+        assert_eq!(
+            result.diagnostics.len(),
+            2,
+            "Case-insensitive comparison should catch all three as the same heading"
+        );
+    }
+
+    #[test]
+    fn test_same_name_at_different_nesting_levels_no_flag() {
+        // h2 "Setup" and h3 "Setup" are at different levels — not duplicates
+        let result = run_check(vec![section("Setup", 2, 1, 20), section("Setup", 3, 5, 15)]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Same name at different levels should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_same_name_h3_h4_different_levels_no_flag() {
+        let result = run_check(vec![
+            section("Parent", 2, 1, 50),
+            section("Details", 3, 5, 30),
+            section("Details", 4, 10, 25),
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "h3 and h4 with same name should not be flagged as duplicates"
+        );
+    }
+
+    #[test]
+    fn test_section_name_with_special_characters() {
+        let result = run_check(vec![
+            section("Build & Test", 2, 1, 5),
+            section("Build & Test", 2, 6, 10),
+        ]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Sections with special characters should still be detected as duplicates"
+        );
+    }
+
+    #[test]
+    fn test_section_name_with_backticks() {
+        let result = run_check(vec![
+            section("`cargo test`", 2, 1, 5),
+            section("`cargo test`", 2, 6, 10),
+        ]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_section_name_with_emoji() {
+        let result = run_check(vec![
+            section("\u{1f680} Deploy", 2, 1, 5),
+            section("\u{1f680} Deploy", 2, 6, 10),
+        ]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_h4_same_name_under_different_h3_parents_no_flag() {
+        // Parallel structure: h4 "Examples" under different h3 parents
+        let result = run_check(vec![
+            section("Build", 2, 1, 100),
+            section("Rust", 3, 5, 50),
+            section("Examples", 4, 10, 30),
+            section("Python", 3, 55, 95),
+            section("Examples", 4, 60, 80),
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "h4 subsections under different h3 parents should not flag"
+        );
+    }
+
+    #[test]
+    fn test_deeply_nested_duplicate_h4_under_same_h3() {
+        let result = run_check(vec![
+            section("Build", 2, 1, 100),
+            section("Rust", 3, 5, 95),
+            section("Examples", 4, 10, 30),
+            section("Examples", 4, 35, 55),
+        ]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Two h4 'Examples' under the same h3 'Rust' should flag"
+        );
+    }
 }

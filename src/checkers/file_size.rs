@@ -149,4 +149,115 @@ mod tests {
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].severity, Severity::Warning);
     }
+
+    #[test]
+    fn test_exactly_at_warn_threshold() {
+        // Default warn_lines = 500, file has exactly 500 lines
+        let result = run_check_with_lines(500);
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(
+            result.diagnostics[0].severity,
+            Severity::Info,
+            "File at exactly warn threshold should emit Info"
+        );
+        assert!(result.diagnostics[0].message.contains("approaching"));
+    }
+
+    #[test]
+    fn test_one_line_under_warn_threshold() {
+        // Default warn_lines = 500, file has 499 lines
+        let result = run_check_with_lines(499);
+        assert!(
+            result.diagnostics.is_empty(),
+            "File one line under warn threshold should produce no diagnostic"
+        );
+    }
+
+    #[test]
+    fn test_one_line_over_max_threshold() {
+        // Default max_lines = 750, file has 751 lines
+        let result = run_check_with_lines(751);
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(
+            result.diagnostics[0].severity,
+            Severity::Info,
+            "In default (non-strict) mode, exceeding max is Info"
+        );
+        assert!(result.diagnostics[0].message.contains("exceeds"));
+    }
+
+    #[test]
+    fn test_one_line_under_max_threshold() {
+        // Default max_lines = 750, file has 749 lines -> falls in warn range
+        let result = run_check_with_lines(749);
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(
+            result.diagnostics[0].severity,
+            Severity::Info,
+            "File at 749 lines is in the warn range (500..750)"
+        );
+        assert!(result.diagnostics[0].message.contains("approaching"));
+    }
+
+    #[test]
+    fn test_custom_threshold_from_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let lines: Vec<String> = (0..200).map(|i| format!("Line {i}")).collect();
+        let file = ParsedFile {
+            path: std::sync::Arc::new(root.join("CLAUDE.md")),
+            sections: vec![],
+            tables: vec![],
+            file_refs: vec![],
+            directives: vec![],
+            suppress_comments: vec![],
+            raw_lines: lines,
+            in_code_block: vec![],
+        };
+        let ctx = CheckerContext {
+            files: vec![file],
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+        let config = FileSizeConfig {
+            enabled: true,
+            max_lines: 150,
+            warn_lines: 100,
+            severity: None,
+        };
+        let result = FileSizeChecker::new(&config, false).check(&ctx);
+        assert_eq!(result.diagnostics.len(), 1);
+        assert!(
+            result.diagnostics[0].message.contains("200 lines"),
+            "Diagnostic should mention actual line count"
+        );
+        assert!(
+            result.diagnostics[0].message.contains("150"),
+            "Diagnostic should mention the custom max_lines limit"
+        );
+    }
+
+    #[test]
+    fn test_zero_lines_no_diagnostic() {
+        let result = run_check_with_lines(0);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Empty file should produce no diagnostic"
+        );
+    }
+
+    #[test]
+    fn test_exactly_at_max_threshold_strict() {
+        // Default max_lines = 750, strict mode, file has exactly 750 lines
+        let result = run_check_with_lines_strict(750, true);
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(
+            result.diagnostics[0].severity,
+            Severity::Warning,
+            "File at exactly max threshold in strict mode should emit Warning"
+        );
+        assert!(result.diagnostics[0].message.contains("exceeds"));
+    }
 }

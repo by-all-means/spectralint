@@ -307,4 +307,68 @@ mod tests {
             "JWT in an example context line should not be flagged"
         );
     }
+
+    #[test]
+    fn test_key_in_yaml_format() {
+        // YAML-style key: value with quoted credential
+        let result = run_check(&[r#"api_key: "rk-prod-7f3a9b2c4d5e6f7890abcdef""#]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "YAML-formatted credential should be detected"
+        );
+    }
+
+    #[test]
+    fn test_key_with_single_quotes() {
+        let result = run_check(&["token = 'sk-live-abc123def456ghi789jkl012mno'"]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Credential with single quotes should be detected"
+        );
+    }
+
+    #[test]
+    fn test_base64_jwt_token() {
+        // A base64-encoded JWT-like token (eyJ prefix)
+        let result = run_check(&[
+            "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2F1dGguZXhhbXBsZS5jb20ifQ",
+        ]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Base64-encoded JWT token should be detected"
+        );
+    }
+
+    #[test]
+    fn test_aws_access_key_pattern() {
+        // Real AWS access key pattern: AKIA followed by 16 uppercase alphanumeric chars
+        let result = run_check(&["AWS_ACCESS_KEY_ID=AKIAIOSFODNN7REALKEY"]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "AWS access key pattern should be detected"
+        );
+    }
+
+    #[test]
+    fn test_short_value_not_flagged() {
+        // Short values (< 8 chars) should not match the key=value pattern
+        let result = run_check(&[r#"password = "abc""#]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Short password value should not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_short_token_value_not_flagged() {
+        let result = run_check(&[r#"secret: "12345""#]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Short secret value should not be flagged"
+        );
+    }
 }

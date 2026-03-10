@@ -496,4 +496,268 @@ mod tests {
             "#api-0 should be invalid — first occurrence is just #api"
         );
     }
+
+    #[test]
+    fn test_heading_with_special_characters_anchor() {
+        // Heading "What's New?" → anchor "whats-new"
+        let sections = vec![Section {
+            level: 2,
+            title: "What's New?".to_string(),
+            line: 1,
+            end_line: 5,
+        }];
+        let result = check_with_sections(
+            &["## What's New?", "", "See [updates](#whats-new).", "", ""],
+            sections,
+        );
+        assert_eq!(result.diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_heading_with_special_chars_broken_link() {
+        // Heading "What's New?" → anchor "whats-new", NOT "whats-new?"
+        let sections = vec![Section {
+            level: 2,
+            title: "What's New?".to_string(),
+            line: 1,
+            end_line: 5,
+        }];
+        let result = check_with_sections(
+            &["## What's New?", "", "See [updates](#whats-new?).", "", ""],
+            sections,
+        );
+        // The regex won't capture the `?` as part of the anchor inside parens,
+        // so the anchor captured is "whats-new?" — but actually the regex `#([^)]+)`
+        // captures everything until `)`, so the `?` IS included.
+        // "whats-new?" is not in anchors, so it flags.
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_case_sensitivity_anchor_uppercase_heading() {
+        // Heading "BUILD Commands" → anchor "build-commands"
+        // Link to "#BUILD-Commands" → lowercased to "build-commands" → match
+        let sections = vec![Section {
+            level: 2,
+            title: "BUILD Commands".to_string(),
+            line: 1,
+            end_line: 5,
+        }];
+        let result = check_with_sections(
+            &[
+                "## BUILD Commands",
+                "",
+                "See [link](#BUILD-Commands).",
+                "",
+                "",
+            ],
+            sections,
+        );
+        assert_eq!(
+            result.diagnostics.len(),
+            0,
+            "anchor matching should be case-insensitive"
+        );
+    }
+
+    #[test]
+    fn test_anchor_with_unicode_characters() {
+        // Heading "Café Setup" → anchor "café-setup" (unicode alphanumerics preserved)
+        let sections = vec![Section {
+            level: 2,
+            title: "Caf\u{00e9} Setup".to_string(),
+            line: 1,
+            end_line: 5,
+        }];
+        let result = check_with_sections(
+            &[
+                "## Caf\u{00e9} Setup",
+                "",
+                "See [setup](#caf\u{00e9}-setup).",
+                "",
+                "",
+            ],
+            sections,
+        );
+        assert_eq!(
+            result.diagnostics.len(),
+            0,
+            "unicode characters in anchors should be preserved and matched"
+        );
+    }
+
+    #[test]
+    fn test_deeply_nested_heading() {
+        // h5 heading should still produce a valid anchor
+        let sections = vec![Section {
+            level: 5,
+            title: "Deep Nested Section".to_string(),
+            line: 1,
+            end_line: 5,
+        }];
+        let result = check_with_sections(
+            &[
+                "##### Deep Nested Section",
+                "",
+                "See [deep](#deep-nested-section).",
+                "",
+                "",
+            ],
+            sections,
+        );
+        assert_eq!(result.diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_anchor_to_third_duplicate_heading() {
+        // Three headings with same name: #api, #api-1, #api-2
+        let sections = vec![
+            Section {
+                level: 2,
+                title: "API".to_string(),
+                line: 1,
+                end_line: 5,
+            },
+            Section {
+                level: 2,
+                title: "API".to_string(),
+                line: 6,
+                end_line: 10,
+            },
+            Section {
+                level: 2,
+                title: "API".to_string(),
+                line: 11,
+                end_line: 15,
+            },
+        ];
+        // Link to the first occurrence (#api) should be valid
+        let result = check_with_sections(
+            &[
+                "## API",
+                "",
+                "first",
+                "",
+                "",
+                "## API",
+                "",
+                "second",
+                "",
+                "",
+                "## API",
+                "",
+                "third",
+                "",
+                "",
+                "See [first api](#api).",
+            ],
+            sections,
+        );
+        assert_eq!(
+            result.diagnostics.len(),
+            0,
+            "Link to first occurrence (#api) should be valid"
+        );
+    }
+
+    #[test]
+    fn test_heading_with_colons_and_numbers() {
+        // "Step 1: Setup" → "step-1-setup"
+        let sections = vec![Section {
+            level: 2,
+            title: "Step 1: Setup".to_string(),
+            line: 1,
+            end_line: 5,
+        }];
+        let result = check_with_sections(
+            &["## Step 1: Setup", "", "See [step](#step-1-setup).", "", ""],
+            sections,
+        );
+        assert_eq!(result.diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_heading_with_backticks() {
+        // "Using `cargo test`" → "using-cargo-test"
+        let sections = vec![Section {
+            level: 2,
+            title: "Using `cargo test`".to_string(),
+            line: 1,
+            end_line: 5,
+        }];
+        let result = check_with_sections(
+            &[
+                "## Using `cargo test`",
+                "",
+                "See [tests](#using-cargo-test).",
+                "",
+                "",
+            ],
+            sections,
+        );
+        assert_eq!(result.diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_heading_with_em_dash() {
+        // "Phase 0 — Discovery" → "phase-0--discovery"
+        let sections = vec![Section {
+            level: 2,
+            title: "Phase 0 \u{2014} Discovery".to_string(),
+            line: 1,
+            end_line: 5,
+        }];
+        let result = check_with_sections(
+            &[
+                "## Phase 0 \u{2014} Discovery",
+                "",
+                "See [phase](#phase-0--discovery).",
+                "",
+                "",
+            ],
+            sections,
+        );
+        assert_eq!(result.diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_multiple_anchors_same_line_mixed_validity() {
+        // One valid and one broken anchor on the same line
+        let sections = vec![
+            Section {
+                level: 2,
+                title: "Build".to_string(),
+                line: 1,
+                end_line: 5,
+            },
+            Section {
+                level: 2,
+                title: "Test".to_string(),
+                line: 6,
+                end_line: 10,
+            },
+        ];
+        let result = check_with_sections(
+            &[
+                "## Build",
+                "",
+                "content",
+                "",
+                "",
+                "## Test",
+                "",
+                "content",
+                "",
+                "",
+                "See [build](#build) and [deploy](#deploy).",
+            ],
+            sections,
+        );
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "only the broken #deploy anchor should flag"
+        );
+        assert!(result.diagnostics[0].message.contains("deploy"));
+    }
 }

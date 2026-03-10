@@ -402,4 +402,123 @@ mod tests {
             "Single-line code blocks are not trees"
         );
     }
+
+    #[test]
+    fn test_tree_with_only_directories() {
+        // A tree containing only directories (no leaf files) should not flag
+        // because all entries are intermediate directories.
+        let result = run_check(&[
+            "```",
+            "project/",
+            "├── src/",
+            "├── tests/",
+            "└── docs/",
+            "```",
+        ]);
+        // These are all leaf directories (no children), so they get checked.
+        // They don't exist on disk, so they should be flagged.
+        assert!(
+            !result.diagnostics.is_empty(),
+            "Leaf directories that don't exist should be flagged"
+        );
+    }
+
+    #[test]
+    fn test_tree_with_only_intermediate_directories() {
+        // Directories that are parents of other entries should NOT be flagged.
+        let result = run_check(&[
+            "```",
+            "project/",
+            "├── src/",
+            "│   └── main.rs",
+            "└── tests/",
+            "    └── test_main.rs",
+            "```",
+        ]);
+        // src/ and tests/ are intermediate dirs (parents of files), so only
+        // main.rs and test_main.rs should be checked as leaves.
+        let flagged_dirs: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.message.ends_with("src`") || d.message.ends_with("tests`"))
+            .collect();
+        assert!(
+            flagged_dirs.is_empty(),
+            "Intermediate directories should not be flagged: {:?}",
+            flagged_dirs
+        );
+    }
+
+    #[test]
+    fn test_deeply_nested_paths() {
+        let result = run_check(&[
+            "```",
+            "root/",
+            "└── a/",
+            "    └── b/",
+            "        └── c/",
+            "            └── deep_file.txt",
+            "```",
+        ]);
+        assert!(
+            !result.diagnostics.is_empty(),
+            "Deeply nested non-existent file should be flagged"
+        );
+        assert!(
+            result.diagnostics[0].message.contains("deep_file.txt"),
+            "Should flag the leaf file in deeply nested tree"
+        );
+    }
+
+    #[test]
+    fn test_tree_matching_actual_files_no_flag() {
+        // Create actual files that match the tree entries
+        let result = run_check_with_files(
+            &[
+                "```",
+                "project/",
+                "├── README.md",
+                "├── src/",
+                "│   └── lib.rs",
+                "└── tests/",
+                "    └── integration.rs",
+                "```",
+            ],
+            &[
+                "project/README.md",
+                "project/src/lib.rs",
+                "project/tests/integration.rs",
+            ],
+        );
+        assert!(
+            result.diagnostics.is_empty(),
+            "Tree entries matching actual files should not be flagged: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_mixed_valid_and_invalid_entries() {
+        // Some files exist, some don't — only missing ones should be flagged
+        let result = run_check_with_files(
+            &[
+                "```",
+                "src/",
+                "├── main.rs",
+                "├── lib.rs",
+                "└── missing.rs",
+                "```",
+            ],
+            &["src/main.rs", "src/lib.rs"],
+        );
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Only the missing file should be flagged"
+        );
+        assert!(
+            result.diagnostics[0].message.contains("missing.rs"),
+            "Should flag the file that doesn't exist"
+        );
+    }
 }

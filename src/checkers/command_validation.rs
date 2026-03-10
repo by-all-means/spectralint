@@ -582,4 +582,81 @@ mod tests {
             "python -m should still flag as it implies project tooling"
         );
     }
+
+    #[test]
+    fn test_command_with_pipe() {
+        // Piped commands: the first segment is what matters for toolchain detection
+        let result = run_check(&["```bash", "cargo test 2>&1 | grep FAILED", "```"]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Piped cargo command should still flag without Cargo.toml"
+        );
+        assert!(result.diagnostics[0].message.contains("Cargo"));
+    }
+
+    #[test]
+    fn test_command_with_and_chaining() {
+        // && chained commands: first command in the chain should still trigger
+        let result = run_check(&["```bash", "cargo build && cargo test", "```"]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Chained cargo commands should flag once (dedup)"
+        );
+        assert!(result.diagnostics[0].message.contains("Cargo"));
+    }
+
+    #[test]
+    fn test_command_in_non_shell_code_block() {
+        // Commands inside a python code block — these are code block lines,
+        // but `make build` in a python block should still be detected if it matches
+        let result = run_check(&[
+            "```python",
+            "import subprocess",
+            "subprocess.run(['make', 'build'])",
+            "```",
+        ]);
+        // "make build" won't match because the line is "subprocess.run(['make', 'build'])"
+        // which doesn't start with "make " — this should not flag
+        assert!(
+            result.diagnostics.is_empty(),
+            "Python code referencing make indirectly should not flag: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_npm_install_g_short_no_flag() {
+        let result = run_check(&["```bash", "npm i -g typescript", "```"]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "npm i -g should not require package.json"
+        );
+    }
+
+    #[test]
+    fn test_make_double_colon_rust_path_no_flag() {
+        // Additional test: bare `make::` at start of line in a Rust code block
+        let result = run_check(&[
+            "```rust",
+            "let node = make::js_string_literal(\"hello\");",
+            "```",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Rust paths starting with make:: should not trigger Make checker"
+        );
+    }
+
+    #[test]
+    fn test_pipe_with_npm_no_package_json() {
+        let result = run_check(&["```bash", "npm run build | tee build.log", "```"]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Piped npm command should still flag without package.json"
+        );
+        assert!(result.diagnostics[0].message.contains("npm"));
+    }
 }

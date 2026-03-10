@@ -110,4 +110,58 @@ mod tests {
         let result = check(&["## ", "Some content", "### "]);
         assert_eq!(result.diagnostics.len(), 2);
     }
+
+    #[test]
+    fn test_heading_with_only_spaces_flagged() {
+        // "##    " — hashes followed by only spaces
+        let result = check(&["##    "]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_heading_with_only_bold_markers_flagged() {
+        // "## **  **" — bold markers but no actual text inside them
+        // After stripping hashes, what remains is "**  **" which is non-empty text
+        let result = check(&["## **  **"]);
+        // The checker only strips hashes and checks if remaining is whitespace.
+        // "**  **" is not whitespace, so this is NOT flagged as empty.
+        assert_eq!(result.diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_heading_with_bold_text_not_flagged() {
+        let result = check(&["## **Build Commands**"]);
+        assert_eq!(result.diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_three_empty_headings_at_different_levels() {
+        let result = check(&["# ", "## ", "### "]);
+        assert_eq!(result.diagnostics.len(), 3);
+    }
+
+    #[test]
+    fn test_heading_with_emoji_only_not_flagged() {
+        // Emoji is actual content — not whitespace
+        let result = check(&["## \u{1f680}"]);
+        assert_eq!(result.diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_h6_empty_flagged() {
+        let result = check(&["###### "]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn test_mixed_empty_and_nonempty_headings() {
+        let result = check(&["# Real Title", "## ", "### Another Real Title", "#### "]);
+        assert_eq!(result.diagnostics.len(), 2);
+    }
+
+    #[test]
+    fn test_heading_with_tab_only_flagged() {
+        let result = check(&["## \t"]);
+        assert_eq!(result.diagnostics.len(), 1);
+    }
 }

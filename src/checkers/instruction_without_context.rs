@@ -157,4 +157,88 @@ mod tests {
             "Non-instruction files should not flag"
         );
     }
+
+    #[test]
+    fn test_section_with_only_directives_flags() {
+        // A file that has headings but only imperative directives (no code, refs, inline code)
+        let lines: Vec<String> = vec![
+            "# Build Section".to_string(),
+            "- Always run cargo build".to_string(),
+            "- Never skip compilation".to_string(),
+            "- Must check for warnings".to_string(),
+            "# Test Section".to_string(),
+            "- Always run unit tests".to_string(),
+            "- Never commit without tests".to_string(),
+            "- Use mocking for services".to_string(),
+            "- Ensure coverage above 80%".to_string(),
+            "- Must run integration tests".to_string(),
+            "- Avoid flaky tests".to_string(),
+            "- Run regression tests".to_string(),
+        ];
+        let strs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+        let result = run_check(&strs);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "File with only directive sections and no concrete examples should flag"
+        );
+    }
+
+    #[test]
+    fn test_section_with_code_example_no_flag() {
+        // File has enough directives plus a code block with an example
+        let mut lines = directive_lines(12);
+        lines.push("## Example".to_string());
+        lines.push("```rust".to_string());
+        lines.push("fn main() {".to_string());
+        lines.push("    println!(\"Hello\");".to_string());
+        lines.push("}".to_string());
+        lines.push("```".to_string());
+        let strs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+        let result = run_check(&strs);
+        assert!(
+            result.diagnostics.is_empty(),
+            "File with code example section should not flag"
+        );
+    }
+
+    #[test]
+    fn test_section_with_mixed_content_no_flag() {
+        // File has directives mixed with inline code references
+        let mut lines = directive_lines(9);
+        lines.push("- Run `cargo test` before committing".to_string());
+        lines.push("- Check `clippy` output for warnings".to_string());
+        lines.push("- Use `fmt` to format code".to_string());
+        let strs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+        let result = run_check(&strs);
+        assert!(
+            result.diagnostics.is_empty(),
+            "File with inline code in directives should not flag"
+        );
+    }
+
+    #[test]
+    fn test_exactly_at_directive_threshold() {
+        // Exactly 10 directive lines (the minimum threshold) with no context
+        let lines = directive_lines(10);
+        let strs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+        let result = run_check(&strs);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "File with exactly 10 directives and no context should flag"
+        );
+    }
+
+    #[test]
+    fn test_just_below_directive_threshold_no_flag() {
+        // 9 directive lines (below the 10-line threshold)
+        let lines = directive_lines(9);
+        let strs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+        let result = run_check(&strs);
+        assert!(
+            result.diagnostics.is_empty(),
+            "File with 9 directives should not flag (below threshold)"
+        );
+    }
 }

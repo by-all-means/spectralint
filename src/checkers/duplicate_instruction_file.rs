@@ -359,4 +359,154 @@ mod tests {
         let result = checker.check(&ctx);
         assert_eq!(result.diagnostics.len(), 1);
     }
+
+    #[test]
+    fn test_same_name_different_dirs_flagged() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        std::fs::create_dir_all(root.join("subA")).unwrap();
+        std::fs::create_dir_all(root.join("subB")).unwrap();
+
+        let lines = imperative_lines();
+
+        let file_a = make_file(root, "subA/CLAUDE.md", &lines, vec![]);
+        let file_b = make_file(root, "subB/CLAUDE.md", &lines, vec![]);
+
+        let ctx = CheckerContext {
+            files: vec![file_a, file_b],
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = DuplicateInstructionFileChecker::new(&[]);
+        let result = checker.check(&ctx);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Files with same name in different directories and identical content should flag"
+        );
+    }
+
+    #[test]
+    fn test_similar_but_not_matching_content_no_flag() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        // Files with some overlap but well below the 70% threshold
+        let lines_a = vec![
+            "# Build Guidelines",
+            "- Always run cargo build first",
+            "- Never push broken builds",
+            "- Use release mode for benchmarks",
+            "- Ensure no compiler warnings",
+            "- Must pass all CI checks",
+            "- Run integration tests weekly",
+        ];
+        let lines_b = vec![
+            "# Testing Guidelines",
+            "- Always write property tests",
+            "- Never mock database calls",
+            "- Use snapshot testing for UI",
+            "- Ensure edge cases covered",
+            "- Must have regression tests",
+            "- Run fuzz tests on parsers",
+        ];
+
+        let file_a = make_file(root, "CLAUDE.md", &lines_a, vec![]);
+        let file_b = make_file(root, "AGENTS.md", &lines_b, vec![]);
+
+        let ctx = CheckerContext {
+            files: vec![file_a, file_b],
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = DuplicateInstructionFileChecker::new(&[]);
+        let result = checker.check(&ctx);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Files with similar structure but different directives should not flag"
+        );
+    }
+
+    #[test]
+    fn test_empty_files_no_flag() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        let file_a = make_file(root, "CLAUDE.md", &[], vec![]);
+        let file_b = make_file(root, "AGENTS.md", &[], vec![]);
+
+        let ctx = CheckerContext {
+            files: vec![file_a, file_b],
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = DuplicateInstructionFileChecker::new(&[]);
+        let result = checker.check(&ctx);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Empty files should not flag as duplicates"
+        );
+    }
+
+    #[test]
+    fn test_partial_overlap_above_threshold_flags() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        // 8 shared lines + 1 heading + 2 unique per file = 11 directives each
+        // Intersection = 8, min_size = 11, overlap = 8/11 = 0.727 (> 0.7 threshold)
+        let shared_lines = vec![
+            "- Always run tests before committing",
+            "- Never skip code review",
+            "- Use descriptive variable names",
+            "- Ensure all functions have docstrings",
+            "- Avoid global state",
+            "- Must follow naming conventions",
+            "- Run linter before pushing",
+            "- Always check for warnings",
+        ];
+
+        let mut lines_a: Vec<&str> = vec!["# Guidelines A"];
+        lines_a.extend_from_slice(&shared_lines);
+        lines_a.extend_from_slice(&[
+            "- Always profile before optimizing",
+            "- Never use raw SQL queries",
+        ]);
+
+        let mut lines_b: Vec<&str> = vec!["# Guidelines B"];
+        lines_b.extend_from_slice(&shared_lines);
+        lines_b.extend_from_slice(&[
+            "- Always document API changes",
+            "- Never expose internal errors",
+        ]);
+
+        let file_a = make_file(root, "CLAUDE.md", &lines_a, vec![]);
+        let file_b = make_file(root, "AGENTS.md", &lines_b, vec![]);
+
+        let ctx = CheckerContext {
+            files: vec![file_a, file_b],
+            project_root: root.to_path_buf(),
+            canonical_root: None,
+            filename_index: HashSet::new(),
+            historical_indices: HashSet::new(),
+        };
+
+        let checker = DuplicateInstructionFileChecker::new(&[]);
+        let result = checker.check(&ctx);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "Files with >70% overlap should flag"
+        );
+    }
 }
