@@ -1,0 +1,7 @@
+- id: spectralint
+  name: spectralint
+  description: Static analysis for AI agent instruction files (CLAUDE.md, AGENTS.md, etc.)
+  entry: spectralint check .
+  language: rust
+  files: (^|/)(CLAUDE|AGENTS)\.md$|^\.claude/|^\.github/copilot-instructions\.md$
+  pass_filenames: false
