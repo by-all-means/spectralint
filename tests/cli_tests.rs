@@ -18,7 +18,7 @@ fn json_output(args: &[&str]) -> serde_json::Value {
 #[test]
 fn clean_exits_0() {
     cmd()
-        .args(["check", "tests/fixtures/clean"])
+        .args(["check", "tests/fixtures/clean", "--no-cache"])
         .assert()
         .success();
 }
@@ -1144,13 +1144,97 @@ fn default_include_skips_non_instruction_files() {
 // ── Item 3: CLI error paths ──────────────────────────────────────────
 
 #[test]
+fn explain_works_for_every_listed_rule() {
+    // Every rule shown by `explain` must have a working `explain <rule>` arm.
+    // A rule added to AVAILABLE_RULES without an explain() match would exit 1.
+    let output = cmd().args(["explain"]).output().unwrap();
+    let listing = String::from_utf8(output.stdout).unwrap();
+
+    let names: Vec<&str> = listing
+        .lines()
+        .filter(|l| l.starts_with("  "))
+        .filter_map(|l| l.split_whitespace().next())
+        .filter(|n| n.chars().all(|c| c.is_ascii_lowercase() || c == '-'))
+        .collect();
+    assert!(
+        names.len() >= 70,
+        "expected at least 70 rules in the explain listing, got {}",
+        names.len()
+    );
+
+    for name in names {
+        let out = cmd().args(["explain", name]).output().unwrap();
+        assert!(
+            out.status.success(),
+            "`explain {name}` failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(!out.stdout.is_empty(), "`explain {name}` printed nothing");
+    }
+}
+
+#[test]
+fn fix_applies_and_reports_post_fix_state() {
+    // --fix must (a) tell the user fixes were applied, and (b) report
+    // diagnostics that reflect the post-fix file contents, not the pre-fix run.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# Instructions\n\nThe the tests must pass before merging.\n",
+    )
+    .unwrap();
+
+    let output = cmd()
+        .args([
+            "check",
+            &root.display().to_string(),
+            "--strict",
+            "--no-cache",
+            "--fix",
+            "--rule",
+            "repeated-word",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("Applied 1 fix"),
+        "fix application must be visible without RUST_LOG, got stderr: {stderr}"
+    );
+
+    let content = fs::read_to_string(root.join("CLAUDE.md")).unwrap();
+    assert!(
+        !content.contains("The the"),
+        "repeated word should have been fixed on disk"
+    );
+
+    let parsed: serde_json::Value =
+        serde_json::from_str(&String::from_utf8(output.stdout).unwrap()).unwrap();
+    let repeated: Vec<_> = parsed["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("repeated-word"))
+        .collect();
+    assert!(
+        repeated.is_empty(),
+        "reported diagnostics must reflect the post-fix state"
+    );
+}
+
+#[test]
 fn check_empty_directory_errors() {
     let dir = tempfile::tempdir().unwrap();
-    // No markdown files at all
+    // No markdown files at all → internal error, not a lint failure
     cmd()
         .args(["check", &dir.path().display().to_string()])
         .assert()
-        .failure();
+        .failure()
+        .code(2);
 }
 
 #[test]
@@ -1158,7 +1242,8 @@ fn check_nonexistent_path_errors() {
     cmd()
         .args(["check", "/nonexistent/path/that/does/not/exist"])
         .assert()
-        .failure();
+        .failure()
+        .code(2);
 }
 
 // ── Item 11: Non-existent config path ────────────────────────────────
@@ -2765,7 +2850,7 @@ fn count_shows_summary() {
 #[test]
 fn count_no_issues() {
     let output = cmd()
-        .args(["check", "tests/fixtures/clean", "--count"])
+        .args(["check", "tests/fixtures/clean", "--count", "--no-cache"])
         .output()
         .unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
@@ -3107,7 +3192,7 @@ fn reasoning_agent_no_false_positives() {
     // - No code blocks, no file refs, no build commands
     // Should produce zero diagnostics in default (non-strict) mode.
     cmd()
-        .args(["check", "tests/fixtures/reasoning_agent"])
+        .args(["check", "tests/fixtures/reasoning_agent", "--no-cache"])
         .assert()
         .success()
         .stdout(predicates::str::contains("no issues found"));
@@ -3118,6 +3203,7 @@ fn reasoning_agent_json_zero_diagnostics() {
     let parsed = json_output(&[
         "check",
         "tests/fixtures/reasoning_agent",
+        "--no-cache",
         "--format",
         "json",
     ]);
@@ -3136,6 +3222,7 @@ fn reasoning_agent_no_missing_essential_sections() {
     let parsed = json_output(&[
         "check",
         "tests/fixtures/reasoning_agent",
+        "--no-cache",
         "--strict",
         "--format",
         "json",
@@ -3159,6 +3246,7 @@ fn reasoning_agent_no_orphaned_section_on_numbered_outlines() {
     let parsed = json_output(&[
         "check",
         "tests/fixtures/reasoning_agent",
+        "--no-cache",
         "--strict",
         "--format",
         "json",
@@ -3181,6 +3269,7 @@ fn reasoning_agent_no_vague_directive_on_prompts() {
     let parsed = json_output(&[
         "check",
         "tests/fixtures/reasoning_agent",
+        "--no-cache",
         "--strict",
         "--format",
         "json",
@@ -3203,6 +3292,7 @@ fn reasoning_agent_no_generic_instruction() {
     let parsed = json_output(&[
         "check",
         "tests/fixtures/reasoning_agent",
+        "--no-cache",
         "--strict",
         "--format",
         "json",
@@ -3436,12 +3526,12 @@ fn fail_on_warning_ignores_info_for_exit_code() {
 #[test]
 fn empty_directory_exits_cleanly() {
     let dir = tempfile::tempdir().unwrap();
-    // spectralint exits with code 1 when no markdown files are found
+    // No markdown files found is a tool error (exit 2), not a lint failure
     cmd()
         .args(["check", &dir.path().display().to_string()])
         .assert()
         .failure()
-        .code(1);
+        .code(2);
 }
 
 // ─── Reasoning prompt with code blocks is NOT a reasoning prompt ────────
@@ -3527,6 +3617,42 @@ fn strict_mode_enables_strict_only_checkers() {
     assert!(
         !iwc.is_empty(),
         "instruction-without-context SHOULD fire with --strict"
+    );
+}
+
+#[test]
+fn strict_run_not_served_from_non_strict_cache() {
+    // Regression: --strict is applied after config load, so it must be part
+    // of the cache key. A non-strict run followed by a strict run in the same
+    // directory used to hit the cache and silently drop strict-only findings.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let mut lines = String::from("# Instructions\n\n");
+    for i in 0..15 {
+        lines.push_str(&format!("- Always follow rule number {i}\n"));
+    }
+    fs::write(root.join("CLAUDE.md"), &lines).unwrap();
+
+    // First run WITHOUT strict populates the cache (no --no-cache!)
+    let _ = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+
+    // Second run WITH strict must not replay the cached non-strict results
+    let parsed = json_output(&[
+        "check",
+        &root.display().to_string(),
+        "--strict",
+        "--format",
+        "json",
+    ]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+    let iwc: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("instruction-without-context"))
+        .collect();
+    assert!(
+        !iwc.is_empty(),
+        "strict-only findings must appear even when a non-strict cache exists"
     );
 }
 

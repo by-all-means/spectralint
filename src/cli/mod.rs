@@ -61,7 +61,7 @@ pub enum Commands {
         #[arg(long)]
         no_cache: bool,
 
-        /// Re-run on file changes (poll every 2 seconds)
+        /// Re-run automatically when watched files change
         #[arg(long)]
         watch: bool,
 

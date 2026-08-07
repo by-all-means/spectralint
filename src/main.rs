@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use notify::{recommended_watcher, RecursiveMode, Watcher};
 use std::path::Path;
@@ -8,7 +8,25 @@ use std::time::Duration;
 use spectralint::cli::{Cli, Commands, OutputFormat, Preset};
 use spectralint::config::Config;
 use spectralint::engine;
-use spectralint::types::Severity;
+use spectralint::types::{CheckResult, Severity};
+
+/// Retain only diagnostics matching the --rule filter (no-op when empty).
+fn filter_rules(result: &mut CheckResult, rule: &[String]) {
+    if rule.is_empty() {
+        return;
+    }
+    use spectralint::types::Category;
+    let normalized: Vec<String> = rule.iter().map(|r| r.replace('_', "-")).collect();
+    let parsed_categories: Vec<Category> =
+        normalized.iter().filter_map(|r| r.parse().ok()).collect();
+    let fallback_set: std::collections::HashSet<&str> =
+        normalized.iter().map(|s| s.as_str()).collect();
+    result.diagnostics.retain(|d| {
+        parsed_categories.contains(&d.category)
+            || fallback_set.contains(d.category.as_str())
+            || fallback_set.contains(&*d.category.to_string())
+    });
+}
 
 /// Run a single check pass. Returns true if diagnostics meet the fail_on threshold.
 #[allow(clippy::too_many_arguments)]
@@ -25,27 +43,16 @@ fn run_check(
     apply_fix: bool,
 ) -> Result<bool> {
     let mut result = engine::run(project_root, cfg, use_cache, config_path)?;
+    filter_rules(&mut result, rule);
 
-    // Apply --rule filter
-    if !rule.is_empty() {
-        use spectralint::types::Category;
-        let normalized: Vec<String> = rule.iter().map(|r| r.replace('_', "-")).collect();
-        let parsed_categories: Vec<Category> =
-            normalized.iter().filter_map(|r| r.parse().ok()).collect();
-        let fallback_set: std::collections::HashSet<&str> =
-            normalized.iter().map(|s| s.as_str()).collect();
-        result.diagnostics.retain(|d| {
-            parsed_categories.contains(&d.category)
-                || fallback_set.contains(d.category.as_str())
-                || fallback_set.contains(&*d.category.to_string())
-        });
-    }
-
-    // Apply autofixes if --fix is set
+    // Apply autofixes if --fix is set, then re-check so the reported
+    // diagnostics (and exit code) reflect the post-fix state of the files.
     if apply_fix {
         let fixed = engine::apply_fixes(&result.diagnostics);
         if fixed > 0 {
-            tracing::info!("Applied {fixed} fix(es).");
+            eprintln!("Applied {fixed} fix(es).");
+            result = engine::run(project_root, cfg, false, config_path)?;
+            filter_rules(&mut result, rule);
         }
     }
 
@@ -74,7 +81,16 @@ fn run_check(
     Ok(result.has_severity_at_least(fail_on))
 }
 
-fn main() -> Result<()> {
+fn main() {
+    // Exit codes: 0 = clean, 1 = findings at/above --fail-on (via process::exit
+    // inside run), 2 = usage or internal error.
+    if let Err(e) = run() {
+        eprintln!("Error: {e:#}");
+        std::process::exit(2);
+    }
+}
+
+fn run() -> Result<()> {
     let cli = Cli::parse();
 
     tracing_subscriber::fmt()
@@ -134,10 +150,11 @@ fn main() -> Result<()> {
 
             // Watch mode: use filesystem notifications
             let (tx, rx) = mpsc::channel();
-            let mut watcher = recommended_watcher(tx).expect("Failed to initialize file watcher");
+            let mut watcher =
+                recommended_watcher(tx).context("Failed to initialize file watcher")?;
             watcher
                 .watch(project_root.as_ref(), RecursiveMode::Recursive)
-                .expect("Failed to watch directory");
+                .with_context(|| format!("Failed to watch {}", project_root.display()))?;
 
             loop {
                 // Block until we get a filesystem event
