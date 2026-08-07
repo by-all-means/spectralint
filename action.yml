@@ -53,20 +53,23 @@ runs:
         # Determine the platform artifact name
         OS=$(uname -s)
         ARCH=$(uname -m)
+        EXT="tar.xz"
         case "${OS}-${ARCH}" in
           Linux-x86_64)   TARGET="x86_64-unknown-linux-gnu" ;;
           Linux-aarch64)  TARGET="aarch64-unknown-linux-gnu" ;;
           Darwin-x86_64)  TARGET="x86_64-apple-darwin" ;;
           Darwin-arm64)   TARGET="aarch64-apple-darwin" ;;
+          MINGW*-x86_64|MSYS*-x86_64|CYGWIN*-x86_64)
+                          TARGET="x86_64-pc-windows-msvc"; EXT="zip" ;;
           *)              echo "::error::Unsupported platform: ${OS} ${ARCH}" && exit 1 ;;
         esac
 
-        # cargo-dist names artifacts as: spectralint-<arch>-<target>.tar.xz
-        VERSION="${TAG#v}"
-        ASSET_NAME="spectralint-${TARGET}.tar.xz"
+        # cargo-dist names artifacts as: spectralint-<target>.<ext>
+        ASSET_NAME="spectralint-${TARGET}.${EXT}"
         DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET_NAME}"
 
         echo "url=${DOWNLOAD_URL}" >> "$GITHUB_OUTPUT"
+        echo "ext=${EXT}" >> "$GITHUB_OUTPUT"
         echo "Installing spectralint ${TAG} for ${TARGET}"
 
     - name: Download and install spectralint
@@ -74,15 +77,31 @@ runs:
       run: |
         INSTALL_DIR="${HOME}/.spectralint/bin"
         mkdir -p "${INSTALL_DIR}"
+        WORK_DIR=$(mktemp -d)
 
         echo "Downloading from ${{ steps.resolve.outputs.url }}"
-        curl -fsSL "${{ steps.resolve.outputs.url }}" -o /tmp/spectralint.tar.xz
-        tar -xJf /tmp/spectralint.tar.xz -C /tmp
-        rm /tmp/spectralint.tar.xz
+        ASSET="${WORK_DIR}/spectralint.${{ steps.resolve.outputs.ext }}"
+        curl -fsSL "${{ steps.resolve.outputs.url }}" -o "${ASSET}"
 
-        # cargo-dist extracts into a directory; find the binary
-        find /tmp -name "spectralint" -type f -executable -exec mv {} "${INSTALL_DIR}/spectralint" \;
-        chmod +x "${INSTALL_DIR}/spectralint"
+        if [ "${{ steps.resolve.outputs.ext }}" = "zip" ]; then
+          if command -v unzip >/dev/null 2>&1; then
+            unzip -q "${ASSET}" -d "${WORK_DIR}"
+          else
+            7z x -y "-o${WORK_DIR}" "${ASSET}" >/dev/null
+          fi
+          BIN_NAME="spectralint.exe"
+        else
+          tar -xJf "${ASSET}" -C "${WORK_DIR}"
+          BIN_NAME="spectralint"
+        fi
+        rm "${ASSET}"
+
+        # cargo-dist archives extract into a directory; find the binary.
+        # (No -executable: that predicate is GNU-only and fails on macOS.)
+        find "${WORK_DIR}" -name "${BIN_NAME}" -type f \
+          -exec mv {} "${INSTALL_DIR}/${BIN_NAME}" \;
+        chmod +x "${INSTALL_DIR}/${BIN_NAME}"
+        rm -rf "${WORK_DIR}"
 
         echo "${INSTALL_DIR}" >> "$GITHUB_PATH"
         echo "spectralint ${{ steps.resolve.outputs.tag }} installed to ${INSTALL_DIR}"
