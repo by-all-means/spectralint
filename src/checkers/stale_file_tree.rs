@@ -176,6 +176,16 @@ impl Checker for StaleFileTreeChecker {
                     let block_start = i + 1;
                     i += 1;
 
+                    // Skip language-tagged code blocks — they contain code, not trees
+                    let fence_tag = trimmed.trim_start_matches('`').trim();
+                    if !fence_tag.is_empty() {
+                        while i < lines.len() && !lines[i].trim().starts_with("```") {
+                            i += 1;
+                        }
+                        i += 1;
+                        continue;
+                    }
+
                     // Find end of code block
                     while i < lines.len() && !lines[i].trim().starts_with("```") {
                         i += 1;
@@ -519,6 +529,41 @@ mod tests {
         assert!(
             result.diagnostics[0].message.contains("missing.rs"),
             "Should flag the file that doesn't exist"
+        );
+    }
+
+    #[test]
+    fn test_language_tagged_code_block_skipped() {
+        // Box-drawing characters inside a language-tagged code block should not
+        // be misinterpreted as a directory tree (regression for ┘/┤ FPs).
+        let result = run_check(&[
+            "```text",
+            "┌──────────┬───────┬─────────────┬───────────┐",
+            "│ Category │ Count │ Real issues │ FPs/Noise │",
+            "├──────────┼───────┼─────────────┼───────────┤",
+            "│ Errors   │ 25    │ 25 (100%)   │ 0         │",
+            "└──────────┴───────┴─────────────┴───────────┘",
+            "```",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "Language-tagged code blocks should be skipped: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_language_tagged_sql_block_skipped() {
+        let result = run_check(&[
+            "```sql",
+            "SELECT * FROM users",
+            "├── id INT",
+            "└── name TEXT",
+            "```",
+        ]);
+        assert!(
+            result.diagnostics.is_empty(),
+            "SQL code blocks should not be parsed as trees"
         );
     }
 }
