@@ -24,4 +24,5 @@ spectralint runs entirely locally with no network access. Security concerns are 
 
 | Version | Supported |
 |---------|-----------|
-| 0.1.x   | Yes       |
+| 0.5.x   | Yes       |
+| < 0.5   | No        |

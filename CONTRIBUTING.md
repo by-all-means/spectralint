@@ -25,10 +25,12 @@ All three must pass before merging. CI enforces this.
 ## Adding a New Checker
 
 1. Create `src/checkers/your_checker.rs` implementing the `Checker` trait
-2. Register it in `src/checkers/mod.rs`
-3. Add an explanation in `src/cli/explain.rs`
-4. Add a test fixture in `tests/fixtures/` if needed
-5. Add unit tests in the checker file and integration tests in `tests/cli_tests.rs`
+2. Add a `Category` variant in `src/types.rs` (including the `as_str` and `FromStr` arms)
+3. Add a config struct entry in `src/config/mod.rs` (default value + commented block in the TOML template)
+4. Register it in `src/checkers/mod.rs` `all_checkers()`
+5. Add an explanation in `src/cli/explain.rs` (both `AVAILABLE_RULES` and the `explain()` match)
+6. Add unit tests in the checker file, integration tests in `tests/cli_tests.rs`, and a fixture in `tests/fixtures/` if needed
+7. Battle-test against a real corpus to catch false positives before opening a PR
 
 Look at an existing checker like `placeholder_text.rs` for the pattern.
 

@@ -70,16 +70,16 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 | `hardcoded-windows-path` | warning | Backslash paths (`scripts\helper.py`) that break on non-Windows |
 | `unclosed-fence` | warning | Code blocks missing closing ` ``` ` |
 | `stale-reference` | warning | "After March 2025, use the new API" time bombs |
-| `file-size` | info/warn | Files exceeding 400/500 lines |
+| `file-size` | info/warn | Files exceeding 500/750 lines |
 | `token-budget` | info | Files approaching context window token limits |
 | `hardcoded-file-structure` | info | Source paths (`src/auth/handler.ts`) that don't exist on disk |
 | `stale-file-tree` | info | ASCII directory trees with non-existent paths *(strict)* |
 | `large-code-block` | info | Inline code blocks exceeding 40 lines |
 | `orphaned-section` | info | Sections with no actionable content |
 | `placeholder-url` | info | `example.com` URLs left in |
-| `vague-directive` | info | "try to", "when possible", "use your judgment" |
-| `generic-instruction` | info | "follow best practices", "write clean code" |
-| `instruction-without-context` | info | Directive-heavy files with no code examples |
+| `vague-directive` | info | "try to", "when possible", "use your judgment" *(strict)* |
+| `generic-instruction` | info | "follow best practices", "write clean code" *(strict)* |
+| `instruction-without-context` | info | Directive-heavy files with no code examples *(strict)* |
 | `context-window-waste` | info | 3+ consecutive blank lines wasting tokens |
 | `stale-style-rule` | info | Formatter-enforceable rules (indentation, quotes, semicolons) |
 | `ambiguous-scope-reference` | info | Unclear "this file", "the config" references |
@@ -89,7 +89,7 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 | `missing-essential-sections` | info | No build/test commands for agents to verify work |
 | `misordered-steps` | info | Numbered steps out of sequence |
 | `prompt-injection-vector` | warn/info | "Ignore previous instructions", hidden Unicode, base64 payloads |
-| `conflicting-directives` | warning | Contradictory instructions in the same file *(strict)* |
+| `conflicting-directives` | warning | Contradictory instructions in the same file |
 | `cross-file-contradiction` | warning | Contradictory instructions across files *(strict)* |
 | `enum-drift` | warning | Tables with matching columns but divergent values *(strict)* |
 | `agent-guidelines` | info | Missing boundaries, multi-responsibility, no output format *(strict)* |
@@ -136,7 +136,7 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 - **Custom regex patterns** — define your own lint rules in config
 - **Inline suppression** — disable rules with `<!-- spectralint-disable -->` comments; validates rule names and flags unused suppressions
 - **Multiple output formats** — text (colored), JSON, SARIF, and GitHub Actions annotations
-- **Autofix** — `--fix` applies structured fixes (repeated words, etc.)
+- **Autofix** — `--fix` applies structured fixes (currently: `repeated-word`; more rules planned)
 - **Watch mode** — `--watch` re-scans on file changes using native filesystem events
 - **Caching** — automatic result caching with atomic writes for instant re-scans (`--no-cache` to bypass)
 - **Token budget** — estimates context window cost per file
@@ -390,9 +390,23 @@ Add to your workflow:
   run: spectralint check . --format github
 ```
 
+### pre-commit
+
+Add to your `.pre-commit-config.yaml` (requires a Rust toolchain; pre-commit builds the hook with cargo):
+
+```yaml
+repos:
+  - repo: https://github.com/by-all-means/spectralint
+    rev: v0.5.0
+    hooks:
+      - id: spectralint
+```
+
+The hook runs whenever instruction files (`CLAUDE.md`, `AGENTS.md`, `.claude/**`, copilot instructions) change.
+
 ## Strict Mode
 
-Enable 33 additional opinionated checkers (enum-drift, agent-guidelines, heading-hierarchy, emoji-density, missing-verification, negative-only-framing, cross-file-contradiction, missing-role-definition, redundant-directive, instruction-density, missing-examples, unbounded-scope, section-length-imbalance, untagged-code-block, emphasis-overuse, excessive-nesting, unversioned-stack-reference, missing-standard-file, bare-url, repeated-word, undocumented-env-var, empty-code-block, click-here-link, double-negation, imperative-heading, inconsistent-command-prefix, command-without-codeblock, missing-verification-step, long-paragraph, empty-heading, copied-meta-instructions, xml-document-wrapper, stale-file-tree):
+Enable 36 additional opinionated checkers (agent-guidelines, bare-url, click-here-link, command-without-codeblock, copied-meta-instructions, cross-file-contradiction, double-negation, emoji-density, emphasis-overuse, empty-code-block, empty-heading, enum-drift, excessive-nesting, generic-instruction, heading-hierarchy, imperative-heading, inconsistent-command-prefix, instruction-density, instruction-without-context, long-paragraph, missing-examples, missing-role-definition, missing-standard-file, missing-verification, missing-verification-step, negative-only-framing, redundant-directive, repeated-word, section-length-imbalance, stale-file-tree, unbounded-scope, undocumented-env-var, untagged-code-block, unversioned-stack-reference, vague-directive, xml-document-wrapper):
 
 ```sh
 # Via CLI flag
@@ -423,6 +437,7 @@ spectralint check . --fail-on info
 |------|---------|
 | 0 | No diagnostics at or above the `--fail-on` threshold |
 | 1 | One or more diagnostics at or above the threshold |
+| 2 | Usage or internal error (bad path, invalid config, parse failure) |
 
 ## License
 
