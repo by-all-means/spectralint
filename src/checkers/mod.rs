@@ -572,4 +572,23 @@ mod tests {
             in_rules_not_meta,
         );
     }
+
+    #[test]
+    fn meta_names_round_trip_through_category() {
+        // Every rule name must parse to a Category whose as_str() returns the
+        // same name — this is what keeps `--rule <name>` and the JSON/SARIF
+        // `category` field stable for every registered checker.
+        use crate::types::Category;
+        for meta in all_checker_meta() {
+            let cat: Category = meta.name.parse().unwrap_or_else(|_| {
+                panic!("meta name '{}' does not parse as a Category", meta.name)
+            });
+            assert_eq!(
+                cat.as_str(),
+                meta.name,
+                "Category::as_str() diverges from meta name for '{}'",
+                meta.name
+            );
+        }
+    }
 }

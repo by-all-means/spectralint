@@ -11,8 +11,15 @@ env:
 
 jobs:
   check:
-    name: Check
-    runs-on: ubuntu-latest
+    name: Check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # Windows is new to CI; don't block merges on it until it's proven green.
+    # Once it passes reliably, drop this and let it gate like the others.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -25,3 +32,27 @@ jobs:
         run: cargo clippy -- -D warnings
       - name: Test
         run: cargo test
+
+  msrv:
+    name: MSRV (1.80)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.80"
+      - uses: Swatinem/rust-cache@v2
+      - name: Check with MSRV
+        run: cargo check --all-targets
+
+  no-default-features:
+    name: No default features
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check without LSP feature
+        run: cargo check --no-default-features
+      - name: Test without LSP feature
+        run: cargo test --no-default-features
