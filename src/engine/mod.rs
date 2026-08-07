@@ -1,3 +1,4 @@
+pub mod baseline;
 mod cache;
 pub(crate) mod cross_ref;
 pub(crate) mod fix;
@@ -21,11 +22,49 @@ pub fn scanned_files(project_root: &Path, config: &Config) -> Vec<std::path::Pat
     scanner::scan(project_root, config).files
 }
 
+/// Sort diagnostics into the canonical output order.
+fn sort_diagnostics(diagnostics: &mut [crate::types::Diagnostic]) {
+    diagnostics.sort_by(|a, b| {
+        (&a.file, a.line, a.column, &a.category, &a.message).cmp(&(
+            &b.file,
+            b.line,
+            b.column,
+            &b.category,
+            &b.message,
+        ))
+    });
+}
+
+/// Apply the baseline as the final step of `run`. Both the cache-hit path and
+/// the fresh path flow through here: the cache stores pre-baseline diagnostics,
+/// so the baseline file never has to join the cache key.
+fn apply_baseline_tail(
+    mut diagnostics: Vec<crate::types::Diagnostic>,
+    project_root: &Path,
+    baseline_mode: &baseline::BaselineMode,
+) -> Result<CheckResult> {
+    let mut baseline_suppressed = 0;
+    if let Some(baseline_path) = baseline::resolve(baseline_mode, project_root)? {
+        let entries = baseline::load(&baseline_path)?;
+        let outcome = baseline::apply(&mut diagnostics, project_root, &baseline_path, &entries);
+        baseline_suppressed = outcome.suppressed;
+        if !outcome.stale.is_empty() {
+            diagnostics.extend(outcome.stale);
+            sort_diagnostics(&mut diagnostics);
+        }
+    }
+    Ok(CheckResult {
+        diagnostics,
+        baseline_suppressed,
+    })
+}
+
 pub fn run(
     project_root: &Path,
     config: &Config,
     use_cache: bool,
     config_path: Option<&Path>,
+    baseline_mode: &baseline::BaselineMode,
 ) -> Result<CheckResult> {
     let scan_result = scanner::scan(project_root, config);
     if scan_result.files.is_empty() {
@@ -37,7 +76,7 @@ pub fn run(
         let fh = cache::compute_files_hash(&scan_result.files);
         let ch = cache::compute_config_hash(config_path, project_root, config.strict);
         if let Some(diagnostics) = cache::load(project_root, fh, ch) {
-            return Ok(CheckResult { diagnostics });
+            return apply_baseline_tail(diagnostics, project_root, baseline_mode);
         }
         (fh, ch)
     } else {
@@ -108,15 +147,7 @@ pub fn run(
         }
     }
 
-    diagnostics.sort_by(|a, b| {
-        (&a.file, a.line, a.column, &a.category, &a.message).cmp(&(
-            &b.file,
-            b.line,
-            b.column,
-            &b.category,
-            &b.message,
-        ))
-    });
+    sort_diagnostics(&mut diagnostics);
     diagnostics.dedup_by(|a, b| {
         a.file == b.file
             && a.line == b.line
@@ -125,12 +156,12 @@ pub fn run(
             && a.message == b.message
     });
 
-    // Save to cache
+    // Save to cache (pre-baseline, so cached results stay baseline-agnostic)
     if use_cache {
         cache::save(project_root, files_hash, config_hash, &diagnostics);
     }
 
-    Ok(CheckResult { diagnostics })
+    apply_baseline_tail(diagnostics, project_root, baseline_mode)
 }
 
 #[cfg(test)]
@@ -517,7 +548,13 @@ mod tests {
         std::fs::write(dir.path().join("readme.txt"), "hello").unwrap();
 
         let config = Config::default();
-        let result = run(dir.path(), &config, false, None);
+        let result = run(
+            dir.path(),
+            &config,
+            false,
+            None,
+            &baseline::BaselineMode::Disabled,
+        );
 
         assert!(
             result.is_err(),
@@ -697,7 +734,13 @@ mod tests {
         .unwrap();
 
         let config = Config::default();
-        let result = run(dir.path(), &config, false, None);
+        let result = run(
+            dir.path(),
+            &config,
+            false,
+            None,
+            &baseline::BaselineMode::Disabled,
+        );
         assert!(result.is_ok(), "run() should succeed on a valid project");
 
         let diagnostics = result.unwrap().diagnostics;
@@ -736,7 +779,14 @@ mod tests {
         .unwrap();
 
         let config = Config::default();
-        let result = run(dir.path(), &config, false, None).unwrap();
+        let result = run(
+            dir.path(),
+            &config,
+            false,
+            None,
+            &baseline::BaselineMode::Disabled,
+        )
+        .unwrap();
 
         // Check no adjacent diagnostics are identical
         for pair in result.diagnostics.windows(2) {
@@ -769,7 +819,14 @@ mod tests {
         .unwrap();
 
         let config = Config::default();
-        let result = run(dir.path(), &config, false, None).unwrap();
+        let result = run(
+            dir.path(),
+            &config,
+            false,
+            None,
+            &baseline::BaselineMode::Disabled,
+        )
+        .unwrap();
 
         // The dead-reference diagnostic for line 4 should be suppressed
         let dead_refs: Vec<_> = result
@@ -790,7 +847,13 @@ mod tests {
         std::fs::write(dir.path().join("CLAUDE.md"), "# Test\n").unwrap();
 
         let config = Config::default();
-        let _ = run(dir.path(), &config, false, None);
+        let _ = run(
+            dir.path(),
+            &config,
+            false,
+            None,
+            &baseline::BaselineMode::Disabled,
+        );
 
         let cache_path = dir.path().join(".spectralint-cache.json");
         assert!(
@@ -805,7 +868,13 @@ mod tests {
         std::fs::write(dir.path().join("CLAUDE.md"), "# Test\n").unwrap();
 
         let config = Config::default();
-        let _ = run(dir.path(), &config, true, None);
+        let _ = run(
+            dir.path(),
+            &config,
+            true,
+            None,
+            &baseline::BaselineMode::Disabled,
+        );
 
         let cache_path = dir.path().join(".spectralint-cache.json");
         assert!(

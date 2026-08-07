@@ -8,6 +8,7 @@ use std::time::Duration;
 use spectralint::cli::{Cli, Commands, OutputFormat, Preset};
 use spectralint::config::Config;
 use spectralint::engine;
+use spectralint::engine::baseline::BaselineMode;
 use spectralint::types::{CheckResult, Severity};
 
 /// Retain only diagnostics matching the --rule filter (no-op when empty).
@@ -41,8 +42,10 @@ fn run_check(
     fail_on: Severity,
     use_cache: bool,
     apply_fix: bool,
+    baseline_mode: &BaselineMode,
+    write_dest: Option<&Path>,
 ) -> Result<bool> {
-    let mut result = engine::run(project_root, cfg, use_cache, config_path)?;
+    let mut result = engine::run(project_root, cfg, use_cache, config_path, baseline_mode)?;
     filter_rules(&mut result, rule);
 
     // Apply autofixes if --fix is set, then re-check so the reported
@@ -51,9 +54,27 @@ fn run_check(
         let fixed = engine::apply_fixes(&result.diagnostics);
         if fixed > 0 {
             eprintln!("Applied {fixed} fix(es).");
-            result = engine::run(project_root, cfg, false, config_path)?;
+            result = engine::run(project_root, cfg, false, config_path, baseline_mode)?;
             filter_rules(&mut result, rule);
         }
+    }
+
+    // --write-baseline: record the findings instead of reporting them.
+    if let Some(dest) = write_dest {
+        let stats = engine::baseline::write(dest, &result.diagnostics, project_root)?;
+        eprintln!(
+            "Baseline written: {} finding(s) in {} file(s) -> {}",
+            stats.findings,
+            stats.files,
+            dest.display()
+        );
+        if stats.skipped > 0 {
+            eprintln!(
+                "Warning: {} finding(s) outside the project root were not baselined",
+                stats.skipped
+            );
+        }
+        return Ok(false);
     }
 
     if !quiet {
@@ -75,6 +96,12 @@ fn run_check(
             }
         } else {
             spectralint::cli::output::render(&result, project_root, output_format);
+        }
+        if result.baseline_suppressed > 0 {
+            eprintln!(
+                "Baseline: {} finding(s) suppressed",
+                result.baseline_suppressed
+            );
         }
     }
 
@@ -111,6 +138,9 @@ fn run() -> Result<()> {
             no_cache,
             watch,
             fix,
+            baseline,
+            no_baseline,
+            write_baseline,
         } => {
             // Handle --no-color and NO_COLOR env var
             if no_color || std::env::var("NO_COLOR").is_ok() {
@@ -125,7 +155,25 @@ fn run() -> Result<()> {
 
             let output_format = format.unwrap_or(cfg.format);
 
-            let use_cache = !no_cache;
+            // --write-baseline never uses the cache: mtime has one-second
+            // granularity, so a cache hit could persist stale findings into a
+            // committed artifact. Plain check staleness self-heals next run;
+            // a stale baseline does not.
+            let use_cache = !no_cache && !write_baseline;
+
+            // --write-baseline records the un-baselined view, so the engine
+            // runs with the baseline disabled while writing.
+            let baseline_mode = if no_baseline || write_baseline {
+                BaselineMode::Disabled
+            } else if let Some(p) = baseline.clone() {
+                BaselineMode::Path(p)
+            } else {
+                BaselineMode::Auto
+            };
+            let write_dest = write_baseline.then(|| {
+                baseline
+                    .unwrap_or_else(|| project_root.join(engine::baseline::DEFAULT_BASELINE_FILE))
+            });
 
             // First run
             let failed = run_check(
@@ -139,6 +187,8 @@ fn run() -> Result<()> {
                 fail_on,
                 use_cache,
                 fix,
+                &baseline_mode,
+                write_dest.as_deref(),
             )?;
 
             if !watch {
@@ -176,6 +226,8 @@ fn run() -> Result<()> {
                             fail_on,
                             use_cache,
                             fix,
+                            &baseline_mode,
+                            None,
                         ) {
                             Ok(_) => {}
                             Err(e) => tracing::error!("Error: {e}"),

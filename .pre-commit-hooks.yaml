@@ -3,5 +3,5 @@
   description: Static analysis for AI agent instruction files (CLAUDE.md, AGENTS.md, etc.)
   entry: spectralint check .
   language: rust
-  files: (^|/)(CLAUDE|AGENTS)\.md$|^\.claude/|^\.github/copilot-instructions\.md$
+  files: (^|/)(CLAUDE|AGENTS)\.md$|^\.claude/|^\.github/copilot-instructions\.md$|(^|/)\.spectralint-baseline\.json$
   pass_filenames: false

@@ -261,6 +261,10 @@ pub const AVAILABLE_RULES: &[(&str, &str)] = &[
         "unused-suppression",
         "Reports suppress comments that didn't suppress any diagnostic",
     ),
+    (
+        "stale-baseline-entry",
+        "Baseline entries that no longer match any finding",
+    ),
     ("custom", "User-defined regex patterns from config"),
 ];
 
@@ -1184,6 +1188,17 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              \n\
              Severity: info\n\
              Config: always enabled (cannot be disabled)",
+        ),
+        "stale-baseline-entry" => Some(
+            "stale-baseline-entry: Baseline entries that no longer match any finding.\n\
+             \n\
+             When a finding recorded in .spectralint-baseline.json is fixed, its baseline\n\
+             entry becomes stale. This rule flags each stale entry so the baseline shrinks\n\
+             along with the debt instead of accumulating dead entries that could mask a\n\
+             future regression. Run `spectralint check . --write-baseline` to refresh.\n\
+             \n\
+             Severity: info\n\
+             Config: always enabled while a baseline is in use",
         ),
         "custom" => Some(
             "custom:<name>: User-defined regex patterns from config.\n\

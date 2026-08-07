@@ -125,6 +125,7 @@ pub enum Category {
     TokenBudget,
     InvalidSuppression,
     UnusedSuppression,
+    StaleBaselineEntry,
     CustomPattern(Box<str>),
 }
 
@@ -205,6 +206,7 @@ impl Category {
             Category::TokenBudget => "token-budget",
             Category::InvalidSuppression => "invalid-suppression",
             Category::UnusedSuppression => "unused-suppression",
+            Category::StaleBaselineEntry => "stale-baseline-entry",
             Category::CustomPattern(name) => name,
         }
     }
@@ -307,6 +309,7 @@ impl std::str::FromStr for Category {
             "token-budget" => Ok(Category::TokenBudget),
             "invalid-suppression" => Ok(Category::InvalidSuppression),
             "unused-suppression" => Ok(Category::UnusedSuppression),
+            "stale-baseline-entry" => Ok(Category::StaleBaselineEntry),
             other => {
                 if let Some(name) = other.strip_prefix("custom:") {
                     Ok(Category::CustomPattern(name.into()))
@@ -348,6 +351,9 @@ pub struct Diagnostic {
 #[derive(Debug, Default)]
 pub struct CheckResult {
     pub diagnostics: Vec<Diagnostic>,
+    /// Number of findings hidden by the baseline file (not serialized;
+    /// surfaced as a stderr note so machine-readable output stays stable).
+    pub baseline_suppressed: usize,
 }
 
 impl CheckResult {
@@ -425,6 +431,7 @@ mod tests {
     #[test]
     fn test_has_severity_at_least_error() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![make_diagnostic(Severity::Error)],
         };
         assert!(result.has_severity_at_least(Severity::Error));
@@ -435,6 +442,7 @@ mod tests {
     #[test]
     fn test_has_severity_at_least_warning_only() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![make_diagnostic(Severity::Warning)],
         };
         assert!(!result.has_severity_at_least(Severity::Error));
@@ -445,6 +453,7 @@ mod tests {
     #[test]
     fn test_has_severity_at_least_info_only() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![make_diagnostic(Severity::Info)],
         };
         assert!(!result.has_severity_at_least(Severity::Error));
@@ -461,6 +470,7 @@ mod tests {
     #[test]
     fn test_count_methods() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![
                 make_diagnostic(Severity::Error),
                 make_diagnostic(Severity::Error),
@@ -970,6 +980,7 @@ mod tests {
     #[test]
     fn test_severity_counts_single_pass() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![
                 make_diagnostic(Severity::Error),
                 make_diagnostic(Severity::Warning),

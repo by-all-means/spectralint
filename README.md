@@ -50,7 +50,7 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 
 **43% of findings are errors or warnings** — dead references to files that genuinely don't exist, near-duplicate files, and broken anchor links.
 
-## 71 Built-in Rules
+## 72 Built-in Rules
 
 | Rule | Severity | What it catches |
 |------|----------|-----------------|
@@ -124,17 +124,19 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 | `xml-document-wrapper` | warning | XML declarations and wrapper tags in markdown *(strict)* |
 | `invalid-suppression` | warning | Unrecognized rule names in suppress comments |
 | `unused-suppression` | info | Suppress comments that didn't suppress anything |
+| `stale-baseline-entry` | info | Baseline entries that no longer match any finding |
 | `custom` | configurable | Your own regex patterns |
 
 ## Features
 
-- **71 built-in rules** covering security, consistency, content quality, and agent best practices
+- **72 built-in rules** covering security, consistency, content quality, and agent best practices
 <!-- spectralint-disable-next-line vague-directive -->
 - **Vague directive detection** — finds non-deterministic language ("try to", "when possible")
 - **Cross-file analysis** — naming inconsistency and enum drift across multiple files
 - **Prompt injection detection** — social engineering, invisible Unicode, base64 payloads
 - **Custom regex patterns** — define your own lint rules in config
 - **Inline suppression** — disable rules with `<!-- spectralint-disable -->` comments; validates rule names and flags unused suppressions
+- **Baseline** — record existing findings with `--write-baseline` and only fail on new ones; the adoption ratchet for existing repos
 - **Multiple output formats** — text (colored), JSON, SARIF, and GitHub Actions annotations
 - **Autofix** — `--fix` applies structured fixes (currently: `repeated-word`; more rules planned)
 - **Watch mode** — `--watch` re-scans on file changes using native filesystem events
@@ -192,6 +194,9 @@ spectralint check . --fix             # apply available fixes
 
 # Watch mode
 spectralint check . --watch           # re-scan on file changes
+
+# Adopt on an existing repo: record current findings, only fail on new ones
+spectralint check . --write-baseline
 
 # Cache control
 spectralint check . --no-cache        # bypass result cache
@@ -348,6 +353,29 @@ Suppression comments are validated automatically:
 - **`invalid-suppression`** — warns if you reference a rule name that doesn't exist (catches typos)
 - **`unused-suppression`** — flags suppress comments that didn't actually suppress any diagnostic
 
+## Baseline: Adopting on an Existing Repo
+
+The first run on an established repo can produce a wall of findings. A baseline records them so `check` only fails on **new** findings — fix the backlog at your own pace while CI stays green:
+
+```sh
+# 1. Record all current findings (exits 0 even with findings present)
+spectralint check . --write-baseline
+
+# 2. Commit the baseline
+git add .spectralint-baseline.json && git commit -m "Add spectralint baseline"
+
+# 3. From now on, check only fails on findings not in the baseline
+spectralint check .
+```
+
+How it works:
+
+- `.spectralint-baseline.json` is picked up automatically from the project root (`--baseline <path>` for a custom location, `--no-baseline` to see everything).
+- Entries match on **(file, rule, message)** with a per-entry count — no line numbers, so ordinary edits don't invalidate them. Numbers inside messages are masked (`File has 803 lines` → `File has # lines`), so growing a file doesn't resurrect its baselined size finding.
+- When you fix a baselined finding, its entry becomes stale and is reported as **`stale-baseline-entry`** (info) so the baseline shrinks with the debt. Refresh with `--write-baseline`.
+- The suppressed count is printed to stderr (`Baseline: 12 finding(s) suppressed`); stdout stays clean for `--format json`/`sarif`.
+- To fix baselined findings with `--fix`, run `spectralint check . --no-baseline --fix`.
+
 ## Editor Integration (LSP)
 
 spectralint includes a built-in Language Server Protocol server for real-time diagnostics in your editor.
@@ -437,7 +465,7 @@ spectralint check . --fail-on info
 |------|---------|
 | 0 | No diagnostics at or above the `--fail-on` threshold |
 | 1 | One or more diagnostics at or above the threshold |
-| 2 | Usage or internal error (bad path, invalid config, parse failure) |
+| 2 | Usage or internal error (bad path, invalid config or baseline, parse failure) |
 
 ## License
 

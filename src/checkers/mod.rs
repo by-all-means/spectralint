@@ -544,9 +544,15 @@ mod tests {
     }
 
     /// Rules that appear in AVAILABLE_RULES but are not always instantiated as
-    /// standalone checkers: pseudo-rules from the suppression system, and the
-    /// `custom` rule which requires user-defined patterns in config.
-    const NON_DEFAULT_RULES: &[&str] = &["unused-suppression", "invalid-suppression", "custom"];
+    /// standalone checkers: pseudo-rules from the suppression and baseline
+    /// systems, and the `custom` rule which requires user-defined patterns in
+    /// config.
+    const NON_DEFAULT_RULES: &[&str] = &[
+        "unused-suppression",
+        "invalid-suppression",
+        "stale-baseline-entry",
+        "custom",
+    ];
 
     #[test]
     fn meta_names_match_available_rules() {

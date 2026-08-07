@@ -994,6 +994,7 @@ strict = true
             Category::XmlDocumentWrapper => self.checkers.xml_document_wrapper.severity,
             Category::InvalidSuppression
             | Category::UnusedSuppression
+            | Category::StaleBaselineEntry
             | Category::CustomPattern(_) => None,
         }
     }

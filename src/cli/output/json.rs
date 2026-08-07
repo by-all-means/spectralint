@@ -101,6 +101,7 @@ mod tests {
     #[test]
     fn test_json_output_is_valid() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![Diagnostic {
                 file: Arc::new(PathBuf::from("/project/CLAUDE.md")),
                 line: 10,
@@ -137,6 +138,7 @@ mod tests {
     #[test]
     fn path_normalization_strips_project_root() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![make_diag(
                 "/project/subdir/CLAUDE.md",
                 1,
@@ -156,6 +158,7 @@ mod tests {
     #[test]
     fn path_outside_project_root_kept_as_is() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![make_diag(
                 "/other/place/CLAUDE.md",
                 1,
@@ -175,6 +178,7 @@ mod tests {
     #[test]
     fn optional_fields_omitted_when_none() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![make_diag(
                 "/project/a.md",
                 1,
@@ -209,6 +213,7 @@ mod tests {
     #[test]
     fn optional_fields_present_when_set() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![Diagnostic {
                 file: Arc::new(PathBuf::from("/project/a.md")),
                 line: 5,
@@ -235,6 +240,7 @@ mod tests {
     #[test]
     fn summary_counts_accuracy() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![
                 make_diag(
                     "/project/a.md",
@@ -292,6 +298,7 @@ mod tests {
     #[test]
     fn severity_serialized_as_lowercase_string() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![
                 make_diag(
                     "/project/a.md",
@@ -327,6 +334,7 @@ mod tests {
     #[test]
     fn category_serialized_as_kebab_case() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![
                 make_diag(
                     "/project/a.md",
@@ -354,6 +362,7 @@ mod tests {
     #[test]
     fn output_is_valid_json() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![
                 make_diag(
                     "/project/a.md",

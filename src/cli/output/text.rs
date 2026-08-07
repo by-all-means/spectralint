@@ -209,6 +209,7 @@ mod tests {
     fn single_error_summary_line() {
         no_color();
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![make_diag(
                 "/project/CLAUDE.md",
                 10,
@@ -229,6 +230,7 @@ mod tests {
     fn mixed_severity_summary_line() {
         no_color();
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![
                 make_diag(
                     "/project/a.md",
@@ -267,6 +269,7 @@ mod tests {
     fn diagnostics_grouped_by_category() {
         no_color();
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![
                 make_diag(
                     "/project/a.md",
@@ -307,6 +310,7 @@ mod tests {
     fn errors_listed_before_warnings_before_info() {
         no_color();
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![
                 make_diag(
                     "/project/a.md",
@@ -360,6 +364,7 @@ mod tests {
         );
         diag.suggestion = Some("be more specific".to_string());
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![diag],
         };
         let out = render_to_string(&result, Path::new("/project"));
@@ -373,6 +378,7 @@ mod tests {
     fn relative_path_displayed() {
         no_color();
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![make_diag(
                 "/project/subdir/CLAUDE.md",
                 1,
@@ -396,6 +402,7 @@ mod tests {
     fn line_number_formatting() {
         no_color();
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![make_diag(
                 "/project/a.md",
                 42,

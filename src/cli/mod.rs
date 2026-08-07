@@ -68,6 +68,18 @@ pub enum Commands {
         /// Automatically apply fixes for diagnostics that have structured fix data
         #[arg(long)]
         fix: bool,
+
+        /// Baseline file path (default: .spectralint-baseline.json in the project root)
+        #[arg(long, conflicts_with = "no_baseline")]
+        baseline: Option<PathBuf>,
+
+        /// Ignore any baseline file
+        #[arg(long)]
+        no_baseline: bool,
+
+        /// Record all current findings into the baseline file and exit successfully
+        #[arg(long, conflicts_with_all = ["watch", "no_baseline", "rule"])]
+        write_baseline: bool,
     },
     /// Create a default .spectralintrc.toml
     Init {

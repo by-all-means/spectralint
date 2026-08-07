@@ -35,7 +35,27 @@ impl SpectralintServer {
 
         let result = {
             let root = root.clone();
-            tokio::task::spawn_blocking(move || crate::engine::run(&root, &cfg, false, None)).await
+            tokio::task::spawn_blocking(move || {
+                use crate::engine::baseline::{self, BaselineMode};
+                // A malformed baseline must degrade to an un-baselined run,
+                // not freeze the previously published diagnostics behind a
+                // hard error. Retry without the baseline when one is present
+                // and the run failed — no pre-validation, so there is no
+                // window where a mid-edit baseline can slip past a preflight.
+                let first = crate::engine::run(&root, &cfg, false, None, &BaselineMode::Auto);
+                match first {
+                    Err(e)
+                        if matches!(baseline::resolve(&BaselineMode::Auto, &root), Ok(Some(_))) =>
+                    {
+                        tracing::warn!(
+                            "spectralint: check failed ({e}); retrying with baseline disabled"
+                        );
+                        crate::engine::run(&root, &cfg, false, None, &BaselineMode::Disabled)
+                    }
+                    other => other,
+                }
+            })
+            .await
         };
 
         let check_result = match result {

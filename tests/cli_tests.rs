@@ -3737,3 +3737,322 @@ fn json_output_column_field_omitted_for_dead_refs() {
         );
     }
 }
+
+// ── Baseline file support ────────────────────────────────────────────
+
+/// A project with real findings: dead references plus a file-size finding
+/// whose message contains a volatile line count (exercises digit-masking).
+fn baseline_project() -> (tempfile::TempDir, String) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let mut content = String::from("# Project\n\nSee [guide](missing-guide.md) for setup.\n\n");
+    for i in 0..510 {
+        content.push_str(&format!("- Step {i}: run the build script\n"));
+    }
+    fs::write(root.join("CLAUDE.md"), &content).unwrap();
+    let root_str = root.display().to_string();
+    (dir, root_str)
+}
+
+#[test]
+fn write_baseline_then_check_is_clean() {
+    let (_dir, root) = baseline_project();
+
+    // Baseline the current findings: exits 0 even though findings exist.
+    let output = cmd()
+        .args(["check", &root, "--no-cache", "--write-baseline"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "--write-baseline must exit 0, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Baseline written:"), "stderr: {stderr}");
+    assert!(std::path::Path::new(&root)
+        .join(".spectralint-baseline.json")
+        .exists());
+
+    // Immediate re-check: everything suppressed.
+    let output = cmd().args(["check", &root, "--no-cache"]).output().unwrap();
+    assert!(output.status.success(), "baselined project must pass");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("no issues found"), "stdout: {stdout}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("finding(s) suppressed"),
+        "suppression must be visible on stderr: {stderr}"
+    );
+}
+
+#[test]
+fn baseline_survives_file_edits_via_digit_masking() {
+    let (_dir, root) = baseline_project();
+    cmd()
+        .args(["check", &root, "--no-cache", "--write-baseline"])
+        .assert()
+        .success();
+
+    // Grow the file: volatile counts in messages (file size, token estimate)
+    // change, but digit-masked matching must still suppress them.
+    let path = std::path::Path::new(&root).join("CLAUDE.md");
+    let mut content = fs::read_to_string(&path).unwrap();
+    content.push_str("- Step extra-a: run the build script\n");
+    content.push_str("- Step extra-b: run the build script\n");
+    fs::write(&path, &content).unwrap();
+
+    cmd()
+        .args(["check", &root, "--no-cache"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("no issues found"));
+}
+
+#[test]
+fn baseline_new_finding_still_fails() {
+    let (_dir, root) = baseline_project();
+    cmd()
+        .args(["check", &root, "--no-cache", "--write-baseline"])
+        .assert()
+        .success();
+
+    // Introduce a NEW dead reference.
+    let path = std::path::Path::new(&root).join("CLAUDE.md");
+    let mut content = fs::read_to_string(&path).unwrap();
+    content.push_str("\nAlso read [notes](brand-new-missing.md) first.\n");
+    fs::write(&path, &content).unwrap();
+
+    let parsed = json_output(&["check", &root, "--no-cache", "--format", "json"]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "only the new finding should be reported: {diagnostics:?}"
+    );
+    assert_eq!(diagnostics[0]["category"].as_str(), Some("dead-reference"));
+    assert!(diagnostics[0]["message"]
+        .as_str()
+        .unwrap()
+        .contains("brand-new-missing.md"));
+}
+
+#[test]
+fn no_baseline_flag_shows_all_findings() {
+    let (_dir, root) = baseline_project();
+    cmd()
+        .args(["check", &root, "--no-cache", "--write-baseline"])
+        .assert()
+        .success();
+
+    let parsed = json_output(&[
+        "check",
+        &root,
+        "--no-cache",
+        "--no-baseline",
+        "--format",
+        "json",
+    ]);
+    assert!(
+        !parsed["diagnostics"].as_array().unwrap().is_empty(),
+        "--no-baseline must show the baselined findings"
+    );
+}
+
+#[test]
+fn baseline_custom_path() {
+    let (_dir, root) = baseline_project();
+    let custom = std::path::Path::new(&root).join("my-baseline.json");
+    let custom_str = custom.display().to_string();
+
+    cmd()
+        .args([
+            "check",
+            &root,
+            "--no-cache",
+            "--baseline",
+            &custom_str,
+            "--write-baseline",
+        ])
+        .assert()
+        .success();
+    assert!(custom.exists());
+
+    cmd()
+        .args(["check", &root, "--no-cache", "--baseline", &custom_str])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("no issues found"));
+
+    // Explicit path to a missing baseline is a hard error.
+    cmd()
+        .args([
+            "check",
+            &root,
+            "--no-cache",
+            "--baseline",
+            "nope-missing.json",
+        ])
+        .assert()
+        .failure()
+        .code(2);
+}
+
+#[test]
+fn malformed_baseline_exits_2() {
+    let (_dir, root) = baseline_project();
+    fs::write(
+        std::path::Path::new(&root).join(".spectralint-baseline.json"),
+        "not valid json {",
+    )
+    .unwrap();
+
+    cmd()
+        .args(["check", &root, "--no-cache"])
+        .assert()
+        .failure()
+        .code(2);
+}
+
+#[test]
+fn stale_baseline_entry_reported() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::write(root.join("CLAUDE.md"), "# T\n\nAll good here.\n").unwrap();
+    fs::write(
+        root.join(".spectralint-baseline.json"),
+        r#"{"version":1,"entries":[{"file":"CLAUDE.md","category":"dead-reference","message":"gone finding","count":2}]}"#,
+    )
+    .unwrap();
+    let root_str = root.display().to_string();
+
+    let parsed = json_output(&["check", &root_str, "--no-cache", "--format", "json"]);
+    let stale: Vec<_> = parsed["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("stale-baseline-entry"))
+        .collect();
+    assert_eq!(stale.len(), 1, "one stale entry expected: {parsed}");
+    assert!(stale[0]["message"]
+        .as_str()
+        .unwrap()
+        .contains("2 unmatched"));
+    assert_eq!(stale[0]["severity"].as_str(), Some("info"));
+
+    // Stale entries are info-level: default threshold passes, --fail-on info fails.
+    cmd()
+        .args(["check", &root_str, "--no-cache"])
+        .assert()
+        .success();
+    cmd()
+        .args(["check", &root_str, "--no-cache", "--fail-on", "info"])
+        .assert()
+        .failure()
+        .code(1);
+}
+
+#[test]
+fn baseline_applies_on_cache_hit() {
+    // Regression guard (same class as the --strict cache bug): a cached run
+    // must still have the baseline applied.
+    let (_dir, root) = baseline_project();
+    cmd()
+        .args(["check", &root, "--no-cache", "--write-baseline"])
+        .assert()
+        .success();
+
+    // First run populates the cache, second is served from it.
+    cmd()
+        .args(["check", &root])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("no issues found"));
+    cmd()
+        .args(["check", &root])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("no issues found"));
+}
+
+#[test]
+fn write_baseline_conflicts_with_rule() {
+    let (_dir, root) = baseline_project();
+    cmd()
+        .args([
+            "check",
+            &root,
+            "--write-baseline",
+            "--rule",
+            "dead-reference",
+        ])
+        .assert()
+        .failure()
+        .code(2);
+}
+
+#[test]
+fn baseline_does_not_conflate_digit_bearing_identifiers() {
+    // Regression (review finding): with whole-message digit masking, a
+    // baselined dead ref to chapter1.md would absorb a NEW broken ref to
+    // chapter2.md. Quoted identifiers must not be masked.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# T\n\nRead [one](chapter1.md) first.\n",
+    )
+    .unwrap();
+    let root_str = root.display().to_string();
+
+    cmd()
+        .args(["check", &root_str, "--write-baseline"])
+        .assert()
+        .success();
+
+    // Fix the baselined ref, introduce a different digit-bearing broken ref.
+    fs::write(
+        root.join("CLAUDE.md"),
+        "# T\n\nRead [two](chapter2.md) first.\n",
+    )
+    .unwrap();
+
+    let parsed = json_output(&["check", &root_str, "--no-cache", "--format", "json"]);
+    let diagnostics = parsed["diagnostics"].as_array().unwrap();
+    let dead: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d["category"].as_str() == Some("dead-reference"))
+        .collect();
+    assert_eq!(
+        dead.len(),
+        1,
+        "the new chapter2.md finding must NOT be hidden by the chapter1.md entry: {parsed}"
+    );
+    assert!(dead[0]["message"].as_str().unwrap().contains("chapter2.md"));
+    // And the fixed chapter1.md entry must surface as stale.
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d["category"].as_str() == Some("stale-baseline-entry")),
+        "fixed finding must leave a stale entry: {parsed}"
+    );
+}
+
+#[test]
+fn write_baseline_is_idempotent() {
+    let (_dir, root) = baseline_project();
+    cmd()
+        .args(["check", &root, "--write-baseline"])
+        .assert()
+        .success();
+    let first = fs::read(std::path::Path::new(&root).join(".spectralint-baseline.json")).unwrap();
+    cmd()
+        .args(["check", &root, "--write-baseline"])
+        .assert()
+        .success();
+    let second = fs::read(std::path::Path::new(&root).join(".spectralint-baseline.json")).unwrap();
+    assert_eq!(
+        first, second,
+        "re-writing an unchanged project must produce byte-identical baselines"
+    );
+}

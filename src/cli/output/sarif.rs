@@ -195,6 +195,7 @@ mod tests {
     #[test]
     fn test_sarif_output_structure() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![Diagnostic {
                 file: Arc::new(PathBuf::from("/project/CLAUDE.md")),
                 line: 10,
@@ -229,6 +230,7 @@ mod tests {
     #[test]
     fn test_sarif_output_includes_suggestion_as_help() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![Diagnostic {
                 file: Arc::new(PathBuf::from("/project/CLAUDE.md")),
                 line: 5,
@@ -285,6 +287,7 @@ mod tests {
     #[test]
     fn multiple_rules_in_output() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![
                 make_diag(
                     "/project/a.md",
@@ -343,6 +346,7 @@ mod tests {
     fn rules_are_sorted_deterministically() {
         // BTreeSet ensures sorted order of rule IDs
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![
                 make_diag(
                     "/project/a.md",
@@ -386,6 +390,7 @@ mod tests {
     #[test]
     fn severity_mapped_correctly_in_results() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![
                 make_diag(
                     "/project/a.md",
@@ -423,6 +428,7 @@ mod tests {
     fn region_optional_fields() {
         // Without column/end_line/end_column
         let result_no_cols = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![make_diag(
                 "/project/a.md",
                 10,
@@ -446,6 +452,7 @@ mod tests {
 
         // With column/end_line/end_column
         let result_with_cols = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![Diagnostic {
                 file: Arc::new(PathBuf::from("/project/a.md")),
                 line: 5,
@@ -486,6 +493,7 @@ mod tests {
     #[test]
     fn artifact_location_uses_relative_path() {
         let result = CheckResult {
+            baseline_suppressed: 0,
             diagnostics: vec![make_diag(
                 "/project/sub/dir/CLAUDE.md",
                 1,
