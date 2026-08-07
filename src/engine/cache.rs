@@ -140,8 +140,15 @@ pub(crate) fn compute_files_hash(files: &[PathBuf]) -> u64 {
 
 /// Compute a hash of the config by serializing it to a canonical string.
 /// We hash the TOML config file content directly if available, otherwise
-/// hash the serialized default.
-pub(crate) fn compute_config_hash(config_path: Option<&Path>, project_root: &Path) -> u64 {
+/// hash the serialized default. `strict` must be the *effective* strict flag:
+/// `--strict` mutates the config after load, so the file bytes alone don't
+/// capture the effective config and a strict run would replay cached
+/// non-strict results.
+pub(crate) fn compute_config_hash(
+    config_path: Option<&Path>,
+    project_root: &Path,
+    strict: bool,
+) -> u64 {
     // Try explicit config path first, then auto-discovered path
     let default_path;
     let path = match config_path {
@@ -152,9 +159,15 @@ pub(crate) fn compute_config_hash(config_path: Option<&Path>, project_root: &Pat
         }
     };
 
-    match std::fs::read_to_string(path) {
+    let content_hash = match std::fs::read_to_string(path) {
         Ok(content) => hash_str(&content),
         Err(_) => hash_str("__default_config__"),
+    };
+
+    if strict {
+        content_hash ^ 0x5354_5249_4354 // "STRICT" in ASCII hex
+    } else {
+        content_hash
     }
 }
 
@@ -491,7 +504,7 @@ mod tests {
     #[test]
     fn test_compute_config_hash_no_config_file() {
         let dir = tempfile::tempdir().unwrap();
-        let hash = compute_config_hash(None, dir.path());
+        let hash = compute_config_hash(None, dir.path(), false);
         // Should use the default sentinel
         assert_eq!(hash, hash_str("__default_config__"));
     }
@@ -501,7 +514,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config_content = "[checkers.dead_reference]\nenabled = false\n";
         std::fs::write(dir.path().join(".spectralintrc.toml"), config_content).unwrap();
-        let hash = compute_config_hash(None, dir.path());
+        let hash = compute_config_hash(None, dir.path(), false);
         assert_eq!(hash, hash_str(config_content));
     }
 
@@ -509,10 +522,25 @@ mod tests {
     fn test_compute_config_hash_different_content_different_hash() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join(".spectralintrc.toml"), "version1").unwrap();
-        let h1 = compute_config_hash(None, dir.path());
+        let h1 = compute_config_hash(None, dir.path(), false);
         std::fs::write(dir.path().join(".spectralintrc.toml"), "version2").unwrap();
-        let h2 = compute_config_hash(None, dir.path());
+        let h2 = compute_config_hash(None, dir.path(), false);
         assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn test_compute_config_hash_strict_changes_hash() {
+        // Regression: `--strict` is applied after config load, so it must be
+        // part of the cache key or a strict run replays non-strict results.
+        let dir = tempfile::tempdir().unwrap();
+        let h_default = compute_config_hash(None, dir.path(), false);
+        let h_strict = compute_config_hash(None, dir.path(), true);
+        assert_ne!(h_default, h_strict);
+
+        std::fs::write(dir.path().join(".spectralintrc.toml"), "strict = false").unwrap();
+        let h_default = compute_config_hash(None, dir.path(), false);
+        let h_strict = compute_config_hash(None, dir.path(), true);
+        assert_ne!(h_default, h_strict);
     }
 
     #[test]

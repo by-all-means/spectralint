@@ -40,7 +40,10 @@ static PLACEHOLDER_VALUE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?i)(?:your[_-]|placeholder|changeme|change[_-]me|EXAMPLE|xxx|\.\.\.)"#).unwrap()
 });
 
-/// Matches lines in test/example/fixture contexts where credentials are expected.
+/// Matches test/example/fixture context markers. Only applied to the text
+/// *before* the credential match (e.g. `# Example: token = ...`): a trailing
+/// mention like `AKIA... # needed for the test suite` must not suppress a
+/// real credential.
 static TEST_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?:test|example|sample|dummy|fake|mock|fixture|setUp|setup)").unwrap()
 });
@@ -80,7 +83,7 @@ impl Checker for CredentialExposureChecker {
                         continue;
                     }
 
-                    if TEST_CONTEXT.is_match(line) {
+                    if TEST_CONTEXT.is_match(&line[..m.start()]) {
                         continue;
                     }
 
@@ -282,6 +285,29 @@ mod tests {
     }
 
     // --- FP/FN regression tests ---
+
+    #[test]
+    fn test_real_key_with_trailing_test_mention_still_flagged() {
+        // Regression: TEST_CONTEXT used to match anywhere on the line, so a
+        // trailing comment mentioning "test" silently suppressed real keys.
+        let result =
+            run_check(&["AWS_ACCESS_KEY_ID=AKIAIOSFODNN7REALKEY # needed for the test suite"]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "A real key must be flagged even if the line mentions 'test' after it"
+        );
+    }
+
+    #[test]
+    fn test_real_password_with_trailing_setup_mention_still_flagged() {
+        let result = run_check(&[r#"password = "s3cr3tP@ssw0rd!" # see setup docs"#]);
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "A real password must be flagged even if the line mentions 'setup' after it"
+        );
+    }
 
     #[test]
     fn test_hashed_value_not_flagged() {

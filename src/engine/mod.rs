@@ -35,7 +35,7 @@ pub fn run(
     // Compute cache keys and try to load from cache
     let (files_hash, config_hash) = if use_cache {
         let fh = cache::compute_files_hash(&scan_result.files);
-        let ch = cache::compute_config_hash(config_path, project_root);
+        let ch = cache::compute_config_hash(config_path, project_root, config.strict);
         if let Some(diagnostics) = cache::load(project_root, fh, ch) {
             return Ok(CheckResult { diagnostics });
         }

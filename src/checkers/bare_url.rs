@@ -58,13 +58,17 @@ impl Checker for BareUrlChecker {
                         continue;
                     }
 
+                    // Byte-wise comparisons: start-1/start-2 may not be char
+                    // boundaries when a multi-byte char precedes the URL.
                     // Skip if preceded by ]( — it's already a markdown link target
-                    if start >= 2 && &line[start - 2..start] == "](" {
+                    if start >= 2 && &line.as_bytes()[start - 2..start] == b"](" {
                         continue;
                     }
 
                     // Skip if preceded by ( and the line has []( pattern — markdown link
-                    if start >= 1 && &line[start - 1..start] == "(" && line[..start].contains("](")
+                    if start >= 1
+                        && line.as_bytes()[start - 1] == b'('
+                        && line[..start].contains("](")
                     {
                         continue;
                     }
@@ -115,6 +119,21 @@ mod tests {
     #[test]
     fn test_markdown_link_not_flagged() {
         let result = check(&["Check out [the docs](https://example.com) for info"]);
+        assert_eq!(result.diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn test_multibyte_char_before_url_no_panic() {
+        // Regression: a multi-byte char within two bytes of the URL start used
+        // to panic on non-char-boundary slicing (`&line[start - 2..start]`).
+        let result = check(&["- Docs → https://example.com"]);
+        assert_eq!(result.diagnostics.len(), 1);
+
+        let result = check(&["→https://example.com"]);
+        assert_eq!(result.diagnostics.len(), 1);
+
+        // Multi-byte char before a real markdown link must still be skipped
+        let result = check(&["→ [docs](https://example.com)"]);
         assert_eq!(result.diagnostics.len(), 0);
     }
 
