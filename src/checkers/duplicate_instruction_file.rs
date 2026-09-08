@@ -206,6 +206,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DuplicateInstructionFileChecker::new(&[]);
@@ -245,6 +246,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DuplicateInstructionFileChecker::new(&[]);
@@ -268,6 +270,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DuplicateInstructionFileChecker::new(&[]);
@@ -300,6 +303,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DuplicateInstructionFileChecker::new(&[]);
@@ -321,6 +325,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DuplicateInstructionFileChecker::new(&[]);
@@ -353,6 +358,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DuplicateInstructionFileChecker::new(&[]);
@@ -379,6 +385,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DuplicateInstructionFileChecker::new(&[]);
@@ -424,6 +431,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DuplicateInstructionFileChecker::new(&[]);
@@ -448,6 +456,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DuplicateInstructionFileChecker::new(&[]);
@@ -499,6 +508,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DuplicateInstructionFileChecker::new(&[]);

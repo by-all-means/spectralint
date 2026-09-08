@@ -47,6 +47,7 @@ Look at an existing checker like `placeholder_text.rs` for the pattern.
 - Keep PRs focused on a single change
 - Include tests for new functionality
 - Update the CHANGELOG if adding user-facing features
+- Refresh the model catalog (`src/checkers/model_catalog.rs`) against the vendors' deprecation pages when cutting a release, and bump its "as of" date
 - PRs require passing CI before merge
 
 ## Reporting Issues

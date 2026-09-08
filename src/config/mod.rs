@@ -61,7 +61,7 @@ pub struct CheckersConfig {
     #[serde(default = "ScopedCheckerConfig::disabled")]
     pub untagged_code_block: ScopedCheckerConfig,
     pub duplicate_instruction_file: ScopedCheckerConfig,
-    pub outdated_model_reference: ScopedCheckerConfig,
+    pub outdated_model_reference: OutdatedModelReferenceConfig,
     pub broken_anchor_link: ScopedCheckerConfig,
     pub broken_table: ScopedCheckerConfig,
     pub placeholder_url: ScopedCheckerConfig,
@@ -154,7 +154,7 @@ impl Default for CheckersConfig {
             unclosed_fence: ScopedCheckerConfig::default(),
             untagged_code_block: ScopedCheckerConfig::disabled(),
             duplicate_instruction_file: ScopedCheckerConfig::default(),
-            outdated_model_reference: ScopedCheckerConfig::default(),
+            outdated_model_reference: OutdatedModelReferenceConfig::default(),
             broken_anchor_link: ScopedCheckerConfig::default(),
             broken_table: ScopedCheckerConfig::default(),
             placeholder_url: ScopedCheckerConfig::default(),
@@ -446,6 +446,35 @@ pub struct VagueDirectiveConfig {
     pub extra_patterns: Vec<String>,
     pub scope: Vec<String>,
     pub severity: Option<Severity>,
+}
+
+/// Config for the outdated-model-reference checker.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct OutdatedModelReferenceConfig {
+    pub enabled: bool,
+    pub scope: Vec<String>,
+    pub severity: Option<Severity>,
+    /// Flag dated model snapshots (`claude-...-20250514`) older than this many
+    /// days when the model is not in the built-in catalog. `0` disables the check.
+    pub max_snapshot_age_days: u32,
+    /// Additional model names to flag, matched case-insensitively as whole words.
+    pub extra_models: Vec<String>,
+    /// Model names that must never be flagged (overrides the built-in catalog).
+    pub current_models: Vec<String>,
+}
+
+impl Default for OutdatedModelReferenceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            scope: Vec::new(),
+            severity: None,
+            max_snapshot_age_days: 365,
+            extra_models: Vec::new(),
+            current_models: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -793,6 +822,9 @@ enabled = true
 
 [checkers.outdated_model_reference]
 enabled = true
+# max_snapshot_age_days = 365  # flag dated model IDs not in the catalog past this age
+# extra_models = ["acme-llm-v1"]  # additional names to flag
+# current_models = ["gpt-4o"]  # never flag these (overrides the built-in catalog)
 
 [checkers.placeholder_url]
 enabled = true

@@ -85,7 +85,7 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 | `ambiguous-scope-reference` | info | Unclear "this file", "the config" references |
 | `generated-attribution` | info | AI-tool attribution lines ("Generated with Claude Code") |
 | `boilerplate-template` | info | Unchanged template content |
-| `outdated-model-reference` | info | References to deprecated AI model names |
+| `outdated-model-reference` | info/warn | Retired, deprecated, or superseded AI model names in prose, agent frontmatter, and settings.json |
 | `missing-essential-sections` | info | No build/test commands for agents to verify work |
 | `misordered-steps` | info | Numbered steps out of sequence |
 | `prompt-injection-vector` | warn/info | "Ignore previous instructions", hidden Unicode, base64 payloads |
@@ -265,6 +265,12 @@ enabled = true
 [checkers.naming_inconsistency]
 enabled = true
 # scope = ["CLAUDE.md", "AGENTS.md", ".claude/**"]
+
+[checkers.outdated_model_reference]
+enabled = true
+# max_snapshot_age_days = 365  # flag dated model IDs not in the catalog past this age
+# extra_models = ["acme-llm-v1"]  # additional names to flag
+# current_models = ["gpt-4o"]  # never flag these (overrides the built-in catalog)
 
 [checkers.missing_essential_sections]
 enabled = true

@@ -312,6 +312,7 @@ mod tests {
             filename_index: HashSet::new(),
 
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = NamingInconsistencyChecker::new(&[]);
@@ -373,6 +374,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = NamingInconsistencyChecker::new(&[]);
@@ -424,6 +426,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = NamingInconsistencyChecker::new(&[]);
@@ -485,6 +488,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         // Scope limited to CLAUDE.md — reports/output.md excluded
@@ -549,6 +553,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = NamingInconsistencyChecker::new(&[]);
@@ -609,6 +614,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = NamingInconsistencyChecker::new(&[]);
@@ -662,6 +668,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = NamingInconsistencyChecker::new(&[]);
@@ -720,6 +727,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = NamingInconsistencyChecker::new(&[]);
@@ -778,6 +786,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = NamingInconsistencyChecker::new(&[]);
@@ -836,6 +845,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = NamingInconsistencyChecker::new(&[]);
@@ -894,6 +904,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = NamingInconsistencyChecker::new(&[]);
@@ -952,6 +963,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = NamingInconsistencyChecker::new(&[]);

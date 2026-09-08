@@ -65,21 +65,9 @@ fn is_date_in_past(matched_text: &str) -> bool {
     true
 }
 
-static CURRENT_DATE: LazyLock<(u32, u32)> = LazyLock::new(|| {
-    if let Ok(val) = std::env::var("SPECTRALINT_CURRENT_DATE") {
-        let parts: Vec<&str> = val.split('-').collect();
-        if parts.len() >= 2 {
-            if let (Ok(y), Ok(m)) = (parts[0].parse(), parts[1].parse()) {
-                return (y, m);
-            }
-        }
-    }
-    // Default: 2026-03 (current date from system context)
-    (2026, 3)
-});
-
 fn current_year_month() -> (u32, u32) {
-    *CURRENT_DATE
+    let (year, month, _) = crate::engine::date::today();
+    (year, month)
 }
 
 pub(crate) struct StaleReferenceChecker {

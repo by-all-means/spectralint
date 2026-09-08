@@ -126,6 +126,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
         let config = TokenBudgetConfig {
             enabled: true,
@@ -222,6 +223,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
         let config = TokenBudgetConfig::default();
         let result = TokenBudgetChecker::new(&config).check(&ctx);
@@ -250,6 +252,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
         // warn_tokens=100, max_tokens=200 => 126 tokens should trigger Info
         let config = TokenBudgetConfig {

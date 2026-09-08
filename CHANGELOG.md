@@ -2,12 +2,22 @@
 
 All notable changes to spectralint will be documented in this file.
 
+## Unreleased
+
+### Changed
+
+- **outdated-model-reference** — rebuilt around a model catalog with lifecycle status (retired / deprecated / superseded / current) instead of a fixed regex. Recognises prose and API-ID spellings of the same model, checks the `model:` field in agent frontmatter and the `model` key in `.claude/settings.json` (retired or deprecated models there are warnings), flags dated snapshots of unknown models older than `max_snapshot_age_days`, adds `extra_models` / `current_models` overrides, and skips historical files
+
+### Fixed
+
+- **stale-reference** — "today" was hardcoded to March 2026, so verdicts never aged. It now follows the system clock; `SPECTRALINT_CURRENT_DATE` (`YYYY-MM-DD` or `YYYY-MM`) overrides it for reproducible runs
+- **Result cache** — invalidated when the calendar day changes so time-aware rules cannot replay stale verdicts (cache format v2)
+
 ## 0.5.0 (2026-03-10)
 
 ### New Rules (3 added, 71 total)
 
 - **token-budget** — estimates context window cost per file; warns when approaching/exceeding configurable thresholds
-- **stale-file-tree** — validates ASCII directory trees in code blocks against the actual filesystem *(strict-only)*
 - **command-validation** — flags shell commands in code blocks that reference tools not found in PATH
 
 ### New Features
@@ -15,7 +25,6 @@ All notable changes to spectralint will be documented in this file.
 - **Autofix engine** — `--fix` flag applies structured text replacements (e.g., removing repeated words). Overlap detection prevents conflicting fixes.
 - **Watch mode** — `--watch` re-scans on file changes using native filesystem events (via `notify` crate) with 100ms debounce
 - **Result caching** — automatic whole-project cache using FNV-1a hash with mtime+size-based invalidation. `--no-cache` to bypass. Atomic writes (tmp + rename) prevent corruption. 50 MiB size limit guards against malicious cache files.
-- **GitHub Action** — bundled `action.yml` for CI integration
 - **Structured logging** — internal diagnostics via `tracing` crate, gated by `RUST_LOG` env var (silent by default)
 
 ### Architecture
@@ -55,7 +64,6 @@ All notable changes to spectralint will be documented in this file.
 - **Parse failure reporting** — warns when files fail to parse ("Checked 95/100 files, 5 failed to parse")
 - **CONFLICT_PAIRS assertion** — runtime guard ensures bitmask doesn't exceed 32 conflict pairs
 - **dead-reference** — recognizes `~>` arrow mapping (HCL/Terraform version constraints)
-- **credential-exposure** — improved redaction shows `key=***` for key-value patterns instead of partial value leak
 - **command-validation** — `make` requires word boundary; `npm install -g` skipped; `python` narrowed to `python -m`
 - **hardcoded-windows-path** — recognizes markdown escaped underscores and YAML `\n` escapes
 - **Reasoning prompt heuristic** — skips vague-directive, generic-instruction, missing-essential-sections on pure-prose files
@@ -127,7 +135,6 @@ All notable changes to spectralint will be documented in this file.
 ### New Rules (12 added, 60 total)
 
 - **missing-standard-file** — flags projects with instruction files but no CLAUDE.md *(strict-only)*
-- **bare-url** — flags raw URLs not wrapped in markdown link syntax *(strict-only)*
 - **repeated-word** — flags accidental consecutive duplicate words like "the the" *(strict-only)*
 - **undocumented-env-var** — flags `$ENV_VAR` references without nearby explanation *(strict-only)*
 - **empty-code-block** — flags code blocks with no content *(strict-only)*
@@ -237,7 +244,6 @@ Initial release.
 ### Rules (18 built-in)
 
 - **dead-reference** — flags `.md` references to files that don't exist
-- **credential-exposure** — detects hardcoded API keys, tokens, passwords
 - **naming-inconsistency** — catches `api_key` vs `apiKey` across files
 - **enum-drift** — tables with matching columns but divergent values *(strict-only)*
 - **stale-reference** — time-sensitive conditional logic that becomes stale

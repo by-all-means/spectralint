@@ -262,6 +262,7 @@ mod tests {
             filename_index: HashSet::new(),
 
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = EnumDriftChecker::new(&[]);
@@ -332,6 +333,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: historical,
+            settings_files: vec![],
         };
 
         let checker = EnumDriftChecker::new(&[]);
@@ -377,6 +379,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = EnumDriftChecker::new(&[]);
@@ -437,6 +440,7 @@ mod tests {
             filename_index: HashSet::new(),
 
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = EnumDriftChecker::new(&[]);
@@ -493,6 +497,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         // Scope limited to CLAUDE.md only — reports/output.md excluded
@@ -549,6 +554,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = EnumDriftChecker::new(&[]);
@@ -602,6 +608,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = EnumDriftChecker::new(&[]);
@@ -655,6 +662,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = EnumDriftChecker::new(&[]);
@@ -712,6 +720,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = EnumDriftChecker::new(&[]);
@@ -770,6 +779,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = EnumDriftChecker::new(&[]);
@@ -825,6 +835,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = EnumDriftChecker::new(&[]);

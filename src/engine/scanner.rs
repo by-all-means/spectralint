@@ -8,9 +8,15 @@ use crate::config::Config;
 
 const MAX_WALK_DEPTH: usize = 256;
 
+/// Claude Code settings files whose top-level `model` key selects the runtime model.
+pub(crate) const SETTINGS_FILES: [&str; 2] =
+    [".claude/settings.json", ".claude/settings.local.json"];
+
 /// Result of scanning a project tree: matched `.md` files plus a filename index.
 pub(crate) struct ScanResult {
     pub files: Vec<PathBuf>,
+    /// Well-known non-markdown config files some checkers read (ignore globs applied).
+    pub settings_files: Vec<PathBuf>,
     pub filename_index: HashSet<String>,
     pub canonical_root: Option<PathBuf>,
 }
@@ -34,11 +40,21 @@ pub(crate) fn scan(root: &Path, config: &Config) -> ScanResult {
         include: build_glob_set(&config.include),
     };
     let mut files = Vec::new();
+    let mut settings_files = Vec::new();
     let mut filename_index = HashSet::new();
-    walk_dir(root, &walk, &mut files, &mut filename_index, 0);
+    walk_dir(
+        root,
+        &walk,
+        &mut files,
+        &mut settings_files,
+        &mut filename_index,
+        0,
+    );
     files.sort();
+    settings_files.sort();
     ScanResult {
         files,
+        settings_files,
         filename_index,
         canonical_root,
     }
@@ -56,6 +72,7 @@ fn walk_dir(
     dir: &Path,
     cfg: &WalkConfig,
     files: &mut Vec<PathBuf>,
+    settings_files: &mut Vec<PathBuf>,
     filename_index: &mut HashSet<String>,
     depth: usize,
 ) {
@@ -95,13 +112,18 @@ fn walk_dir(
 
         if ft.is_dir() {
             if !SKIP_DIRS.contains(&name_str.as_ref()) {
-                walk_dir(&path, cfg, files, filename_index, depth + 1);
+                walk_dir(&path, cfg, files, settings_files, filename_index, depth + 1);
             }
         } else {
             filename_index.insert(name_str.into_owned());
 
-            if path.extension().and_then(|e| e.to_str()) == Some("md")
-                && !matches_glob(&path, &cfg.root, &cfg.ignore_files)
+            if matches_glob(&path, &cfg.root, &cfg.ignore_files) {
+                continue;
+            }
+            let rel = path.strip_prefix(&cfg.root).ok();
+            if rel.is_some_and(|rel| SETTINGS_FILES.iter().any(|s| rel == Path::new(s))) {
+                settings_files.push(path);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("md")
                 && matches_glob(&path, &cfg.root, &cfg.include)
             {
                 files.push(path);
@@ -114,6 +136,36 @@ fn walk_dir(
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn test_settings_files_are_collected_and_respect_ignore() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join(".claude")).unwrap();
+        fs::write(dir.path().join("CLAUDE.md"), "# Hi").unwrap();
+        fs::write(dir.path().join(".claude/settings.json"), "{}").unwrap();
+        fs::write(dir.path().join(".claude/settings.local.json"), "{}").unwrap();
+        fs::write(dir.path().join(".claude/other.json"), "{}").unwrap();
+
+        let names = |config: &Config| -> Vec<String> {
+            scan(dir.path(), config)
+                .settings_files
+                .iter()
+                .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+                .collect()
+        };
+        assert_eq!(
+            names(&all_md_config()),
+            vec!["settings.json", "settings.local.json"]
+        );
+
+        let mut config = all_md_config();
+        config.ignore_files.push("settings.local.json".to_string());
+        assert_eq!(names(&config), vec!["settings.json"]);
+
+        let mut config = all_md_config();
+        config.ignore.push(".claude".to_string());
+        assert!(names(&config).is_empty());
+    }
 
     fn all_md_config() -> Config {
         Config {

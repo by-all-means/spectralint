@@ -179,6 +179,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = VagueDirectiveChecker::new(false, &[], &[]);
@@ -215,6 +216,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = VagueDirectiveChecker::new(
@@ -286,6 +288,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = VagueDirectiveChecker::new(false, &[], &["CLAUDE.md".to_string()]);
@@ -327,6 +330,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         // Scope set to CLAUDE.md — file should be checked
@@ -367,6 +371,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = VagueDirectiveChecker::new(true, &[], &[]);
@@ -404,6 +409,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = VagueDirectiveChecker::new(false, &[], &[]);
@@ -440,6 +446,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = VagueDirectiveChecker::new(true, &[r"(?i)\bprobably\b".to_string()], &[]);
@@ -489,6 +496,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         // Even in strict mode, reasoning prompts should be skipped
@@ -523,6 +531,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = VagueDirectiveChecker::new(false, &[], &[]);

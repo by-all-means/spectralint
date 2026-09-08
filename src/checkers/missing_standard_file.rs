@@ -129,6 +129,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
         let result = MissingStandardFileChecker.check(&ctx);
         assert_eq!(result.diagnostics.len(), 1);
@@ -148,6 +149,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
         let result = MissingStandardFileChecker.check(&ctx);
         assert!(
@@ -167,6 +169,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
         let result = MissingStandardFileChecker.check(&ctx);
         assert!(
@@ -187,6 +190,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
         let result = MissingStandardFileChecker.check(&ctx);
         assert_eq!(result.diagnostics.len(), 1);
@@ -205,6 +209,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
         let result = MissingStandardFileChecker.check(&ctx);
         assert!(
@@ -225,6 +230,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
         let result = MissingStandardFileChecker.check(&ctx);
         assert!(
@@ -249,6 +255,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
         let result = MissingStandardFileChecker.check(&ctx);
         assert!(result.diagnostics.is_empty());

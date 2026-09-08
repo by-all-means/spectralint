@@ -1,6 +1,7 @@
 pub mod baseline;
 mod cache;
 pub(crate) mod cross_ref;
+pub(crate) mod date;
 pub(crate) mod fix;
 
 /// Re-export `apply_fixes` so the binary crate can use `engine::apply_fixes`.
@@ -73,7 +74,10 @@ pub fn run(
 
     // Compute cache keys and try to load from cache
     let (files_hash, config_hash) = if use_cache {
-        let fh = cache::compute_files_hash(&scan_result.files);
+        let mut hashed = scan_result.files.clone();
+        hashed.extend(scan_result.settings_files.iter().cloned());
+        hashed.sort();
+        let fh = cache::compute_files_hash(&hashed);
         let ch = cache::compute_config_hash(config_path, project_root, config.strict);
         if let Some(diagnostics) = cache::load(project_root, fh, ch) {
             return apply_baseline_tail(diagnostics, project_root, baseline_mode);
@@ -124,6 +128,7 @@ pub fn run(
         &config.historical_files,
         scan_result.filename_index,
         scan_result.canonical_root,
+        scan_result.settings_files,
     );
 
     let all = checkers::all_checkers(config);

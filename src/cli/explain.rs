@@ -127,7 +127,7 @@ pub const AVAILABLE_RULES: &[(&str, &str)] = &[
     ),
     (
         "outdated-model-reference",
-        "Flags references to deprecated or old model names",
+        "Flags retired, deprecated, or superseded AI model names",
     ),
     ("broken-table", "Flags malformed markdown tables"),
     ("placeholder-url", "Flags placeholder/example URLs in prose"),
@@ -723,17 +723,27 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              Config: [checkers.duplicate_instruction_file]",
         ),
         "outdated-model-reference" => Some(
-            "outdated-model-reference: Flags references to deprecated or old model names.\n\
+            "outdated-model-reference: Flags retired, deprecated, or superseded AI model names.\n\
              \n\
-             References to GPT-3.5, GPT-4 Turbo, Claude 2, Claude Instant, Claude 3 Haiku/\n\
-             Sonnet/Opus, text-davinci, or code-davinci point to models that have been\n\
-             superseded. Agents following these references may use deprecated API endpoints\n\
-             or make incorrect capability assumptions.\n\
+             Model mentions in prose and in API-ID form (\"Claude 3.5 Sonnet\",\n\
+             claude-3-5-sonnet-20241022) are matched against a built-in catalog of\n\
+             Anthropic, OpenAI, Google, and Meta models. Retired models fail at request\n\
+             time; deprecated ones are scheduled to; superseded ones still work but a\n\
+             newer generation exists. Instructions written for an older model often carry\n\
+             workarounds the current model no longer needs.\n\
              \n\
-             Lines containing \"history\", \"changelog\", or \"deprecated\" are excluded, as are\n\
-             headings and lines inside code blocks.\n\
+             The `model:` field in agent frontmatter and the `model` key in\n\
+             .claude/settings.json are checked too — a retired or deprecated model there\n\
+             is a runtime failure and is reported as a warning. Dated snapshots of models\n\
+             the catalog does not know (claude-...-YYYYMMDD) are reported once older than\n\
+             max_snapshot_age_days.\n\
              \n\
-             Severity: info\n\
+             Lines mentioning history, changelog, deprecated, retired, formerly,\n\
+             previously, legacy, or \"migrated from\" are excluded, as are headings, code\n\
+             blocks, and historical files. Use current_models to exempt a name and\n\
+             extra_models to add one.\n\
+             \n\
+             Severity: info (warning for retired/deprecated models in config fields)\n\
              Config: [checkers.outdated_model_reference]",
         ),
         "broken-table" => Some(

@@ -485,6 +485,7 @@ pub mod test_helpers {
             canonical_root,
             filename_index,
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
         (dir, ctx)
     }

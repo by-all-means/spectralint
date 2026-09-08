@@ -254,6 +254,7 @@ mod tests {
             filename_index: HashSet::new(),
 
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -298,6 +299,7 @@ mod tests {
             filename_index: HashSet::new(),
 
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -339,6 +341,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -378,6 +381,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: historical,
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -417,6 +421,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -456,6 +461,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -493,6 +499,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -530,6 +537,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -566,6 +574,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -602,6 +611,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -638,6 +648,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -674,6 +685,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -719,6 +731,7 @@ mod tests {
             canonical_root,
             filename_index,
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -756,6 +769,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -798,6 +812,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -835,6 +850,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -871,6 +887,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -907,6 +924,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -950,6 +968,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -1003,6 +1022,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -1042,6 +1062,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -1080,6 +1101,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -1119,6 +1141,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -1165,6 +1188,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -1213,6 +1237,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -1249,6 +1274,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -1293,6 +1319,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -1334,6 +1361,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -1371,6 +1399,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;
@@ -1407,6 +1436,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         }
     }
 
@@ -1440,6 +1470,7 @@ mod tests {
             canonical_root,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
 
         let checker = DeadReferenceChecker;

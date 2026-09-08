@@ -4056,3 +4056,48 @@ fn write_baseline_is_idempotent() {
         "re-writing an unchanged project must produce byte-identical baselines"
     );
 }
+
+#[test]
+fn settings_json_model_is_checked_and_cache_tracks_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().to_str().unwrap();
+    fs::create_dir_all(dir.path().join(".claude")).unwrap();
+    fs::write(
+        dir.path().join("CLAUDE.md"),
+        "# Project\n\nKeep functions small.\n",
+    )
+    .unwrap();
+    let settings = dir.path().join(".claude/settings.json");
+    fs::write(&settings, "{\"model\": \"claude-opus-4-1-20250805\"}").unwrap();
+
+    // Cache enabled (the default): a retired model in settings.json is a warning.
+    cmd()
+        .args([
+            "check",
+            root,
+            "--rule",
+            "outdated-model-reference",
+            "--fail-on",
+            "warning",
+        ])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains(
+            "Retired model reference: claude-opus-4-1-20250805",
+        ));
+
+    // Fixing settings.json alone must invalidate the cache and clear the finding.
+    fs::write(&settings, "{\"model\": \"opus\"}").unwrap();
+    cmd()
+        .args([
+            "check",
+            root,
+            "--rule",
+            "outdated-model-reference",
+            "--fail-on",
+            "warning",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Retired model reference").not());
+}

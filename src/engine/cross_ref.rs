@@ -13,6 +13,8 @@ pub struct CheckerContext {
     pub(crate) canonical_root: Option<PathBuf>,
     pub(crate) filename_index: HashSet<String>,
     pub(crate) historical_indices: HashSet<usize>,
+    /// Claude Code settings files found by the scanner (ignore globs applied).
+    pub(crate) settings_files: Vec<PathBuf>,
 }
 
 impl CheckerContext {
@@ -22,6 +24,7 @@ impl CheckerContext {
         historical_patterns: &[String],
         filename_index: HashSet<String>,
         canonical_root: Option<PathBuf>,
+        settings_files: Vec<PathBuf>,
     ) -> Self {
         let historical_set = build_glob_set(historical_patterns);
         let historical_indices = files
@@ -36,6 +39,7 @@ impl CheckerContext {
             canonical_root,
             filename_index,
             historical_indices,
+            settings_files,
         }
     }
 }
@@ -104,7 +108,7 @@ mod tests {
 
         let patterns = vec!["changelog*".to_string(), "retro*".to_string()];
 
-        let ctx = CheckerContext::build(files, root, &patterns, HashSet::new(), None);
+        let ctx = CheckerContext::build(files, root, &patterns, HashSet::new(), None, vec![]);
 
         assert!(
             !ctx.historical_indices.contains(&0),
@@ -135,7 +139,7 @@ mod tests {
 
         let patterns = vec!["docs/history.md".to_string()];
 
-        let ctx = CheckerContext::build(files, root, &patterns, HashSet::new(), None);
+        let ctx = CheckerContext::build(files, root, &patterns, HashSet::new(), None, vec![]);
 
         assert!(!ctx.historical_indices.contains(&0));
         assert!(
@@ -156,7 +160,7 @@ mod tests {
             make_parsed_file(root, "CLAUDE.md"),
         ];
 
-        let ctx = CheckerContext::build(files, root, &[], HashSet::new(), None);
+        let ctx = CheckerContext::build(files, root, &[], HashSet::new(), None, vec![]);
 
         assert!(
             ctx.historical_indices.is_empty(),
@@ -173,7 +177,7 @@ mod tests {
             make_parsed_file(root, "sub/deep/notes.md"),
         ];
 
-        let ctx = CheckerContext::build(files, root, &[], HashSet::new(), None);
+        let ctx = CheckerContext::build(files, root, &[], HashSet::new(), None, vec![]);
 
         assert_eq!(ctx.files.len(), 3);
         assert_eq!(ctx.project_root, root);
@@ -194,6 +198,7 @@ mod tests {
             &["changelog*".to_string()],
             HashSet::new(),
             None,
+            vec![],
         );
 
         assert!(ctx.files.is_empty());
@@ -211,7 +216,7 @@ mod tests {
         index.insert("utils.rs".to_string());
         index.insert("Cargo.toml".to_string());
 
-        let ctx = CheckerContext::build(files, root, &[], index, None);
+        let ctx = CheckerContext::build(files, root, &[], index, None, vec![]);
 
         assert_eq!(ctx.filename_index.len(), 3);
         assert!(ctx.filename_index.contains("CLAUDE.md"));
@@ -225,7 +230,7 @@ mod tests {
         let root = Path::new("/project");
         let files = vec![make_parsed_file(root, "CLAUDE.md")];
 
-        let ctx = CheckerContext::build(files, root, &[], HashSet::new(), None);
+        let ctx = CheckerContext::build(files, root, &[], HashSet::new(), None, vec![]);
 
         assert!(ctx.filename_index.is_empty());
     }
@@ -236,7 +241,14 @@ mod tests {
         let files = vec![make_parsed_file(root, "CLAUDE.md")];
         let canonical = PathBuf::from("/resolved/project");
 
-        let ctx = CheckerContext::build(files, root, &[], HashSet::new(), Some(canonical.clone()));
+        let ctx = CheckerContext::build(
+            files,
+            root,
+            &[],
+            HashSet::new(),
+            Some(canonical.clone()),
+            vec![],
+        );
 
         assert_eq!(ctx.canonical_root, Some(canonical));
     }
@@ -246,7 +258,7 @@ mod tests {
         let root = Path::new("/project");
         let files = vec![make_parsed_file(root, "CLAUDE.md")];
 
-        let ctx = CheckerContext::build(files, root, &[], HashSet::new(), None);
+        let ctx = CheckerContext::build(files, root, &[], HashSet::new(), None, vec![]);
 
         assert!(ctx.canonical_root.is_none());
     }
@@ -270,7 +282,7 @@ mod tests {
             "history*".to_string(),
         ];
 
-        let ctx = CheckerContext::build(files, root, &patterns, HashSet::new(), None);
+        let ctx = CheckerContext::build(files, root, &patterns, HashSet::new(), None, vec![]);
 
         assert!(
             !ctx.historical_indices.contains(&0),
@@ -309,7 +321,7 @@ mod tests {
 
         let patterns = vec!["docs/archive/**".to_string()];
 
-        let ctx = CheckerContext::build(files, root, &patterns, HashSet::new(), None);
+        let ctx = CheckerContext::build(files, root, &patterns, HashSet::new(), None, vec![]);
 
         assert!(
             ctx.historical_indices.contains(&0),

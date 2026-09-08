@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use super::date;
 use crate::types::{Category, Diagnostic, Fix, Severity};
 
-const CACHE_VERSION: &str = "1";
+const CACHE_VERSION: &str = "2";
 const CACHE_FILE: &str = ".spectralint-cache.json";
 /// Maximum cache file size (50 MiB) to prevent memory exhaustion from crafted caches.
 const MAX_CACHE_SIZE: u64 = 50 * 1024 * 1024;
@@ -17,6 +18,10 @@ struct CacheFile {
     spectralint_version: String,
     config_hash: u64,
     files_hash: u64,
+    /// Day the cache was written (days since epoch). Time-aware rules such as
+    /// stale-reference change verdicts as the calendar moves, so a cache never
+    /// outlives the day it was produced on.
+    day_stamp: i64,
     diagnostics: Vec<CachedDiagnostic>,
 }
 
@@ -172,8 +177,8 @@ pub(crate) fn compute_config_hash(
 }
 
 /// Try to load cached diagnostics. Returns `Some(diagnostics)` if the cache
-/// is valid (same version, config, and file contents), or `None` if the cache
-/// is missing, corrupt, or stale.
+/// is valid (same version, config, file contents, and calendar day), or `None`
+/// if the cache is missing, corrupt, or stale.
 pub(crate) fn load(
     project_root: &Path,
     files_hash: u64,
@@ -195,6 +200,7 @@ pub(crate) fn load(
         || cache.spectralint_version != env!("CARGO_PKG_VERSION")
         || cache.config_hash != config_hash
         || cache.files_hash != files_hash
+        || cache.day_stamp != date::today_days()
     {
         return None;
     }
@@ -238,6 +244,7 @@ pub(crate) fn save(
         spectralint_version: env!("CARGO_PKG_VERSION").to_string(),
         config_hash,
         files_hash,
+        day_stamp: date::today_days(),
         diagnostics: diagnostics
             .iter()
             .map(CachedDiagnostic::from_diagnostic)
@@ -374,6 +381,7 @@ mod tests {
             spectralint_version: env!("CARGO_PKG_VERSION").to_string(),
             config_hash: 100,
             files_hash: 200,
+            day_stamp: date::today_days(),
             diagnostics: vec![],
         };
         std::fs::write(&cache_path, serde_json::to_string(&cache).unwrap()).unwrap();
@@ -393,6 +401,7 @@ mod tests {
             spectralint_version: "0.0.0-fake".to_string(), // different binary version
             config_hash: 100,
             files_hash: 200,
+            day_stamp: date::today_days(),
             diagnostics: vec![],
         };
         std::fs::write(&cache_path, serde_json::to_string(&cache).unwrap()).unwrap();
@@ -400,6 +409,25 @@ mod tests {
         assert!(
             result.is_none(),
             "Different spectralint version should invalidate cache"
+        );
+    }
+
+    #[test]
+    fn test_cache_invalidated_by_day_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join(CACHE_FILE);
+        let cache = CacheFile {
+            version: CACHE_VERSION.to_string(),
+            spectralint_version: env!("CARGO_PKG_VERSION").to_string(),
+            config_hash: 100,
+            files_hash: 200,
+            day_stamp: date::today_days() - 1, // written yesterday
+            diagnostics: vec![],
+        };
+        std::fs::write(&cache_path, serde_json::to_string(&cache).unwrap()).unwrap();
+        assert!(
+            load(dir.path(), 200, 100).is_none(),
+            "A cache from a previous day should be invalidated"
         );
     }
 

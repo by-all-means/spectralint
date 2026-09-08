@@ -226,6 +226,7 @@ mod tests {
             canonical_root: None,
             filename_index: HashSet::new(),
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
         let patterns = vec![CustomPattern {
             name: "hack".to_string(),

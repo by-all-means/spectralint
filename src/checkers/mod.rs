@@ -46,6 +46,7 @@ mod missing_role_definition;
 mod missing_standard_file;
 mod missing_verification;
 mod missing_verification_step;
+mod model_catalog;
 mod naming_inconsistency;
 mod negative_only_framing;
 mod orphaned_section;
@@ -290,7 +291,7 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
     if config.checkers.outdated_model_reference.enabled {
         checkers.push(Box::new(
             outdated_model_reference::OutdatedModelReferenceChecker::new(
-                &config.checkers.outdated_model_reference.scope,
+                &config.checkers.outdated_model_reference,
             ),
         ));
     }

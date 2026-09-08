@@ -425,6 +425,7 @@ mod tests {
             canonical_root,
             filename_index,
             historical_indices: HashSet::new(),
+            settings_files: vec![],
         };
         let result = HardcodedFileStructureChecker::new(&[]).check(&ctx);
         assert!(
