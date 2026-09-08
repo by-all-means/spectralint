@@ -13,6 +13,7 @@ All notable changes to spectralint will be documented in this file.
 - **stale-reference** — "today" was hardcoded to March 2026, so verdicts never aged. It now follows the system clock; `SPECTRALINT_CURRENT_DATE` (`YYYY-MM-DD` or `YYYY-MM`) overrides it for reproducible runs
 - **Result cache** — invalidated when the calendar day changes so time-aware rules cannot replay stale verdicts (cache format v2)
 - **stale-file-tree** — box-drawing tables are rejected by shape instead of by fence tag, so trees fenced as `text`, `bash`, or `tree` are checked again while `rust`, `sql`, and other language fences stay skipped
+- **README** — corrected the command-validation description (it validates against toolchain manifests, not PATH) and the Cursor support claim (`.mdc` and `.cursorrules` are not scanned yet)
 
 ## 0.5.0 (2026-03-10)
 

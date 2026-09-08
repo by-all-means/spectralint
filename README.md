@@ -12,7 +12,7 @@ Catches bugs that creep in when agent instructions are spread across multiple ma
 
 ## Why?
 
-AI agent setups (CLAUDE.md, AGENTS.md, .cursorrules, Copilot instructions) tend to grow into multiple interconnected files. Over time:
+AI agent setups (CLAUDE.md, AGENTS.md, Cursor rules, Copilot instructions) tend to grow into multiple interconnected files. Over time:
 
 - Files get renamed or deleted, but references to them stay behind
 - The same field is called `api_key` in one file and `apiKey` in another
@@ -66,7 +66,7 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 | `broken-table` | warning | Malformed markdown tables |
 | `duplicate-section` | warning | Repeated section headings in same file |
 | `broken-anchor-link` | error | In-file `[text](#anchor)` links that don't match any heading |
-| `command-validation` | warning | Shell commands referencing tools not in PATH |
+| `command-validation` | warning | Shell commands whose toolchain manifest (`Cargo.toml`, `package.json`, ...) is missing |
 | `hardcoded-windows-path` | warning | Backslash paths (`scripts\helper.py`) that break on non-Windows |
 | `unclosed-fence` | warning | Code blocks missing closing ` ``` ` |
 | `stale-reference` | warning | "After March 2025, use the new API" time bombs |
@@ -241,6 +241,7 @@ Create `.spectralintrc.toml` in your project root (or run `spectralint init`):
 # Which files to scan (glob patterns, case-insensitive)
 # Default: known AI instruction file patterns
 # Set to ["**/*.md"] to scan all markdown files
+# Only Markdown files are scanned today; Cursor `.mdc` rules and `.cursorrules` are on the roadmap.
 include = ["CLAUDE.md", "AGENTS.md", ".claude/**", ".github/copilot-instructions.md"]
 
 # Directories to ignore when scanning (supports glob patterns)
