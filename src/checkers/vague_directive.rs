@@ -151,6 +151,7 @@ mod tests {
             path: "src/main.rs".to_string(),
             line: 1,
             source_file: PathBuf::from("instructions.md"),
+            ..Default::default()
         }
     }
 

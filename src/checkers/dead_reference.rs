@@ -90,7 +90,7 @@ impl Checker for DeadReferenceChecker {
     fn meta(&self) -> RuleMeta {
         RuleMeta {
             name: "dead-reference",
-            description: "Flags .md references to files that don't exist",
+            description: "Flags references and @imports to files that don't exist",
             default_severity: Severity::Error,
             strict_only: false,
         }
@@ -105,6 +105,10 @@ impl Checker for DeadReferenceChecker {
             }
 
             for file_ref in &file.file_refs {
+                let is_import = file_ref.ref_kind == crate::parser::types::RefKind::Import;
+                if is_import && !file.kind.supports_imports() {
+                    continue;
+                }
                 if is_template_ref(&file_ref.path) {
                     continue;
                 }
@@ -145,7 +149,11 @@ impl Checker for DeadReferenceChecker {
                 }
 
                 // Bare filenames that exist somewhere in the tree are convention refs.
-                if !file_ref.path.contains('/') && ctx.filename_index.contains(&file_ref.path) {
+                // Imports resolve from the file itself, so this does not apply to them.
+                if !is_import
+                    && !file_ref.path.contains('/')
+                    && ctx.filename_index.contains(&file_ref.path)
+                {
                     continue;
                 }
 
@@ -203,6 +211,19 @@ impl Checker for DeadReferenceChecker {
                     continue;
                 }
 
+                if is_import {
+                    emit!(
+                        result,
+                        Arc::new(file_ref.source_file.clone()),
+                        file_ref.line,
+                        Severity::Warning,
+                        Category::DeadReference,
+                        suggest: "Create the file, or wrap the token in backticks if it is not an import",
+                        "Import target does not exist: @{}",
+                        file_ref.path
+                    );
+                    continue;
+                }
                 emit!(
                     result,
                     Arc::new(file_ref.source_file.clone()),
@@ -240,6 +261,7 @@ mod tests {
                 path: "agent_definitions/followup_drafter.md".to_string(),
                 line: 56,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -280,11 +302,13 @@ mod tests {
                     path: "commands/[command].md".to_string(),
                     line: 10,
                     source_file: root.join("CLAUDE.md"),
+                    ..Default::default()
                 },
                 FileRef {
                     path: "agent_definitions/*.md".to_string(),
                     line: 20,
                     source_file: root.join("CLAUDE.md"),
+                    ..Default::default()
                 },
             ],
             directives: vec![],
@@ -330,6 +354,7 @@ mod tests {
                 path: "scout.md".to_string(),
                 line: 5,
                 source_file: root.join("docs/AGENTS.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -368,6 +393,7 @@ mod tests {
                 path: "nonexistent.md".to_string(),
                 line: 5,
                 source_file: root.join("changelog.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -412,6 +438,7 @@ mod tests {
                 path: "agent_definitions/scout.md".to_string(),
                 line: 10,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -453,6 +480,7 @@ mod tests {
                 path: "../sibling.md".to_string(),
                 line: 5,
                 source_file: root.join("docs/AGENTS.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -492,6 +520,7 @@ mod tests {
                 path: "../nonexistent.md".to_string(),
                 line: 5,
                 source_file: root.join("docs/AGENTS.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -531,6 +560,7 @@ mod tests {
                 path: "templates/{name}.md".to_string(),
                 line: 10,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -569,6 +599,7 @@ mod tests {
                 path: ".agent/skills/<skill-name>/SKILL.md".to_string(),
                 line: 10,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -607,6 +638,7 @@ mod tests {
                 path: "~/.claude/CLAUDE.md".to_string(),
                 line: 4,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -645,6 +677,7 @@ mod tests {
                 path: "path/to/agent.md".to_string(),
                 line: 62,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -683,6 +716,7 @@ mod tests {
                 path: "@playbook-name.md".to_string(),
                 line: 10,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -728,6 +762,7 @@ mod tests {
                 path: "SKILL.md".to_string(),
                 line: 31,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -769,6 +804,7 @@ mod tests {
                 path: "NONEXISTENT.md".to_string(),
                 line: 5,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -813,6 +849,7 @@ mod tests {
                 path: "agents/scout.md".to_string(),
                 line: 10,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -852,6 +889,7 @@ mod tests {
                 path: "webkit-changes.md".to_string(),
                 line: 1,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -890,6 +928,7 @@ mod tests {
                 path: "webkit-changes.md".to_string(),
                 line: 1,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -928,6 +967,7 @@ mod tests {
                 path: "/Users/drew/code/basic-memory/CHANGELOG.md".to_string(),
                 line: 135,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -967,11 +1007,13 @@ mod tests {
                     path: "cli-tool/components/agents/$ARGUMENTS.md".to_string(),
                     line: 27,
                     source_file: root.join("CLAUDE.md"),
+                    ..Default::default()
                 },
                 FileRef {
                     path: "$MD_OUT=reports/junit-nl-suite.md".to_string(),
                     line: 46,
                     source_file: root.join("CLAUDE.md"),
+                    ..Default::default()
                 },
             ],
             directives: vec![],
@@ -1012,21 +1054,25 @@ mod tests {
                     path: "FILE.md".to_string(),
                     line: 238,
                     source_file: root.join("CLAUDE.md"),
+                    ..Default::default()
                 },
                 FileRef {
                     path: "FILE.zh.md".to_string(),
                     line: 238,
                     source_file: root.join("CLAUDE.md"),
+                    ..Default::default()
                 },
                 FileRef {
                     path: "filename.md".to_string(),
                     line: 33,
                     source_file: root.join("CLAUDE.md"),
+                    ..Default::default()
                 },
                 FileRef {
                     path: "ref1.md".to_string(),
                     line: 104,
                     source_file: root.join("CLAUDE.md"),
+                    ..Default::default()
                 },
             ],
             directives: vec![],
@@ -1069,6 +1115,7 @@ mod tests {
                 path: "memory/rules.md".to_string(),
                 line: 203,
                 source_file: root.join("templates/claude-code/CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -1107,6 +1154,7 @@ mod tests {
                 path: "drafts/srs-sso-authentication-2024-01-15.md".to_string(),
                 line: 1,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -1147,6 +1195,7 @@ mod tests {
                 path: "fix-parser-edge-case.md".to_string(),
                 line: 1,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -1189,11 +1238,13 @@ mod tests {
                     path: "./agent-panel.md".to_string(),
                     line: 1,
                     source_file: root.join("AGENTS.md"),
+                    ..Default::default()
                 },
                 FileRef {
                     path: "../telemetry.md".to_string(),
                     line: 2,
                     source_file: root.join("AGENTS.md"),
+                    ..Default::default()
                 },
             ],
             directives: vec![],
@@ -1242,11 +1293,13 @@ mod tests {
                     path: ".github/copilot-instructions.md".to_string(),
                     line: 6,
                     source_file: root.join("AGENTS.md"),
+                    ..Default::default()
                 },
                 FileRef {
                     path: "AGENT.md".to_string(),
                     line: 7,
                     source_file: root.join("AGENTS.md"),
+                    ..Default::default()
                 },
             ],
             directives: vec![],
@@ -1286,6 +1339,7 @@ mod tests {
                 path: "optimize-images.md".to_string(),
                 line: 1,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -1328,6 +1382,7 @@ mod tests {
                 path: "base/skill-content.md".to_string(),
                 line: 3,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -1371,6 +1426,7 @@ mod tests {
                 path: "base/nonexistent.md".to_string(),
                 line: 3,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -1414,6 +1470,7 @@ mod tests {
                 path: "config/setup.md".to_string(),
                 line: 1,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -1453,6 +1510,7 @@ mod tests {
                 path: ref_path.to_string(),
                 line: 1,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -1486,6 +1544,7 @@ mod tests {
                 path: "../../../etc/passwd".to_string(),
                 line: 1,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
             directives: vec![],
             suppress_comments: vec![],
@@ -1589,5 +1648,91 @@ mod tests {
             result.diagnostics.is_empty(),
             "File references on arrow-mapping lines (~>) should be skipped"
         );
+    }
+}
+
+#[cfg(test)]
+mod import_tests {
+    use super::*;
+    use crate::checkers::utils::test_helpers::file_ctx_at;
+    use crate::parser::types::{FileRef, RefKind};
+
+    fn with_import(
+        rel: &str,
+        target: &str,
+    ) -> (tempfile::TempDir, crate::engine::cross_ref::CheckerContext) {
+        let (dir, mut ctx) = file_ctx_at(rel, &[&format!("Read @{target} before editing.")]);
+        let source = ctx.files[0].path.to_path_buf();
+        ctx.files[0].file_refs.push(FileRef {
+            path: target.to_string(),
+            line: 1,
+            source_file: source,
+            ref_kind: RefKind::Import,
+        });
+        (dir, ctx)
+    }
+
+    #[test]
+    fn missing_import_in_claude_md_is_a_warning() {
+        let (_dir, ctx) = with_import("CLAUDE.md", "docs/missing.md");
+        let result = DeadReferenceChecker.check(&ctx);
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(result.diagnostics[0].severity, Severity::Warning);
+        assert_eq!(
+            result.diagnostics[0].message,
+            "Import target does not exist: @docs/missing.md"
+        );
+    }
+
+    #[test]
+    fn existing_import_target_is_fine() {
+        let (dir, ctx) = with_import("CLAUDE.md", "docs/present.md");
+        std::fs::create_dir_all(dir.path().join("docs")).unwrap();
+        std::fs::write(dir.path().join("docs/present.md"), "# ok").unwrap();
+        assert!(DeadReferenceChecker.check(&ctx).diagnostics.is_empty());
+    }
+
+    #[test]
+    fn imports_are_ignored_in_kinds_that_do_not_read_them() {
+        for rel in [
+            ".claude/agents/reviewer.md",
+            "AGENTS.md",
+            ".cursor/rules/style.mdc",
+        ] {
+            let (_dir, ctx) = with_import(rel, "docs/missing.md");
+            assert!(
+                DeadReferenceChecker.check(&ctx).diagnostics.is_empty(),
+                "{rel}"
+            );
+        }
+        let (_dir, ctx) = with_import(".claude/rules/db.md", "docs/missing.md");
+        assert_eq!(DeadReferenceChecker.check(&ctx).diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn package_scopes_get_the_backtick_hint() {
+        let (_dir, ctx) = with_import("CLAUDE.md", "scope/pkg");
+        let result = DeadReferenceChecker.check(&ctx);
+        assert_eq!(result.diagnostics.len(), 1);
+        assert!(result.diagnostics[0]
+            .suggestion
+            .as_deref()
+            .unwrap()
+            .contains("backticks"));
+    }
+
+    #[test]
+    fn plain_mentions_stay_errors() {
+        let (_dir, mut ctx) = file_ctx_at("CLAUDE.md", &["See docs/missing.md for details."]);
+        let source = ctx.files[0].path.to_path_buf();
+        ctx.files[0].file_refs.push(FileRef {
+            path: "docs/missing.md".to_string(),
+            line: 1,
+            source_file: source,
+            ref_kind: RefKind::Mention,
+        });
+        let result = DeadReferenceChecker.check(&ctx);
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(result.diagnostics[0].severity, Severity::Error);
     }
 }

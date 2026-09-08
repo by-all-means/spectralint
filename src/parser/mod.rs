@@ -84,6 +84,9 @@ static FILE_REF_LINK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\[([^\]]*)\]\(([^)]+\.md)\)").unwrap());
 static FILE_REF_BARE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:^|[\s,|])([a-zA-Z0-9_/.:-]+\.md)(?:[\s,|]|$)").unwrap());
+/// `@path` imports: at line start or after whitespace, then a path-ish token.
+static IMPORT_REF: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?:^|\s)@([A-Za-z0-9_~./-]+)").unwrap());
 
 static SUPPRESS_COMMENT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"<!--\s*spectralint-(disable|enable|disable-next-line)(?:\s+([\w-]+))?\s*-->")
@@ -341,15 +344,17 @@ fn is_url(path: &str) -> bool {
 }
 
 fn extract_file_refs(lines: &[String], source_path: &Path, refs: &mut Vec<FileRef>) {
-    let push_unique = |refs: &mut Vec<FileRef>, path: String, line_num: usize| {
-        if !refs.iter().any(|r| r.path == path && r.line == line_num) {
-            refs.push(FileRef {
-                path,
-                line: line_num,
-                source_file: source_path.to_path_buf(),
-            });
-        }
-    };
+    let push_unique =
+        |refs: &mut Vec<FileRef>, path: String, line_num: usize, ref_kind: types::RefKind| {
+            if !refs.iter().any(|r| r.path == path && r.line == line_num) {
+                refs.push(FileRef {
+                    path,
+                    line: line_num,
+                    source_file: source_path.to_path_buf(),
+                    ref_kind,
+                });
+            }
+        };
 
     for (i, line) in non_code_lines(lines) {
         let line_num = i + 1;
@@ -357,22 +362,36 @@ fn extract_file_refs(lines: &[String], source_path: &Path, refs: &mut Vec<FileRe
         for cap in FILE_REF_BACKTICK.captures_iter(line) {
             let path = &cap[1];
             if !path.contains(' ') {
-                push_unique(refs, path.to_string(), line_num);
+                push_unique(refs, path.to_string(), line_num, types::RefKind::Mention);
             }
         }
 
         for cap in FILE_REF_LINK.captures_iter(line) {
             let path = &cap[2];
             if !is_url(path) {
-                push_unique(refs, path.to_string(), line_num);
+                push_unique(refs, path.to_string(), line_num, types::RefKind::Mention);
             }
         }
 
         for cap in FILE_REF_BARE.captures_iter(line) {
             let path = &cap[1];
             if !is_url(path) {
-                push_unique(refs, path.to_string(), line_num);
+                push_unique(refs, path.to_string(), line_num, types::RefKind::Mention);
             }
+        }
+
+        for cap in IMPORT_REF.captures_iter(line) {
+            let m = cap.get(1).expect("group 1 always participates");
+            if crate::checkers::utils::inside_inline_code(line, m.start() - 1) {
+                continue;
+            }
+            let path = m.as_str().trim_end_matches(['.', ',', ';', ':']);
+            // `@Override` or `@handle` is a lone word, not an import; a path or a
+            // dotted file name is.
+            if path.is_empty() || !(path.contains('/') || path.contains('.')) || is_url(path) {
+                continue;
+            }
+            push_unique(refs, path.to_string(), line_num, types::RefKind::Import);
         }
     }
 }
@@ -946,5 +965,56 @@ mod tests {
                 i
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod import_tests {
+    use super::types::RefKind;
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn imports(content: &str) -> Vec<String> {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, "{content}").unwrap();
+        parse_file(f.path())
+            .unwrap()
+            .file_refs
+            .into_iter()
+            .filter(|r| r.ref_kind == RefKind::Import)
+            .map(|r| r.path)
+            .collect()
+    }
+
+    #[test]
+    fn extracts_path_and_dotted_imports() {
+        assert_eq!(
+            imports("Read @docs/api.md first.\nAlso @package.json and @.claude/rules/db.md."),
+            vec!["docs/api.md", "package.json", ".claude/rules/db.md"]
+        );
+    }
+
+    #[test]
+    fn lone_words_handles_and_emails_are_not_imports() {
+        assert!(
+            imports("Use @Override here. Ask @lukas. Mail me@example.com or @README").is_empty()
+        );
+    }
+
+    #[test]
+    fn code_spans_and_fences_are_skipped() {
+        assert!(imports("Run `npm i @scope/pkg` now.\n```\n@docs/in-fence.md\n```").is_empty());
+        assert_eq!(imports("Install @scope/pkg globally"), vec!["scope/pkg"]);
+    }
+
+    #[test]
+    fn mentions_keep_their_kind() {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, "See `docs/a.md` and @docs/b.md").unwrap();
+        let refs = parse_file(f.path()).unwrap().file_refs;
+        assert_eq!(refs.len(), 2);
+        assert_eq!(refs[0].ref_kind, RefKind::Mention);
+        assert_eq!(refs[1].ref_kind, RefKind::Import);
     }
 }

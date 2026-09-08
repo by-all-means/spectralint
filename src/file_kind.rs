@@ -80,6 +80,16 @@ impl FileKind {
         )
     }
 
+    /// Kinds whose tool reads `@path` imports at load time (Claude Code
+    /// memory, rules, and commands; Gemini CLI context files).
+    #[must_use]
+    pub fn supports_imports(self) -> bool {
+        matches!(
+            self,
+            Self::ClaudeMd | Self::ClaudeRule | Self::ClaudeCommand | Self::GeminiMd
+        )
+    }
+
     /// Stable lowercase identifier for messages and structured output.
     #[must_use]
     pub fn slug(self) -> &'static str {

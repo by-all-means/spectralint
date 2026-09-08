@@ -61,11 +61,22 @@ pub struct Table {
     pub parent_section: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+/// How a file reference was written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RefKind {
+    /// A path mentioned in prose, a link, or inline code.
+    #[default]
+    Mention,
+    /// An `@path` import, which Claude Code and Gemini CLI read at load time.
+    Import,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct FileRef {
     pub path: String,
     pub line: usize,
     pub source_file: PathBuf,
+    pub ref_kind: RefKind,
 }
 
 #[derive(Debug, Clone)]

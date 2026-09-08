@@ -183,6 +183,7 @@ mod tests {
                 path: r.to_string(),
                 line,
                 source_file: path.clone(),
+                ..Default::default()
             })
             .collect();
         ParsedFile {
@@ -473,6 +474,7 @@ mod tests {
                     path: "sub/b.md".to_string(),
                     line: 2,
                     source_file: a_path.clone(),
+                    ..Default::default()
                 }],
                 directives: vec![],
                 suppress_comments: vec![],
@@ -488,6 +490,7 @@ mod tests {
                     path: "a.md".to_string(),
                     line: 2,
                     source_file: b_path.clone(),
+                    ..Default::default()
                 }],
                 directives: vec![],
                 suppress_comments: vec![],

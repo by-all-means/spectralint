@@ -294,6 +294,7 @@ mod tests {
                 path: "AGENTS.md".to_string(),
                 line: 1,
                 source_file: root.join("CLAUDE.md"),
+                ..Default::default()
             }],
         );
         let file_b = make_file(root, "AGENTS.md", &lines, vec![]);
