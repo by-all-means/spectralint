@@ -26,19 +26,11 @@ pub(crate) struct Frontmatter {
     /// 0-based index of the opening `---`.
     pub open: usize,
     /// 0-based index of the closing `---` or `...`.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "consumed by the frontmatter-schema checker")
-    )]
     pub close: usize,
     /// Top-level fields in document order.
     pub fields: Vec<(String, FmValue)>,
     /// Strict YAML parse failure, with the scanner's message. When set, the
     /// fields come from the lenient line-based parse instead.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "consumed by the frontmatter-schema checker")
-    )]
     pub parse_error: Option<String>,
     /// 1-based line of each top-level key.
     key_lines: Vec<(String, usize)>,
@@ -183,10 +175,6 @@ impl Frontmatter {
         self.fields.iter().find(|(k, _)| k == key).map(|(_, v)| v)
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "consumed by the frontmatter-schema checker")
-    )]
     pub(crate) fn has(&self, key: &str) -> bool {
         self.get(key).is_some()
     }
@@ -201,10 +189,6 @@ impl Frontmatter {
 
     /// The value as a boolean; the strings `true`/`false` count, since the
     /// lenient parse keeps everything textual.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "consumed by the frontmatter-schema checker")
-    )]
     pub(crate) fn get_bool(&self, key: &str) -> Option<bool> {
         match self.get(key)? {
             FmValue::Bool(b) => Some(*b),
@@ -216,10 +200,6 @@ impl Frontmatter {
 
     /// A list of strings from either a YAML list or a comma-separated
     /// scalar, which Claude Code accepts for `tools`, `paths`, and friends.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "consumed by the frontmatter-schema checker")
-    )]
     pub(crate) fn get_str_list(&self, key: &str) -> Option<Vec<String>> {
         match self.get(key)? {
             FmValue::List(items) => Some(
@@ -252,10 +232,6 @@ impl Frontmatter {
     }
 
     /// Every top-level key, in document order.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "consumed by the frontmatter-schema checker")
-    )]
     pub(crate) fn keys(&self) -> impl Iterator<Item = &str> {
         self.fields.iter().map(|(k, _)| k.as_str())
     }

@@ -62,6 +62,7 @@ pub struct CheckersConfig {
     pub untagged_code_block: ScopedCheckerConfig,
     pub duplicate_instruction_file: ScopedCheckerConfig,
     pub outdated_model_reference: OutdatedModelReferenceConfig,
+    pub frontmatter_schema: ScopedCheckerConfig,
     pub broken_anchor_link: ScopedCheckerConfig,
     pub broken_table: ScopedCheckerConfig,
     pub placeholder_url: ScopedCheckerConfig,
@@ -155,6 +156,7 @@ impl Default for CheckersConfig {
             untagged_code_block: ScopedCheckerConfig::disabled(),
             duplicate_instruction_file: ScopedCheckerConfig::default(),
             outdated_model_reference: OutdatedModelReferenceConfig::default(),
+            frontmatter_schema: ScopedCheckerConfig::default(),
             broken_anchor_link: ScopedCheckerConfig::default(),
             broken_table: ScopedCheckerConfig::default(),
             placeholder_url: ScopedCheckerConfig::default(),
@@ -631,6 +633,7 @@ impl Config {
         config.checkers.untagged_code_block.enabled = true;
         config.checkers.duplicate_instruction_file.enabled = true;
         config.checkers.outdated_model_reference.enabled = true;
+        config.checkers.frontmatter_schema.enabled = true;
         config.checkers.broken_anchor_link.enabled = true;
         config.checkers.broken_table.enabled = true;
         config.checkers.placeholder_url.enabled = true;
@@ -857,6 +860,9 @@ enabled = true
 # extra_models = ["acme-llm-v1"]  # additional names to flag
 # current_models = ["gpt-4o"]  # never flag these (overrides the built-in catalog)
 
+[checkers.frontmatter_schema]
+enabled = true
+
 [checkers.placeholder_url]
 enabled = true
 
@@ -1033,6 +1039,7 @@ strict = true
             Category::UntaggedCodeBlock => self.checkers.untagged_code_block.severity,
             Category::DuplicateInstructionFile => self.checkers.duplicate_instruction_file.severity,
             Category::OutdatedModelReference => self.checkers.outdated_model_reference.severity,
+            Category::FrontmatterSchema => self.checkers.frontmatter_schema.severity,
             Category::BrokenTable => self.checkers.broken_table.severity,
             Category::PlaceholderUrl => self.checkers.placeholder_url.severity,
             Category::EmphasisOveruse => self.checkers.emphasis_overuse.severity,

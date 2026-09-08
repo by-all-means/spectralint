@@ -27,6 +27,7 @@ mod empty_heading;
 mod enum_drift;
 mod excessive_nesting;
 mod file_size;
+mod frontmatter_schema;
 mod generated_attribution;
 mod generic_instruction;
 mod hardcoded_file_structure;
@@ -294,6 +295,11 @@ pub(crate) fn all_checkers(config: &Config) -> Vec<Box<dyn Checker>> {
                 &config.checkers.outdated_model_reference,
             ),
         ));
+    }
+    if config.checkers.frontmatter_schema.enabled {
+        checkers.push(Box::new(frontmatter_schema::FrontmatterSchemaChecker::new(
+            &config.checkers.frontmatter_schema.scope,
+        )));
     }
     if config.checkers.broken_anchor_link.enabled {
         checkers.push(Box::new(broken_anchor_link::BrokenAnchorLinkChecker::new(

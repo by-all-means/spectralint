@@ -212,11 +212,20 @@ impl Checker for DeadReferenceChecker {
                 }
 
                 if is_import {
+                    // `@scope/pkg` in prose is parsed as an import too, but a failed
+                    // import of a package name is a no-op, so it only rates info.
+                    let looks_like_package =
+                        !file_ref.path.contains('.') && file_ref.path.matches('/').count() == 1;
+                    let severity = if looks_like_package {
+                        Severity::Info
+                    } else {
+                        Severity::Warning
+                    };
                     emit!(
                         result,
                         Arc::new(file_ref.source_file.clone()),
                         file_ref.line,
-                        Severity::Warning,
+                        severity,
                         Category::DeadReference,
                         suggest: "Create the file, or wrap the token in backticks if it is not an import",
                         "Import target does not exist: @{}",
@@ -1719,6 +1728,7 @@ mod import_tests {
             .as_deref()
             .unwrap()
             .contains("backticks"));
+        assert_eq!(result.diagnostics[0].severity, Severity::Info);
     }
 
     #[test]

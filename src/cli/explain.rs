@@ -129,6 +129,10 @@ pub const AVAILABLE_RULES: &[(&str, &str)] = &[
         "outdated-model-reference",
         "Flags retired, deprecated, or superseded AI model names",
     ),
+    (
+        "frontmatter-schema",
+        "Frontmatter fields a tool requires or cannot read",
+    ),
     ("broken-table", "Flags malformed markdown tables"),
     ("placeholder-url", "Flags placeholder/example URLs in prose"),
     (
@@ -745,6 +749,30 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              \n\
              Severity: info (warning for retired/deprecated models in config fields)\n\
              Config: [checkers.outdated_model_reference]",
+        ),
+        "frontmatter-schema" => Some(
+            "frontmatter-schema: Frontmatter fields a tool requires or cannot read.\n\
+             \n\
+             Tool-specific files carry YAML frontmatter with documented schemas, and\n\
+             most mistakes fail silently: a Claude Code subagent without `name` is\n\
+             treated as documentation and never loaded, one without `description` is\n\
+             skipped, a rule whose `paths` glob does not compile matches nothing, a\n\
+             Cursor rule with no description, globs, or alwaysApply is only applied\n\
+             by hand, and a Copilot instruction file without `applyTo` applies to\n\
+             nothing. Skills are checked against the Agent Skills spec (name equals\n\
+             directory, description under 1,024 characters) and Claude Code's 1,536\n\
+             character truncation. Kiro `inclusion` and Devin `trigger` values are\n\
+             validated too.\n\
+             \n\
+             Invalid YAML is an error for Claude and Copilot kinds, which skip the\n\
+             file, and only a note for Cursor rules, where unquoted `globs: *.ts` is\n\
+             common and recovered by a lenient parse. Unknown fields are reported\n\
+             only when they are a near-miss of a documented one (\"descripton\").\n\
+             Files without a known schema (CLAUDE.md, AGENTS.md, plain markdown) are\n\
+             not checked.\n\
+             \n\
+             Severity: warning (info for portability notes, error for unreadable YAML)\n\
+             Config: [checkers.frontmatter_schema]",
         ),
         "broken-table" => Some(
             "broken-table: Flags malformed markdown tables.\n\
