@@ -6,6 +6,7 @@ All notable changes to spectralint will be documented in this file.
 
 ### Changed
 
+- **MSRV** — minimum supported Rust is now 1.85; the locked dependencies already use edition 2024, so 1.80 could not build the lockfile
 - **outdated-model-reference** — rebuilt around a model catalog with lifecycle status (retired / deprecated / superseded / current) instead of a fixed regex. Recognises prose and API-ID spellings of the same model, checks the `model:` field in agent frontmatter and the `model` key in `.claude/settings.json` (retired or deprecated models there are warnings), flags dated snapshots of unknown models older than `max_snapshot_age_days`, adds `extra_models` / `current_models` overrides, and skips historical files
 
 ### Fixed
