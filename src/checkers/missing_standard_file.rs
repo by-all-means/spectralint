@@ -290,7 +290,7 @@ mod kind_tests {
             &["---", "alwaysApply: true", "---", "Be terse."],
         );
         std::fs::write(dir.path().join("package.json"), "{}").unwrap();
-        assert!(MissingStandardFileChecker::new(&[])
+        assert!(MissingStandardFileChecker
             .check(&ctx)
             .diagnostics
             .is_empty());
