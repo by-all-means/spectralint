@@ -89,7 +89,7 @@ fn resolves_via_dir_context(
 /// Lines that talk about a file the agent creates or checks for at run time.
 static RUNTIME_FILE_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)\b(?:doesn't exist|does not exist|if (?:it |they |these |those |the files? |this file )?(?:already )?exists?|will (?:be )?(?:creat|generat|writ|produc)|is (?:created|generated|written|produced)|(?:create|generate|write)s? (?:a |the )?(?:new )?(?:file )?`)",
+        r"(?i)\b(?:doesn't exist|does not exist|if (?:the |this |these |those )?(?:files? )?(?:\S+ )?(?:already )?exists?|will (?:be )?(?:creat|generat|writ|produc)|is (?:created|generated|written|produced)|(?:create|generate|write)s? (?:a |the )?(?:new )?(?:file )?`)",
     )
     .unwrap()
 });
@@ -111,6 +111,26 @@ const TOOL_DIRS: &[&str] = &[
 /// Paths the Agent Skills spec resolves relative to the skill directory. A bare
 /// file name in a skill is usually an artifact the skill writes (`00-scope.md`),
 /// so only the spec's own directories are checked.
+/// Directories whose contents are produced by a run, never committed.
+fn under_generated_dir(path: &str) -> bool {
+    path.split('/').any(|seg| {
+        matches!(
+            seg,
+            "results"
+                | "output"
+                | "outputs"
+                | "generated"
+                | "tmp"
+                | "temp"
+                | "dist"
+                | "build"
+                | "target"
+                | "node_modules"
+                | ".cache"
+        )
+    })
+}
+
 fn is_skill_local_ref(path: &str) -> bool {
     let path = path.trim_start_matches("./");
     path.split_once('/')
@@ -168,6 +188,9 @@ impl Checker for DeadReferenceChecker {
                     continue;
                 }
                 if is_template_ref(&file_ref.path) {
+                    continue;
+                }
+                if under_generated_dir(&file_ref.path) {
                     continue;
                 }
 
@@ -1951,5 +1974,24 @@ mod nested_tool_dir_tests {
             ref_kind: RefKind::Mention,
         });
         assert!(DeadReferenceChecker.check(&ctx).diagnostics.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod generated_tests {
+    use super::*;
+
+    #[test]
+    fn runtime_shapes_are_skipped() {
+        assert!(under_generated_dir("scripts/pr-status/results/index.md"));
+        assert!(under_generated_dir("build/report.md"));
+        assert!(!under_generated_dir("docs/results-summary.md"));
+        assert!(RUNTIME_FILE_CONTEXT.is_match("- If data-model.md exists: extract entities"));
+        assert!(RUNTIME_FILE_CONTEXT.is_match("If the file already exists, skip it."));
+        assert!(!RUNTIME_FILE_CONTEXT.is_match("Read data-model.md before starting."));
+        assert!(crate::checkers::utils::is_template_ref(
+            "FEATURE_DIR/spec.md"
+        ));
+        assert!(!crate::checkers::utils::is_template_ref("docs/API.md"));
     }
 }

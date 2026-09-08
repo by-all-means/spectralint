@@ -175,6 +175,10 @@ pub(crate) fn is_template_ref(path: &str) -> bool {
         || path.contains("path/to/")
         || path.starts_with('@')
         || path.starts_with("example/")
+        // An ALL_CAPS component is a variable standing in for a directory
+        || path.split('/').any(|seg| {
+            seg.len() > 1 && seg.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        })
         // Placeholder segments like xxx, your_, my_, filename
         || path.split('/').any(|seg| {
             seg.starts_with("xxx")
