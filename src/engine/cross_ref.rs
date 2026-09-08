@@ -93,6 +93,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         }
     }
 

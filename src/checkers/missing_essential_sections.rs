@@ -292,6 +292,7 @@ mod tests {
                 "Check for issues.".to_string(),
             ],
             in_code_block: vec![],
+            ..Default::default()
         };
         let ctx = CheckerContext {
             files: vec![file],

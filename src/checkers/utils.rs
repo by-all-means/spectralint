@@ -463,20 +463,25 @@ pub mod test_helpers {
         lines: &[&str],
         sections: Vec<crate::parser::types::Section>,
     ) -> (tempfile::TempDir, CheckerContext) {
+        ctx_for("CLAUDE.md", lines, sections)
+    }
+
+    /// Build a `CheckerContext` with one file at `rel_path` under the temp root,
+    /// classified by that path (so kind-gated checkers see the real kind).
+    pub fn file_ctx_at(rel_path: &str, lines: &[&str]) -> (tempfile::TempDir, CheckerContext) {
+        ctx_for(rel_path, lines, vec![])
+    }
+
+    fn ctx_for(
+        rel_path: &str,
+        lines: &[&str],
+        sections: Vec<crate::parser::types::Section>,
+    ) -> (tempfile::TempDir, CheckerContext) {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         let raw_lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
-        let in_code_block = crate::parser::build_code_block_mask(&raw_lines);
-        let file = ParsedFile {
-            path: std::sync::Arc::new(root.join("CLAUDE.md")),
-            sections,
-            tables: vec![],
-            file_refs: vec![],
-            directives: vec![],
-            suppress_comments: vec![],
-            raw_lines,
-            in_code_block,
-        };
+        let mut file = ParsedFile::from_lines(&root.join(rel_path), root, &raw_lines);
+        file.sections = sections;
         let canonical_root = root.canonicalize().ok();
         let filename_index = crate::engine::cross_ref::build_filename_index(root);
         let ctx = CheckerContext {

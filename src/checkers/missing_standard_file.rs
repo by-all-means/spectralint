@@ -113,6 +113,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec!["# Test".to_string()],
             in_code_block: vec![false],
+            ..Default::default()
         }
     }
 

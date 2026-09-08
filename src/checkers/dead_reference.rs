@@ -245,6 +245,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -290,6 +291,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -333,6 +335,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -370,6 +373,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let mut historical = HashSet::new();
@@ -413,6 +417,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -453,6 +458,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -491,6 +497,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -529,6 +536,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -566,6 +574,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -603,6 +612,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -640,6 +650,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -677,6 +688,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -721,6 +733,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let canonical_root = root.canonicalize().ok();
@@ -761,6 +774,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -804,6 +818,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -842,6 +857,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec!["Write up a summary in a file called webkit-changes.md".to_string()],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -879,6 +895,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec!["delete the webkit-changes.md file".to_string()],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -916,6 +933,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -960,6 +978,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -1014,6 +1033,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -1054,6 +1074,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -1093,6 +1114,7 @@ mod tests {
                 "**Examples**: `drafts/srs-sso-authentication-2024-01-15.md`".to_string(),
             ],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -1133,6 +1155,7 @@ mod tests {
                     .to_string(),
             ],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -1180,6 +1203,7 @@ mod tests {
                 "- Parent directory: `[Telemetry](../telemetry.md)`".to_string(),
             ],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -1229,6 +1253,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines,
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -1266,6 +1291,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec!["- **Naming**: Use kebab-case: `optimize-images.md`".to_string()],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -1311,6 +1337,7 @@ mod tests {
                 "   - `base/skill-content.md` - Common content".to_string(),
             ],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -1353,6 +1380,7 @@ mod tests {
                 "   - `base/nonexistent.md`".to_string(),
             ],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -1391,6 +1419,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec!["Load config/setup.md for configuration details.".to_string()],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -1429,6 +1458,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![raw_line.to_string()],
             in_code_block: vec![],
+            ..Default::default()
         };
         CheckerContext {
             files: vec![parsed],
@@ -1461,6 +1491,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec!["See ../../../etc/passwd for details".to_string()],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let canonical_root = root.canonicalize().ok();

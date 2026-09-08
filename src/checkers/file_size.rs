@@ -98,6 +98,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: lines,
             in_code_block: vec![],
+            ..Default::default()
         };
         let ctx = CheckerContext {
             files: vec![file],
@@ -214,6 +215,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: lines,
             in_code_block: vec![],
+            ..Default::default()
         };
         let ctx = CheckerContext {
             files: vec![file],

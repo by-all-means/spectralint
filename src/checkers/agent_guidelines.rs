@@ -302,6 +302,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines,
             in_code_block,
+            ..Default::default()
         }
     }
 

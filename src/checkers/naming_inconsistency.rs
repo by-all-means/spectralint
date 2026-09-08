@@ -287,6 +287,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let file2 = ParsedFile {
@@ -303,6 +304,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -350,6 +352,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let file2 = ParsedFile {
@@ -366,6 +369,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -418,6 +422,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -464,6 +469,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let file2 = ParsedFile {
@@ -480,6 +486,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -529,6 +536,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let file2 = ParsedFile {
@@ -545,6 +553,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -590,6 +599,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let file2 = ParsedFile {
@@ -606,6 +616,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -644,6 +655,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let file2 = ParsedFile {
@@ -660,6 +672,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -703,6 +716,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let file2 = ParsedFile {
@@ -719,6 +733,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -762,6 +777,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let file2 = ParsedFile {
@@ -778,6 +794,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -821,6 +838,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let file2 = ParsedFile {
@@ -837,6 +855,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -880,6 +899,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let file2 = ParsedFile {
@@ -896,6 +916,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -939,6 +960,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let file2 = ParsedFile {
@@ -955,6 +977,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {

@@ -476,6 +476,7 @@ mod tests {
             }],
             raw_lines: vec!["test".to_string()],
             in_code_block: vec![false],
+            ..Default::default()
         };
 
         let diags = validate_suppress_rules(&[file], &known);
@@ -499,6 +500,7 @@ mod tests {
             }],
             raw_lines: vec!["test".to_string()],
             in_code_block: vec![false],
+            ..Default::default()
         };
 
         let diags = validate_suppress_rules(&[file], &known);

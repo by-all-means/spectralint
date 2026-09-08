@@ -220,6 +220,7 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
             suppress_comments: vec![],
             raw_lines,
             in_code_block,
+            ..Default::default()
         });
     }
 
@@ -253,6 +254,7 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
         suppress_comments,
         raw_lines,
         in_code_block,
+        ..Default::default()
     })
 }
 

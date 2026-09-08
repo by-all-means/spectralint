@@ -2,6 +2,7 @@ pub mod checkers;
 pub mod cli;
 pub mod config;
 pub mod engine;
+pub mod file_kind;
 #[cfg(feature = "lsp")]
 pub mod lsp;
 pub mod parser;

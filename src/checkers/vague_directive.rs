@@ -171,6 +171,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -208,6 +209,7 @@ mod tests {
                 "This line is clean.".to_string(),
             ],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -266,6 +268,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let out_of_scope = ParsedFile {
@@ -280,6 +283,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -322,6 +326,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: vec![],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -363,6 +368,7 @@ mod tests {
                 "Consider using caching.".to_string(),
             ],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -401,6 +407,7 @@ mod tests {
                 "Consider using caching.".to_string(),
             ],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -438,6 +445,7 @@ mod tests {
                 "This is probably fine.".to_string(),
             ],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {
@@ -488,6 +496,7 @@ mod tests {
                 "Ideally, cross-reference at least two independent sources.".to_string(),
             ],
             in_code_block: vec![],
+            ..Default::default()
         };
 
         let ctx = CheckerContext {

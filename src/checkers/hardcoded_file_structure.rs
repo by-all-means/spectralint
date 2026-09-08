@@ -416,6 +416,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines,
             in_code_block,
+            ..Default::default()
         };
         let canonical_root = root.canonicalize().ok();
         let filename_index = crate::engine::cross_ref::build_filename_index(root);

@@ -209,6 +209,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: raw_a,
             in_code_block: mask_a,
+            ..Default::default()
         };
         let file_b = ParsedFile {
             path: std::sync::Arc::new(root.join("b.md")),
@@ -219,6 +220,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: raw_b,
             in_code_block: mask_b,
+            ..Default::default()
         };
         let ctx = crate::engine::cross_ref::CheckerContext {
             files: vec![file_a, file_b],

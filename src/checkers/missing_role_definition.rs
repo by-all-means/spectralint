@@ -328,6 +328,7 @@ mod tests {
             suppress_comments: vec![],
             raw_lines: lines.iter().map(|s| s.to_string()).collect(),
             in_code_block: vec![],
+            ..Default::default()
         };
         let ctx = CheckerContext {
             files: vec![file],

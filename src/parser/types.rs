@@ -1,9 +1,21 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-#[derive(Debug, Clone)]
+use crate::file_kind::FileKind;
+
+#[derive(Debug, Clone, Default)]
 pub struct ParsedFile {
     pub path: Arc<PathBuf>,
+    /// What kind of instruction file this is, from its path relative to the
+    /// project root. `Generic` for anything not tool-specific.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "read by kind-aware checkers once the scanner sets it"
+        )
+    )]
+    pub kind: FileKind,
     pub sections: Vec<Section>,
     pub tables: Vec<Table>,
     pub file_refs: Vec<FileRef>,
@@ -13,6 +25,27 @@ pub struct ParsedFile {
     /// Pre-computed code block mask: `true` if line is inside a fenced code block.
     /// Fence markers themselves are marked `true` (excluded from non-code iteration).
     pub in_code_block: Vec<bool>,
+}
+
+impl ParsedFile {
+    /// Build a file from in-memory lines: classifies `path` relative to `root`
+    /// and computes the code-block mask. Structural fields (sections, tables,
+    /// references) stay empty; callers that need them set them afterwards.
+    #[cfg(test)]
+    pub(crate) fn from_lines(
+        path: &std::path::Path,
+        root: &std::path::Path,
+        lines: &[String],
+    ) -> Self {
+        let relative = path.strip_prefix(root).unwrap_or(path);
+        Self {
+            path: Arc::new(path.to_path_buf()),
+            kind: crate::file_kind::classify(relative),
+            in_code_block: crate::parser::build_code_block_mask(lines),
+            raw_lines: lines.to_vec(),
+            ..Self::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
