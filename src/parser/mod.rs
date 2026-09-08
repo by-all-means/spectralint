@@ -172,7 +172,18 @@ const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
 /// Maximum AST traversal depth to prevent stack overflow on crafted inputs.
 const MAX_AST_DEPTH: usize = 128;
 
+/// Parse a file whose kind is not known; `@path` imports are not extracted.
+#[cfg(test)]
 pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
+    parse_file_as(path, crate::file_kind::FileKind::Generic)
+}
+
+/// Parse a file of a known kind. Imports are extracted only when the kind's
+/// tool reads `@path` tokens at load time.
+pub(crate) fn parse_file_as(
+    path: &Path,
+    kind: crate::file_kind::FileKind,
+) -> anyhow::Result<ParsedFile> {
     let meta = std::fs::metadata(path)?;
     if meta.len() > MAX_FILE_SIZE {
         anyhow::bail!(
@@ -199,7 +210,7 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
             raw_lines,
             in_code_block,
             frontmatter,
-            ..Default::default()
+            kind,
         });
     }
 
@@ -218,7 +229,7 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
     extract_sections(root, &mut sections, 0);
     assign_section_end_lines(&mut sections, raw_lines.len());
     extract_tables(root, &mut tables, &sections, 0);
-    extract_file_refs(&raw_lines, path, &mut file_refs);
+    extract_file_refs(&raw_lines, path, kind.supports_imports(), &mut file_refs);
     extract_directives(&raw_lines, &mut directives);
     extract_suppress_comments(&raw_lines, &mut suppress_comments);
 
@@ -234,7 +245,7 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
         raw_lines,
         in_code_block,
         frontmatter,
-        ..Default::default()
+        kind,
     })
 }
 
@@ -339,11 +350,35 @@ fn collect_text<'a>(node: &'a comrak::nodes::AstNode<'a>, depth: usize) -> Strin
     buf
 }
 
+/// Extensions a file import plausibly points at without a directory component.
+fn has_document_extension(path: &str) -> bool {
+    path.rsplit_once('.').is_some_and(|(_, ext)| {
+        matches!(
+            ext.to_ascii_lowercase().as_str(),
+            "md" | "mdc"
+                | "markdown"
+                | "txt"
+                | "json"
+                | "yaml"
+                | "yml"
+                | "toml"
+                | "xml"
+                | "csv"
+                | "rst"
+        )
+    })
+}
+
 fn is_url(path: &str) -> bool {
     path.starts_with("http://") || path.starts_with("https://")
 }
 
-fn extract_file_refs(lines: &[String], source_path: &Path, refs: &mut Vec<FileRef>) {
+fn extract_file_refs(
+    lines: &[String],
+    source_path: &Path,
+    with_imports: bool,
+    refs: &mut Vec<FileRef>,
+) {
     let push_unique =
         |refs: &mut Vec<FileRef>, path: String, line_num: usize, ref_kind: types::RefKind| {
             if !refs.iter().any(|r| r.path == path && r.line == line_num) {
@@ -381,15 +416,21 @@ fn extract_file_refs(lines: &[String], source_path: &Path, refs: &mut Vec<FileRe
             }
         }
 
+        if !with_imports {
+            continue;
+        }
         for cap in IMPORT_REF.captures_iter(line) {
             let m = cap.get(1).expect("group 1 always participates");
             if crate::checkers::utils::inside_inline_code(line, m.start() - 1) {
                 continue;
             }
             let path = m.as_str().trim_end_matches(['.', ',', ';', ':']);
-            // `@Override` or `@handle` is a lone word, not an import; a path or a
-            // dotted file name is.
-            if path.is_empty() || !(path.contains('/') || path.contains('.')) || is_url(path) {
+            // `@Override`, `@handle`, `@pytest.mark.x`, `@v1.2.3` are prose; a path or a
+            // file with a document/config extension is an import.
+            if path.is_empty()
+                || is_url(path)
+                || !(path.contains('/') || has_document_extension(path))
+            {
                 continue;
             }
             push_unique(refs, path.to_string(), line_num, types::RefKind::Import);
@@ -973,13 +1014,14 @@ mod tests {
 mod import_tests {
     use super::types::RefKind;
     use super::*;
+    use crate::file_kind::FileKind;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
     fn imports(content: &str) -> Vec<String> {
         let mut f = NamedTempFile::new().unwrap();
         write!(f, "{content}").unwrap();
-        parse_file(f.path())
+        parse_file_as(f.path(), FileKind::ClaudeMd)
             .unwrap()
             .file_refs
             .into_iter()
@@ -1013,7 +1055,9 @@ mod import_tests {
     fn mentions_keep_their_kind() {
         let mut f = NamedTempFile::new().unwrap();
         write!(f, "See `docs/a.md` and @docs/b.md").unwrap();
-        let refs = parse_file(f.path()).unwrap().file_refs;
+        let refs = parse_file_as(f.path(), FileKind::ClaudeMd)
+            .unwrap()
+            .file_refs;
         assert_eq!(refs.len(), 2);
         assert_eq!(refs[0].ref_kind, RefKind::Mention);
         assert_eq!(refs[1].ref_kind, RefKind::Import);
@@ -1041,5 +1085,45 @@ mod mdc_link_tests {
             .map(|r| r.path)
             .collect();
         assert_eq!(paths, vec!["docs/guide.md", "docs/plain.md"]);
+    }
+}
+
+#[cfg(test)]
+mod import_scope_tests {
+    use super::types::RefKind;
+    use super::*;
+    use crate::file_kind::FileKind;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn imports_are_extracted_only_for_kinds_that_read_them() {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, "Install @docs/a.md first.").unwrap();
+        let count = |kind| {
+            parse_file_as(f.path(), kind)
+                .unwrap()
+                .file_refs
+                .iter()
+                .filter(|r| r.ref_kind == RefKind::Import)
+                .count()
+        };
+        assert_eq!(count(FileKind::ClaudeMd), 1);
+        assert_eq!(count(FileKind::ClaudeSubagent), 0);
+        assert_eq!(count(FileKind::Generic), 0);
+    }
+
+    #[test]
+    fn dotted_prose_tokens_are_not_imports() {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, "Use @pytest.mark.parametrize, ping @john.doe, pin @v1.2.3, target @18.x, read @package.json and @notes.txt").unwrap();
+        let paths: Vec<String> = parse_file_as(f.path(), FileKind::ClaudeMd)
+            .unwrap()
+            .file_refs
+            .into_iter()
+            .filter(|r| r.ref_kind == RefKind::Import)
+            .map(|r| r.path)
+            .collect();
+        assert_eq!(paths, vec!["package.json", "notes.txt"]);
     }
 }

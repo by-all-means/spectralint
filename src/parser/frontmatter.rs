@@ -40,7 +40,7 @@ pub(crate) struct Frontmatter {
 /// end of the line so `description:Use` (a plain scalar) is not a key.
 static KEY_LINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^([A-Za-z0-9_.-]+):(?:\s+(.*))?\s*$").unwrap());
-static LIST_ITEM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s+-\s*(.*?)\s*$").unwrap());
+static LIST_ITEM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*-\s+(.*?)\s*$").unwrap());
 
 /// Whether a line is a top-level `key:` line, as the frontmatter parser reads it.
 pub(crate) fn is_key_line(line: &str) -> bool {
@@ -166,6 +166,12 @@ fn lenient(body: &[String]) -> Vec<(String, FmValue)> {
 
 fn scalar(text: &str) -> FmValue {
     let text = text.trim();
+    // ` #` starts a comment in a plain scalar, as in YAML proper.
+    let text = if text.starts_with(['"', '\'']) {
+        text
+    } else {
+        text.split(" #").next().unwrap_or(text).trim_end()
+    };
     let unquoted = text
         .strip_prefix('"')
         .and_then(|t| t.strip_suffix('"'))
@@ -404,5 +410,26 @@ mod tests {
         let f = parse(&lines).unwrap();
         assert_eq!(f.get_str("name"), Some("x"));
         assert_eq!(f.close, 2);
+    }
+}
+
+#[cfg(test)]
+mod lenient_tests {
+    use super::*;
+
+    fn fm(text: &str) -> Frontmatter {
+        let lines: Vec<String> = text.lines().map(String::from).collect();
+        parse(&lines).unwrap()
+    }
+
+    #[test]
+    fn lenient_parse_handles_comments_and_column_zero_lists() {
+        let f = fm("---\nglobs: *.ts # all TS\nalwaysApply: false # default\n---");
+        assert!(f.parse_error.is_some());
+        assert_eq!(f.get_str_list("globs").unwrap(), vec!["*.ts"]);
+        assert_eq!(f.get_bool("alwaysApply"), Some(false));
+        let f = fm("---\nglobs:\n- *.tsx\n- *.ts\ndescription: x\n---");
+        assert!(f.parse_error.is_some());
+        assert_eq!(f.get_str_list("globs").unwrap(), vec!["*.tsx", "*.ts"]);
     }
 }

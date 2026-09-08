@@ -776,6 +776,9 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              Files without a known schema (CLAUDE.md, AGENTS.md, plain markdown) are\n\
              not checked.\n\
              \n\
+             To silence a finding inside the block, put the spectralint-disable comment on\n\
+             the first line after the closing `---`; it covers the block.\n\
+             \n\
              Severity: warning (info for portability notes, error for unreadable YAML)\n\
              Config: [checkers.frontmatter_schema]",
         ),

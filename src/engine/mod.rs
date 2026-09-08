@@ -96,11 +96,8 @@ pub fn run(
     let parsed: Vec<_> = scan_result
         .files
         .par_iter()
-        .filter_map(|f| match crate::parser::parse_file(&f.path) {
-            Ok(mut parsed) => {
-                parsed.kind = f.kind;
-                Some(parsed)
-            }
+        .filter_map(|f| match crate::parser::parse_file_as(&f.path, f.kind) {
+            Ok(parsed) => Some(parsed),
             Err(e) => {
                 tracing::warn!("Failed to parse {}: {e}", f.path.display());
                 None

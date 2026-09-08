@@ -20,6 +20,10 @@ All notable changes to spectralint will be documented in this file.
 - **hardcoded-file-structure** — skips skills, which are portable and describe whichever project they run in
 - **broken-table** — an escaped pipe (`\|`) inside a cell no longer counts as a column separator
 - The benchmark runner always passes `--no-cache`
+- **Inline suppression** — a `spectralint-disable` or `disable-next-line` comment on the first line after a frontmatter block covers the block
+- Tool directories are discovered at any depth (`**/.cursor/rules/**`), `SKILL.md` anywhere is scanned, and assets in rule directories (images, JSON) are not
+- `@path` imports need a slash or a document extension; `@pytest.mark.x`, `@v1.2.3`, and handles are prose. Imports are extracted only for files whose tool reads them, and a missing import is reported regardless of surrounding prose
+- **missing-standard-file** — Cursor-only or Copilot-only projects are not asked for a CLAUDE.md
 - "No markdown files found" is now "No instruction files found"
 
 ## 0.6.0 (2026-09-08)

@@ -207,13 +207,24 @@ impl Checker for FrontmatterSchemaChecker {
 
             match file.kind {
                 FileKind::ClaudeSubagent => {
+                    // Without frontmatter there is nothing to validate unless the file
+                    // sits directly in `agents/` and is not a README; fragments in
+                    // subdirectories and READMEs are documentation on purpose.
                     let nested_fragment = file.frontmatter.is_none()
                         && file
                             .path
                             .parent()
                             .and_then(Path::file_name)
                             .is_some_and(|d| d != "agents");
-                    if !nested_fragment {
+                    let readme = file.frontmatter.is_none()
+                        && file
+                            .path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .is_some_and(|s| {
+                                s.eq_ignore_ascii_case("readme") || s.eq_ignore_ascii_case("index")
+                            });
+                    if !nested_fragment && !readme {
                         check_subagent(&mut result, path, fm);
                     }
                 }
@@ -902,6 +913,14 @@ mod fragment_tests {
 
     #[test]
     fn nested_fragment_without_frontmatter_is_not_an_agent() {
+        let (_dir, ctx) = file_ctx_at(
+            ".claude/agents/README.md",
+            &["# Agents", "This folder holds subagents."],
+        );
+        assert!(FrontmatterSchemaChecker::new(&[])
+            .check(&ctx)
+            .diagnostics
+            .is_empty());
         let (_dir, ctx) = file_ctx_at(
             ".claude/agents/roles/planner.md",
             &["# Planner", "You plan."],

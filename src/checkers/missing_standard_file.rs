@@ -55,7 +55,22 @@ impl Checker for MissingStandardFileChecker {
     fn check(&self, ctx: &CheckerContext) -> CheckResult {
         let mut result = CheckResult::default();
 
-        if ctx.files.is_empty() {
+        // Cursor-only or Copilot-only projects never intended a CLAUDE.md.
+        let claude_family = ctx.files.iter().any(|f| {
+            use crate::file_kind::FileKind::*;
+            matches!(
+                f.kind,
+                Generic
+                    | ClaudeMd
+                    | AgentsMd
+                    | GeminiMd
+                    | ClaudeRule
+                    | ClaudeSubagent
+                    | ClaudeCommand
+                    | Skill
+            )
+        });
+        if !claude_family {
             return result;
         }
 
@@ -260,5 +275,24 @@ mod tests {
         };
         let result = MissingStandardFileChecker.check(&ctx);
         assert!(result.diagnostics.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod kind_tests {
+    use super::*;
+    use crate::checkers::utils::test_helpers::file_ctx_at;
+
+    #[test]
+    fn cursor_only_projects_are_not_nagged_for_claude_md() {
+        let (dir, ctx) = file_ctx_at(
+            ".cursor/rules/style.mdc",
+            &["---", "alwaysApply: true", "---", "Be terse."],
+        );
+        std::fs::write(dir.path().join("package.json"), "{}").unwrap();
+        assert!(MissingStandardFileChecker::new(&[])
+            .check(&ctx)
+            .diagnostics
+            .is_empty());
     }
 }

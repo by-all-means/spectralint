@@ -530,23 +530,24 @@ pub const DEFAULT_INCLUDE: &[&str] = &[
     "AGENTS.md",
     "AGENT.md",
     "GEMINI.md",
-    ".claude/**",
-    ".github/copilot-instructions.md",
-    ".github/instructions/**",
-    ".github/agents/**",
-    ".github/prompts/**",
-    ".github/skills/**",
-    ".agents/skills/**",
-    ".cursor/rules/**",
+    "SKILL.md",
+    "**/.claude/**",
+    "**/.github/copilot-instructions.md",
+    "**/.github/instructions/**",
+    "**/.github/agents/**",
+    "**/.github/prompts/**",
+    "**/.github/skills/**",
+    "**/.agents/skills/**",
+    "**/.cursor/rules/**",
     ".cursorrules",
     ".clinerules",
-    ".clinerules/**",
+    "**/.clinerules/**",
     ".windsurfrules",
-    ".windsurf/rules/**",
-    ".devin/rules/**",
-    ".kiro/steering/**",
-    ".roo/**",
-    ".junie/**",
+    "**/.windsurf/rules/**",
+    "**/.devin/rules/**",
+    "**/.kiro/steering/**",
+    "**/.roo/**",
+    "**/.junie/**",
 ];
 
 impl Default for Config {
@@ -701,14 +702,14 @@ impl Config {
 # Default: the instruction-file locations of every supported tool.
 # Set to ["**/*.md"] to scan all markdown files instead.
 include = [
-  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "AGENT.md", "GEMINI.md",
-  ".claude/**",
-  ".github/copilot-instructions.md", ".github/instructions/**", ".github/agents/**", ".github/prompts/**", ".github/skills/**",
-  ".agents/skills/**",
-  ".cursor/rules/**", ".cursorrules",
-  ".clinerules", ".clinerules/**",
-  ".windsurfrules", ".windsurf/rules/**", ".devin/rules/**",
-  ".kiro/steering/**", ".roo/**", ".junie/**",
+  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "AGENT.md", "GEMINI.md", "SKILL.md",
+  "**/.claude/**",
+  "**/.github/copilot-instructions.md", "**/.github/instructions/**", "**/.github/agents/**", "**/.github/prompts/**", "**/.github/skills/**",
+  "**/.agents/skills/**",
+  "**/.cursor/rules/**", ".cursorrules",
+  ".clinerules", "**/.clinerules/**",
+  ".windsurfrules", "**/.windsurf/rules/**", "**/.devin/rules/**",
+  "**/.kiro/steering/**", "**/.roo/**", "**/.junie/**",
 ]
 
 # Directories to ignore when scanning
@@ -962,14 +963,14 @@ max_tokens = 8000
 # Only the most critical checkers are enabled.
 
 include = [
-  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "AGENT.md", "GEMINI.md",
-  ".claude/**",
-  ".github/copilot-instructions.md", ".github/instructions/**", ".github/agents/**", ".github/prompts/**", ".github/skills/**",
-  ".agents/skills/**",
-  ".cursor/rules/**", ".cursorrules",
-  ".clinerules", ".clinerules/**",
-  ".windsurfrules", ".windsurf/rules/**", ".devin/rules/**",
-  ".kiro/steering/**", ".roo/**", ".junie/**",
+  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "AGENT.md", "GEMINI.md", "SKILL.md",
+  "**/.claude/**",
+  "**/.github/copilot-instructions.md", "**/.github/instructions/**", "**/.github/agents/**", "**/.github/prompts/**", "**/.github/skills/**",
+  "**/.agents/skills/**",
+  "**/.cursor/rules/**", ".cursorrules",
+  ".clinerules", "**/.clinerules/**",
+  ".windsurfrules", "**/.windsurf/rules/**", "**/.devin/rules/**",
+  "**/.kiro/steering/**", "**/.roo/**", "**/.junie/**",
 ]
 ignore = ["node_modules", ".git", "target"]
 
@@ -986,14 +987,14 @@ enabled = true
 # All checkers enabled, including opinionated ones.
 
 include = [
-  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "AGENT.md", "GEMINI.md",
-  ".claude/**",
-  ".github/copilot-instructions.md", ".github/instructions/**", ".github/agents/**", ".github/prompts/**", ".github/skills/**",
-  ".agents/skills/**",
-  ".cursor/rules/**", ".cursorrules",
-  ".clinerules", ".clinerules/**",
-  ".windsurfrules", ".windsurf/rules/**", ".devin/rules/**",
-  ".kiro/steering/**", ".roo/**", ".junie/**",
+  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "AGENT.md", "GEMINI.md", "SKILL.md",
+  "**/.claude/**",
+  "**/.github/copilot-instructions.md", "**/.github/instructions/**", "**/.github/agents/**", "**/.github/prompts/**", "**/.github/skills/**",
+  "**/.agents/skills/**",
+  "**/.cursor/rules/**", ".cursorrules",
+  ".clinerules", "**/.clinerules/**",
+  ".windsurfrules", "**/.windsurf/rules/**", "**/.devin/rules/**",
+  "**/.kiro/steering/**", "**/.roo/**", "**/.junie/**",
 ]
 ignore = ["node_modules", ".git", "target"]
 strict = true

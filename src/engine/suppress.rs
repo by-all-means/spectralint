@@ -23,41 +23,70 @@ pub(super) fn build_suppression_set(
     files
         .iter()
         .filter_map(|file| {
-            let ranges = build_ranges(&file.suppress_comments, file.raw_lines.len());
+            let ranges = build_ranges_with_frontmatter(
+                &file.suppress_comments,
+                file.raw_lines.len(),
+                file.frontmatter.as_ref().map(|f| f.close + 2),
+            );
             (!ranges.is_empty()).then(|| (file.path.clone(), ranges))
         })
         .collect()
 }
 
+#[cfg(test)]
 fn build_ranges(comments: &[InlineSuppress], total_lines: usize) -> Vec<SuppressedRange> {
+    build_ranges_with_frontmatter(comments, total_lines, None)
+}
+
+/// `first_body_line` is the 1-based line right after a frontmatter block. A
+/// comment cannot sit inside the block without breaking the tool's own
+/// parser, so `disable` on that line also covers the block, and
+/// `disable-next-line` there covers the block instead of the following line.
+fn build_ranges_with_frontmatter(
+    comments: &[InlineSuppress],
+    total_lines: usize,
+    first_body_line: Option<usize>,
+) -> Vec<SuppressedRange> {
     let mut ranges = Vec::new();
-    let mut open_blocks = Vec::new();
+    // (rule, start_line, comment_line)
+    let mut open_blocks: Vec<(Option<String>, usize, usize)> = Vec::new();
+    let covers_frontmatter = |line: usize| first_body_line == Some(line);
 
     for comment in comments {
         match &comment.kind {
             SuppressKind::Disable => {
-                open_blocks.push((comment.rule.clone(), comment.line));
+                let start = if covers_frontmatter(comment.line) {
+                    1
+                } else {
+                    comment.line
+                };
+                open_blocks.push((comment.rule.clone(), start, comment.line));
             }
             SuppressKind::Enable => {
                 if let Some(pos) = open_blocks
                     .iter()
-                    .rposition(|(rule, _)| *rule == comment.rule)
+                    .rposition(|(rule, _, _)| *rule == comment.rule)
                 {
-                    let (rule, start) = open_blocks.remove(pos);
+                    let (rule, start, comment_line) = open_blocks.remove(pos);
                     ranges.push(SuppressedRange {
                         rule,
                         start_line: start,
                         end_line: comment.line,
                         used: Cell::new(false),
-                        comment_line: start,
+                        comment_line,
                     });
                 }
             }
             SuppressKind::DisableNextLine => {
+                let (start_line, end_line) = if covers_frontmatter(comment.line) {
+                    (1, comment.line - 1)
+                } else {
+                    (comment.line + 1, comment.line + 1)
+                };
                 ranges.push(SuppressedRange {
                     rule: comment.rule.clone(),
-                    start_line: comment.line + 1,
-                    end_line: comment.line + 1,
+                    start_line,
+                    end_line,
                     used: Cell::new(false),
                     comment_line: comment.line,
                 });
@@ -65,13 +94,13 @@ fn build_ranges(comments: &[InlineSuppress], total_lines: usize) -> Vec<Suppress
         }
     }
 
-    for (rule, start) in open_blocks {
+    for (rule, start, comment_line) in open_blocks {
         ranges.push(SuppressedRange {
             rule,
             start_line: start,
             end_line: total_lines,
             used: Cell::new(false),
-            comment_line: start,
+            comment_line,
         });
     }
 
@@ -607,5 +636,36 @@ mod tests {
             !is_suppressed(&map, &key, 11, &custom_category),
             "custom:my-rule should not be suppressed outside the block"
         );
+    }
+}
+
+#[cfg(test)]
+mod frontmatter_tests {
+    use super::*;
+    use crate::parser::types::{InlineSuppress, SuppressKind};
+
+    #[test]
+    fn comment_on_first_body_line_covers_the_block() {
+        // Frontmatter occupies lines 1-3; line 4 is the first body line.
+        let next = vec![InlineSuppress {
+            line: 4,
+            kind: SuppressKind::DisableNextLine,
+            rule: Some("frontmatter-schema".to_string()),
+        }];
+        let ranges = build_ranges_with_frontmatter(&next, 20, Some(4));
+        assert_eq!((ranges[0].start_line, ranges[0].end_line), (1, 3));
+        assert_eq!(ranges[0].comment_line, 4);
+
+        let block = vec![InlineSuppress {
+            line: 4,
+            kind: SuppressKind::Disable,
+            rule: None,
+        }];
+        let ranges = build_ranges_with_frontmatter(&block, 20, Some(4));
+        assert_eq!((ranges[0].start_line, ranges[0].end_line), (1, 20));
+
+        // Elsewhere the comment keeps its normal meaning.
+        let ranges = build_ranges_with_frontmatter(&next, 20, Some(9));
+        assert_eq!((ranges[0].start_line, ranges[0].end_line), (5, 5));
     }
 }

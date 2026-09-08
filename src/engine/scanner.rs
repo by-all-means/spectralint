@@ -82,6 +82,18 @@ fn is_markdown_extension(path: &Path) -> bool {
         .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "md" | "mdc" | "markdown"))
 }
 
+/// No extension (`.cursorrules`) or a plain-text one; anything else in a rules
+/// directory is an asset.
+fn is_text_like(path: &Path) -> bool {
+    match path.extension().and_then(|e| e.to_str()) {
+        None => true,
+        Some(e) => matches!(
+            e.to_ascii_lowercase().as_str(),
+            "md" | "mdc" | "markdown" | "txt"
+        ),
+    }
+}
+
 #[must_use]
 pub(crate) fn matches_glob(path: &Path, root: &Path, set: &GlobSet) -> bool {
     path.file_name()
@@ -150,7 +162,8 @@ fn walk_dir(
             // Markdown-like extensions and known instruction formats (`.mdc`,
             // `.cursorrules`) are candidates; `include` still decides.
             let kind = rel.map_or(FileKind::Generic, file_kind::classify);
-            if (is_markdown_extension(&path) || kind != FileKind::Generic)
+            // Rule directories hold assets too; only text files can be instructions.
+            if (is_markdown_extension(&path) || (kind != FileKind::Generic && is_text_like(&path)))
                 && matches_glob(&path, &cfg.root, &cfg.include)
             {
                 files.push(ScannedFile { path, kind });
@@ -700,5 +713,34 @@ mod kind_tests {
             .map(|f| f.file_name().unwrap().to_string_lossy().into_owned())
             .collect();
         assert_eq!(names, vec!["README.MD", "guide.markdown"]);
+    }
+}
+
+#[cfg(test)]
+mod asset_tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn assets_in_rule_directories_are_not_scanned() {
+        let dir = tempfile::tempdir().unwrap();
+        for rel in [
+            ".clinerules/notes.txt",
+            ".clinerules/style.md",
+            ".roo/rules/logo.png",
+            ".devin/rules/data.json",
+            ".windsurf/rules/a.md",
+        ] {
+            let p = dir.path().join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, "x").unwrap();
+        }
+        let mut names: Vec<String> = scan(dir.path(), &Config::default())
+            .files
+            .iter()
+            .map(|f| f.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["a.md", "notes.txt", "style.md"]);
     }
 }

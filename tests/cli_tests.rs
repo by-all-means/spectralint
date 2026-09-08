@@ -4210,3 +4210,32 @@ fn custom_include_does_not_scan_new_kinds() {
     ]);
     assert!(json["diagnostics"].as_array().unwrap().is_empty());
 }
+
+#[test]
+fn suppression_comment_after_frontmatter_covers_the_block() {
+    let dir = tempfile::tempdir().unwrap();
+    let skill = dir.path().join(".claude/skills/deploy");
+    fs::create_dir_all(&skill).unwrap();
+    fs::write(
+        skill.join("SKILL.md"),
+        "---\nname: deployer\ndescription: Deploys\n---\n<!-- spectralint-disable-next-line frontmatter-schema -->\n# Deploy\n",
+    )
+    .unwrap();
+    let json = json_output(&[
+        "check",
+        dir.path().to_str().unwrap(),
+        "--no-cache",
+        "--format",
+        "json",
+    ]);
+    let categories: Vec<&str> = json["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["category"].as_str().unwrap())
+        .collect();
+    assert!(
+        !categories.contains(&"frontmatter-schema") && !categories.contains(&"unused-suppression"),
+        "{categories:?}"
+    );
+}
