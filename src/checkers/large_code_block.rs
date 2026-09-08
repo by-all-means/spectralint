@@ -48,7 +48,7 @@ impl Checker for LargeCodeBlockChecker {
             }
 
             // Reference and agent files intentionally contain large code examples
-            if is_large_block_expected(&file.path) {
+            if is_large_block_expected(&file.path) || file.kind.is_component() {
                 continue;
             }
 
@@ -251,5 +251,25 @@ mod tests {
         assert!(!is_large_block_expected(Path::new(
             ".claude/skills/my-skill/SKILL.md"
         )));
+    }
+}
+
+#[cfg(test)]
+mod kind_tests {
+    use super::*;
+    use crate::checkers::utils::test_helpers::file_ctx_at;
+    use crate::config::LargeCodeBlockConfig;
+
+    #[test]
+    fn component_kinds_may_hold_large_blocks() {
+        let body: Vec<String> = (0..60).map(|i| format!("const a{i} = {i};")).collect();
+        let mut lines = vec!["---", "description: x", "alwaysApply: true", "---", "```ts"];
+        lines.extend(body.iter().map(String::as_str));
+        lines.push("```");
+        let checker = LargeCodeBlockChecker::new(&LargeCodeBlockConfig::default());
+        let (_dir, ctx) = file_ctx_at(".cursor/rules/style.mdc", &lines);
+        assert!(checker.check(&ctx).diagnostics.is_empty());
+        let (_dir, ctx) = file_ctx_at("docs/guide.md", &lines);
+        assert_eq!(checker.check(&ctx).diagnostics.len(), 1);
     }
 }

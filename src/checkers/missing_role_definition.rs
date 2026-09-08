@@ -105,7 +105,7 @@ impl Checker for MissingRoleDefinitionChecker {
                 .strip_prefix(&ctx.project_root)
                 .unwrap_or(&file.path);
             let rel_str = rel_path.to_string_lossy();
-            if SKIP_PATH_SEGMENTS.is_match(&rel_str) {
+            if SKIP_PATH_SEGMENTS.is_match(&rel_str) || file.kind.is_component() {
                 continue;
             }
 
@@ -627,6 +627,37 @@ mod tests {
         assert!(
             result.diagnostics.is_empty(),
             "Reference files without imperative instructions should be skipped"
+        );
+    }
+}
+
+#[cfg(test)]
+mod kind_tests {
+    use super::*;
+    use crate::checkers::utils::test_helpers::file_ctx_at;
+
+    fn directives() -> Vec<String> {
+        (0..30)
+            .map(|i| format!("Always check item {i} before merging."))
+            .collect()
+    }
+
+    #[test]
+    fn component_kinds_need_no_role_definition() {
+        let owned = directives();
+        let lines: Vec<&str> = owned.iter().map(String::as_str).collect();
+        let (_dir, ctx) = file_ctx_at(".junie/AGENTS.md", &lines);
+        assert!(MissingRoleDefinitionChecker::new(&[])
+            .check(&ctx)
+            .diagnostics
+            .is_empty());
+        let (_dir, ctx) = file_ctx_at("AGENTS.md", &lines);
+        assert!(
+            !MissingRoleDefinitionChecker::new(&[])
+                .check(&ctx)
+                .diagnostics
+                .is_empty(),
+            "same content at the root should be flagged"
         );
     }
 }

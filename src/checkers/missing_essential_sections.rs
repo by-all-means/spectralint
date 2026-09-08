@@ -87,7 +87,7 @@ impl Checker for MissingEssentialSectionsChecker {
 
             // Skip files in specialized subdirectories (commands, agents, skills, etc.)
             // — these serve specific purposes and don't need build/test commands
-            if is_specialized_file(&file.path, &ctx.project_root) {
+            if is_specialized_file(&file.path, &ctx.project_root) || file.kind.is_component() {
                 continue;
             }
 
@@ -425,6 +425,41 @@ mod tests {
         assert!(
             result.diagnostics.is_empty(),
             "Reasoning agent prompts (pure prose, no code/commands/file refs) should be skipped"
+        );
+    }
+}
+
+#[cfg(test)]
+mod kind_tests {
+    use super::*;
+    use crate::checkers::utils::test_helpers::file_ctx_at;
+    use crate::config::MissingEssentialSectionsConfig;
+
+    const RULE_LINES: [&str; 12] = [
+        "---",
+        "paths: src/api/**",
+        "---",
+        "# API rules",
+        "Always validate request bodies before use.",
+        "Never log credentials or tokens.",
+        "Use the shared error type for failures.",
+        "Ensure handlers return typed responses.",
+        "Follow the pagination contract for lists.",
+        "Do not add new dependencies without review.",
+        "Check permissions before every mutation.",
+        "Verify inputs at the boundary.",
+    ];
+
+    #[test]
+    fn component_kinds_need_no_build_commands() {
+        let checker =
+            MissingEssentialSectionsChecker::new(&MissingEssentialSectionsConfig::default());
+        let (_dir, ctx) = file_ctx_at(".claude/rules/api.md", &RULE_LINES);
+        assert!(checker.check(&ctx).diagnostics.is_empty());
+        let (_dir, ctx) = file_ctx_at("CLAUDE.md", &RULE_LINES);
+        assert!(
+            !checker.check(&ctx).diagnostics.is_empty(),
+            "same content in CLAUDE.md should be flagged"
         );
     }
 }
