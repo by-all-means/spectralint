@@ -520,17 +520,39 @@ pub struct CustomPattern {
     pub message: String,
 }
 
+/// Files scanned when the config sets no `include`: the instruction-file
+/// locations of every supported tool. Keep in sync with the TOML templates below.
+pub const DEFAULT_INCLUDE: &[&str] = &[
+    "CLAUDE.md",
+    "CLAUDE.local.md",
+    "AGENTS.md",
+    "AGENT.md",
+    "GEMINI.md",
+    ".claude/**",
+    ".github/copilot-instructions.md",
+    ".github/instructions/**",
+    ".github/agents/**",
+    ".github/prompts/**",
+    ".github/skills/**",
+    ".agents/skills/**",
+    ".cursor/rules/**",
+    ".cursorrules",
+    ".clinerules",
+    ".clinerules/**",
+    ".windsurfrules",
+    ".windsurf/rules/**",
+    ".devin/rules/**",
+    ".kiro/steering/**",
+    ".roo/**",
+    ".junie/**",
+];
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             format: OutputFormat::Text,
             strict: false,
-            include: vec![
-                "CLAUDE.md".into(),
-                "AGENTS.md".into(),
-                ".claude/**".into(),
-                ".github/copilot-instructions.md".into(),
-            ],
+            include: DEFAULT_INCLUDE.iter().map(|s| (*s).to_string()).collect(),
             ignore: vec!["node_modules".into(), ".git".into(), "target".into()],
             ignore_files: Vec::new(),
             historical_files: vec![
@@ -673,9 +695,18 @@ impl Config {
 # format = "text"
 
 # Which files to scan (glob patterns, case-insensitive).
-# Default: known AI instruction file patterns.
-# Set to ["**/*.md"] to scan all markdown files.
-include = ["CLAUDE.md", "AGENTS.md", ".claude/**", ".github/copilot-instructions.md"]
+# Default: the instruction-file locations of every supported tool.
+# Set to ["**/*.md"] to scan all markdown files instead.
+include = [
+  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "AGENT.md", "GEMINI.md",
+  ".claude/**",
+  ".github/copilot-instructions.md", ".github/instructions/**", ".github/agents/**", ".github/prompts/**", ".github/skills/**",
+  ".agents/skills/**",
+  ".cursor/rules/**", ".cursorrules",
+  ".clinerules", ".clinerules/**",
+  ".windsurfrules", ".windsurf/rules/**", ".devin/rules/**",
+  ".kiro/steering/**", ".roo/**", ".junie/**",
+]
 
 # Directories to ignore when scanning
 ignore = ["node_modules", ".git", "target"]
@@ -924,7 +955,16 @@ max_tokens = 8000
         r#"# spectralint configuration — minimal preset
 # Only the most critical checkers are enabled.
 
-include = ["CLAUDE.md", "AGENTS.md", ".claude/**", ".github/copilot-instructions.md"]
+include = [
+  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "AGENT.md", "GEMINI.md",
+  ".claude/**",
+  ".github/copilot-instructions.md", ".github/instructions/**", ".github/agents/**", ".github/prompts/**", ".github/skills/**",
+  ".agents/skills/**",
+  ".cursor/rules/**", ".cursorrules",
+  ".clinerules", ".clinerules/**",
+  ".windsurfrules", ".windsurf/rules/**", ".devin/rules/**",
+  ".kiro/steering/**", ".roo/**", ".junie/**",
+]
 ignore = ["node_modules", ".git", "target"]
 
 [checkers.dead_reference]
@@ -939,7 +979,16 @@ enabled = true
         r#"# spectralint configuration — strict preset
 # All checkers enabled, including opinionated ones.
 
-include = ["CLAUDE.md", "AGENTS.md", ".claude/**", ".github/copilot-instructions.md"]
+include = [
+  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "AGENT.md", "GEMINI.md",
+  ".claude/**",
+  ".github/copilot-instructions.md", ".github/instructions/**", ".github/agents/**", ".github/prompts/**", ".github/skills/**",
+  ".agents/skills/**",
+  ".cursor/rules/**", ".cursorrules",
+  ".clinerules", ".clinerules/**",
+  ".windsurfrules", ".windsurf/rules/**", ".devin/rules/**",
+  ".kiro/steering/**", ".roo/**", ".junie/**",
+]
 ignore = ["node_modules", ".git", "target"]
 strict = true
 "#
@@ -1054,7 +1103,7 @@ mod tests {
         );
         assert!(config.checkers.enum_drift.scope.is_empty());
         assert_eq!(config.ignore.len(), 3);
-        assert_eq!(config.include.len(), 4);
+        assert_eq!(config.include.len(), DEFAULT_INCLUDE.len());
         assert!(config.include.contains(&"CLAUDE.md".to_string()));
         assert!(config.include.contains(&"AGENTS.md".to_string()));
     }
@@ -1188,7 +1237,7 @@ enabled = true
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.include, Config::default().include);
-        assert_eq!(config.include.len(), 4);
+        assert_eq!(config.include.len(), DEFAULT_INCLUDE.len());
     }
 
     #[test]

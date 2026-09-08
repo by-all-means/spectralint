@@ -9,13 +9,6 @@ pub struct ParsedFile {
     pub path: Arc<PathBuf>,
     /// What kind of instruction file this is, from its path relative to the
     /// project root. `Generic` for anything not tool-specific.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "read by kind-aware checkers once the scanner sets it"
-        )
-    )]
     pub kind: FileKind,
     pub sections: Vec<Section>,
     pub tables: Vec<Table>,

@@ -11,7 +11,7 @@ use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use std::path::Path;
 use std::sync::LazyLock;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub enum FileKind {
     /// Any markdown file not recognised as a tool-specific format.
     #[default]

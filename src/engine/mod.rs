@@ -18,9 +18,13 @@ use crate::config::Config;
 use crate::types::CheckResult;
 use cross_ref::CheckerContext;
 
-/// Return the list of markdown files that would be scanned for the given project root and config.
+/// Return the list of instruction files that would be scanned for the given project root and config.
 pub fn scanned_files(project_root: &Path, config: &Config) -> Vec<std::path::PathBuf> {
-    scanner::scan(project_root, config).files
+    scanner::scan(project_root, config)
+        .files
+        .into_iter()
+        .map(|f| f.path)
+        .collect()
 }
 
 /// Sort diagnostics into the canonical output order.
@@ -69,12 +73,13 @@ pub fn run(
 ) -> Result<CheckResult> {
     let scan_result = scanner::scan(project_root, config);
     if scan_result.files.is_empty() {
-        anyhow::bail!("No markdown files found in {}", project_root.display());
+        anyhow::bail!("No instruction files found in {}", project_root.display());
     }
 
     // Compute cache keys and try to load from cache
     let (files_hash, config_hash) = if use_cache {
-        let mut hashed = scan_result.files.clone();
+        let mut hashed: Vec<std::path::PathBuf> =
+            scan_result.files.iter().map(|f| f.path.clone()).collect();
         hashed.extend(scan_result.settings_files.iter().cloned());
         hashed.sort();
         let fh = cache::compute_files_hash(&hashed);
@@ -91,10 +96,13 @@ pub fn run(
     let parsed: Vec<_> = scan_result
         .files
         .par_iter()
-        .filter_map(|p| match crate::parser::parse_file(p) {
-            Ok(f) => Some(f),
+        .filter_map(|f| match crate::parser::parse_file(&f.path) {
+            Ok(mut parsed) => {
+                parsed.kind = f.kind;
+                Some(parsed)
+            }
             Err(e) => {
-                tracing::warn!("Failed to parse {}: {e}", p.display());
+                tracing::warn!("Failed to parse {}: {e}", f.path.display());
                 None
             }
         })
@@ -103,7 +111,7 @@ pub fn run(
     let parse_failures = total_files - parsed.len();
     if parsed.is_empty() {
         anyhow::bail!(
-            "All {} markdown file(s) failed to parse in {}",
+            "All {} instruction file(s) failed to parse in {}",
             total_files,
             project_root.display()
         );
@@ -567,7 +575,7 @@ mod tests {
         );
         let err_msg = result.unwrap_err().to_string();
         assert!(
-            err_msg.contains("No markdown files found"),
+            err_msg.contains("No instruction files found"),
             "Error should mention no markdown files found, got: {err_msg}"
         );
     }

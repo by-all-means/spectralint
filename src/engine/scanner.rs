@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use super::cross_ref::build_glob_set;
 use crate::checkers::utils::SKIP_DIRS;
 use crate::config::Config;
+use crate::file_kind::{self, FileKind};
 
 const MAX_WALK_DEPTH: usize = 256;
 
@@ -12,9 +13,24 @@ const MAX_WALK_DEPTH: usize = 256;
 pub(crate) const SETTINGS_FILES: [&str; 2] =
     [".claude/settings.json", ".claude/settings.local.json"];
 
-/// Result of scanning a project tree: matched `.md` files plus a filename index.
+/// A file accepted by the scanner, tagged with the kind its path classifies as.
+/// Derefs to `Path` so callers that only need the path keep working.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct ScannedFile {
+    pub path: PathBuf,
+    pub kind: FileKind,
+}
+
+impl std::ops::Deref for ScannedFile {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.path
+    }
+}
+
+/// Result of scanning a project tree: accepted instruction files plus a filename index.
 pub(crate) struct ScanResult {
-    pub files: Vec<PathBuf>,
+    pub files: Vec<ScannedFile>,
     /// Well-known non-markdown config files some checkers read (ignore globs applied).
     pub settings_files: Vec<PathBuf>,
     pub filename_index: HashSet<String>,
@@ -60,6 +76,12 @@ pub(crate) fn scan(root: &Path, config: &Config) -> ScanResult {
     }
 }
 
+fn is_markdown_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "md" | "mdc" | "markdown"))
+}
+
 #[must_use]
 pub(crate) fn matches_glob(path: &Path, root: &Path, set: &GlobSet) -> bool {
     path.file_name()
@@ -71,7 +93,7 @@ pub(crate) fn matches_glob(path: &Path, root: &Path, set: &GlobSet) -> bool {
 fn walk_dir(
     dir: &Path,
     cfg: &WalkConfig,
-    files: &mut Vec<PathBuf>,
+    files: &mut Vec<ScannedFile>,
     settings_files: &mut Vec<PathBuf>,
     filename_index: &mut HashSet<String>,
     depth: usize,
@@ -123,10 +145,15 @@ fn walk_dir(
             let rel = path.strip_prefix(&cfg.root).ok();
             if rel.is_some_and(|rel| SETTINGS_FILES.iter().any(|s| rel == Path::new(s))) {
                 settings_files.push(path);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("md")
+                continue;
+            }
+            // Markdown-like extensions and known instruction formats (`.mdc`,
+            // `.cursorrules`) are candidates; `include` still decides.
+            let kind = rel.map_or(FileKind::Generic, file_kind::classify);
+            if (is_markdown_extension(&path) || kind != FileKind::Generic)
                 && matches_glob(&path, &cfg.root, &cfg.include)
             {
-                files.push(path);
+                files.push(ScannedFile { path, kind });
             }
         }
     }
@@ -568,5 +595,110 @@ mod tests {
         assert_eq!(result.files.len(), 1);
         assert!(result.filename_index.contains("changelog.md"));
         assert!(result.filename_index.contains("readme.md"));
+    }
+}
+
+#[cfg(test)]
+mod kind_tests {
+    use super::*;
+    use std::fs;
+
+    fn write(dir: &Path, rel: &str, content: &str) {
+        let p = dir.join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, content).unwrap();
+    }
+
+    fn rel_kinds(dir: &Path, config: &Config) -> Vec<(String, FileKind)> {
+        scan(dir, config)
+            .files
+            .iter()
+            .map(|f| {
+                let rel = f
+                    .strip_prefix(dir)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                (rel, f.kind)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn default_config_discovers_typed_files() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "CLAUDE.md", "# Root");
+        write(
+            dir.path(),
+            ".claude/agents/reviewer.md",
+            "---\nname: r\n---",
+        );
+        write(
+            dir.path(),
+            ".cursor/rules/style.mdc",
+            "---\nglobs: *.ts\n---",
+        );
+        write(dir.path(), ".cursorrules", "Be terse.");
+        write(
+            dir.path(),
+            ".github/instructions/api.instructions.md",
+            "---\napplyTo: '**'\n---",
+        );
+        write(dir.path(), ".claude/settings.json", "{}");
+        write(dir.path(), ".mcp.json", "{}");
+        write(dir.path(), "docs/guide.md", "# not included by default");
+
+        let result = scan(dir.path(), &Config::default());
+        assert_eq!(
+            rel_kinds(dir.path(), &Config::default()),
+            vec![
+                (
+                    ".claude/agents/reviewer.md".to_string(),
+                    FileKind::ClaudeSubagent
+                ),
+                (".cursor/rules/style.mdc".to_string(), FileKind::CursorRule),
+                (".cursorrules".to_string(), FileKind::Cursorrules),
+                (
+                    ".github/instructions/api.instructions.md".to_string(),
+                    FileKind::CopilotInstruction
+                ),
+                ("CLAUDE.md".to_string(), FileKind::ClaudeMd),
+            ]
+        );
+        assert_eq!(result.settings_files.len(), 1);
+    }
+
+    #[test]
+    fn custom_include_does_not_widen_to_new_kinds() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "README.md", "# Readme");
+        write(dir.path(), ".cursor/rules/style.mdc", "x");
+        let config = Config {
+            include: vec!["**/*.md".to_string()],
+            ..Config::default()
+        };
+        assert_eq!(
+            rel_kinds(dir.path(), &config),
+            vec![("README.md".to_string(), FileKind::Generic)]
+        );
+    }
+
+    #[test]
+    fn markdown_extensions_match_case_insensitively_and_nothing_else_is_scanned() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "README.MD", "# Readme");
+        write(dir.path(), "guide.markdown", "x");
+        write(dir.path(), "notes.txt", "x");
+        write(dir.path(), "config.json", "{}");
+        let config = Config {
+            include: vec!["**/*".to_string()],
+            ..Config::default()
+        };
+        let names: Vec<String> = scan(dir.path(), &config)
+            .files
+            .iter()
+            .map(|f| f.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["README.MD", "guide.markdown"]);
     }
 }
