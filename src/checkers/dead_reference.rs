@@ -87,7 +87,7 @@ fn resolves_via_dir_context(
 /// Lines that talk about a file the agent creates or checks for at run time.
 static RUNTIME_FILE_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)\b(?:doesn't exist|does not exist|if (?:it |the file |this file )?(?:already )?exists?|will (?:be )?(?:creat|generat|writ|produc)|is (?:created|generated|written|produced)|(?:create|generate|write)s? (?:a |the )?(?:new )?(?:file )?`)",
+        r"(?i)\b(?:doesn't exist|does not exist|if (?:it |they |these |those |the files? |this file )?(?:already )?exists?|will (?:be )?(?:creat|generat|writ|produc)|is (?:created|generated|written|produced)|(?:create|generate|write)s? (?:a |the )?(?:new )?(?:file )?`)",
     )
     .unwrap()
 });
@@ -1773,5 +1773,22 @@ mod import_tests {
         let result = DeadReferenceChecker.check(&ctx);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].severity, Severity::Error);
+    }
+}
+
+#[cfg(test)]
+mod runtime_context_tests {
+    use super::*;
+
+    #[test]
+    fn lines_about_files_that_exist_at_run_time_are_skipped() {
+        for line in [
+            "Previous local docs if they exist (`notes-a.md`, `notes-b.md`)",
+            "If `feature-inventory.md` doesn't exist, refuse and stop.",
+            "The run writes `report.md` next to the sources.",
+        ] {
+            assert!(RUNTIME_FILE_CONTEXT.is_match(line), "{line}");
+        }
+        assert!(!RUNTIME_FILE_CONTEXT.is_match("Read `docs/guide.md` before starting."));
     }
 }

@@ -367,7 +367,8 @@ fn extract_file_refs(lines: &[String], source_path: &Path, refs: &mut Vec<FileRe
         }
 
         for cap in FILE_REF_LINK.captures_iter(line) {
-            let path = &cap[2];
+            // Cursor rules link files as `[x](mdc:path)`; the scheme is not part of the path.
+            let path = cap[2].strip_prefix("mdc:").unwrap_or(&cap[2]);
             if !is_url(path) {
                 push_unique(refs, path.to_string(), line_num, types::RefKind::Mention);
             }
@@ -1016,5 +1017,29 @@ mod import_tests {
         assert_eq!(refs.len(), 2);
         assert_eq!(refs[0].ref_kind, RefKind::Mention);
         assert_eq!(refs[1].ref_kind, RefKind::Import);
+    }
+}
+
+#[cfg(test)]
+mod mdc_link_tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn cursor_mdc_scheme_is_stripped_from_link_targets() {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(
+            f,
+            "See [guide](mdc:docs/guide.md) and [plain](docs/plain.md)."
+        )
+        .unwrap();
+        let paths: Vec<String> = parse_file(f.path())
+            .unwrap()
+            .file_refs
+            .into_iter()
+            .map(|r| r.path)
+            .collect();
+        assert_eq!(paths, vec!["docs/guide.md", "docs/plain.md"]);
     }
 }
