@@ -1,5 +1,5 @@
 use regex::Regex;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 
 use crate::emit;
@@ -48,8 +48,10 @@ static CONVENTION_LINE: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
-static PLACEHOLDER_FILENAME: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^(?:FILE\.(?:md|zh\.md)|filename\.md|ref\d+\.md)$").unwrap());
+static PLACEHOLDER_FILENAME: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^(?:FILE\.(?:md|zh\.md)|filename\.md|ref\d+\.md|[\w-]+-n\.md|.*\.\.\..*)$")
+        .unwrap()
+});
 
 /// Check if any line within a window around `line_idx` (0-based) matches `pattern`.
 fn has_nearby_match(
@@ -106,6 +108,26 @@ const TOOL_DIRS: &[&str] = &[
     ".windsurf",
 ];
 
+/// Paths the Agent Skills spec resolves relative to the skill directory.
+fn is_skill_local_ref(path: &str) -> bool {
+    let path = path.trim_start_matches("./");
+    match path.split_once('/') {
+        None => true,
+        Some((first, _)) => matches!(first, "references" | "scripts" | "assets"),
+    }
+}
+
+/// The nearest ancestor holding a `SKILL.md`: paths in a skill's `references/`
+/// documents are written relative to the skill, not to the document.
+fn enclosing_skill_dir(source_file: &Path) -> Option<PathBuf> {
+    source_file
+        .ancestors()
+        .skip(1)
+        .take(6)
+        .find(|a| a.join("SKILL.md").is_file())
+        .map(Path::to_path_buf)
+}
+
 fn enclosing_tool_dir(source_file: &Path) -> Option<&Path> {
     source_file.ancestors().skip(1).find(|a| {
         a.file_name()
@@ -139,6 +161,12 @@ impl Checker for DeadReferenceChecker {
                 if is_import && !file.kind.supports_imports() {
                     continue;
                 }
+                // A skill is portable: only its own `references/`, `scripts/`, and
+                // `assets/` files (or a bare file name) can be checked here; paths
+                // into the installing project cannot.
+                if file.kind.is_skill() && !is_skill_local_ref(&file_ref.path) {
+                    continue;
+                }
                 if is_template_ref(&file_ref.path) {
                     continue;
                 }
@@ -163,6 +191,14 @@ impl Checker for DeadReferenceChecker {
                 let mut bases = vec![source_dir, ctx.project_root.as_path()];
                 if let Some(tool_dir) = enclosing_tool_dir(&file_ref.source_file) {
                     bases.push(tool_dir);
+                }
+                let skill_dir = file
+                    .kind
+                    .is_skill()
+                    .then(|| enclosing_skill_dir(&file_ref.source_file))
+                    .flatten();
+                if let Some(skill_dir) = skill_dir.as_deref() {
+                    bases.push(skill_dir);
                 }
                 if bases.iter().any(|base| {
                     let resolved = base.join(&file_ref.path);
@@ -1790,5 +1826,101 @@ mod runtime_context_tests {
             assert!(RUNTIME_FILE_CONTEXT.is_match(line), "{line}");
         }
         assert!(!RUNTIME_FILE_CONTEXT.is_match("Read `docs/guide.md` before starting."));
+    }
+}
+
+#[cfg(test)]
+mod skill_scope_tests {
+    use super::*;
+    use crate::checkers::utils::test_helpers::file_ctx_at;
+    use crate::parser::types::{FileRef, RefKind};
+
+    fn skill_with_ref(
+        target: &str,
+    ) -> (tempfile::TempDir, crate::engine::cross_ref::CheckerContext) {
+        let (dir, mut ctx) = file_ctx_at(
+            ".claude/skills/deploy/SKILL.md",
+            &[&format!("See {target} for details.")],
+        );
+        let source = ctx.files[0].path.to_path_buf();
+        ctx.files[0].file_refs.push(FileRef {
+            path: target.to_string(),
+            line: 1,
+            source_file: source,
+            ref_kind: RefKind::Mention,
+        });
+        (dir, ctx)
+    }
+
+    #[test]
+    fn skills_are_checked_only_for_their_own_files() {
+        assert!(is_skill_local_ref("references/guide.md"));
+        assert!(is_skill_local_ref("./scripts/run.md"));
+        assert!(is_skill_local_ref("checklist.md"));
+        assert!(!is_skill_local_ref(".claude/product-marketing.md"));
+        assert!(!is_skill_local_ref("skills/evaluate/SKILL.md"));
+
+        let (_dir, ctx) = skill_with_ref("references/missing.md");
+        assert_eq!(DeadReferenceChecker.check(&ctx).diagnostics.len(), 1);
+        let (_dir, ctx) = skill_with_ref(".claude/product-marketing.md");
+        assert!(DeadReferenceChecker.check(&ctx).diagnostics.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod skill_resource_tests {
+    use super::*;
+    use crate::checkers::utils::test_helpers::file_ctx_at;
+    use crate::file_kind::FileKind;
+    use crate::parser::types::{FileRef, RefKind};
+
+    #[test]
+    fn skill_resources_resolve_against_the_skill_directory() {
+        let (dir, mut ctx) = file_ctx_at(
+            ".claude/skills/design/references/logo.md",
+            &["See references/prompts.md and docs/brand.md."],
+        );
+        let skill = dir.path().join(".claude/skills/design");
+        std::fs::create_dir_all(skill.join("references")).unwrap();
+        std::fs::write(skill.join("SKILL.md"), "---\nname: design\n---").unwrap();
+        std::fs::write(skill.join("references/prompts.md"), "# prompts").unwrap();
+        ctx.files[0].kind = FileKind::SkillResource;
+        let source = ctx.files[0].path.to_path_buf();
+        for target in [
+            "references/prompts.md",
+            "references/missing.md",
+            "docs/brand.md",
+        ] {
+            ctx.files[0].file_refs.push(FileRef {
+                path: target.to_string(),
+                line: 1,
+                source_file: source.clone(),
+                ref_kind: RefKind::Mention,
+            });
+        }
+        let messages: Vec<String> = DeadReferenceChecker
+            .check(&ctx)
+            .diagnostics
+            .into_iter()
+            .map(|d| d.message)
+            .collect();
+        // The existing sibling resolves via the skill directory, the project
+        // path is out of scope for a portable skill, and only the genuinely
+        // missing reference remains.
+        assert_eq!(messages, vec!["\"references/missing.md\" does not exist"]);
+    }
+}
+
+#[cfg(test)]
+mod placeholder_tests {
+    use super::*;
+
+    #[test]
+    fn numbered_placeholders_are_not_references() {
+        assert!(PLACEHOLDER_FILENAME.is_match("thread-N.md"));
+        assert!(PLACEHOLDER_FILENAME.is_match("step-n.md"));
+        assert!(PLACEHOLDER_FILENAME.is_match("01-...md"));
+        assert!(!PLACEHOLDER_FILENAME.is_match("plan.md"));
+        assert!(!PLACEHOLDER_FILENAME.is_match("thread-1.md"));
     }
 }

@@ -30,6 +30,9 @@ pub enum FileKind {
     ClaudeCommand,
     /// `SKILL.md` anywhere (Agent Skills spec).
     Skill,
+    /// Any other file inside a skill directory: its `references/`, `scripts/`,
+    /// and `assets/` documents. Assigned by the scanner, not by path pattern.
+    SkillResource,
     /// `.cursor/rules/**/*.mdc`.
     CursorRule,
     /// Legacy single-file `.cursorrules`.
@@ -68,6 +71,7 @@ impl FileKind {
                 | Self::ClaudeSubagent
                 | Self::ClaudeCommand
                 | Self::Skill
+                | Self::SkillResource
                 | Self::CursorRule
                 | Self::WindsurfRules
                 | Self::DevinRules
@@ -78,6 +82,13 @@ impl FileKind {
                 | Self::CopilotAgent
                 | Self::CopilotPrompt
         )
+    }
+
+    /// The skill itself or a file shipped inside its directory: portable by
+    /// design, so paths it names describe whichever project installs it.
+    #[must_use]
+    pub fn is_skill(self) -> bool {
+        matches!(self, Self::Skill | Self::SkillResource)
     }
 
     /// Kinds whose tool reads `@path` imports at load time (Claude Code
@@ -102,6 +113,7 @@ impl FileKind {
             Self::ClaudeSubagent => "claude-subagent",
             Self::ClaudeCommand => "claude-command",
             Self::Skill => "skill",
+            Self::SkillResource => "skill-resource",
             Self::CursorRule => "cursor-rule",
             Self::Cursorrules => "cursorrules",
             Self::Clinerules => "clinerules",

@@ -176,7 +176,7 @@ impl Checker for HardcodedFileStructureChecker {
 
             // Skills are shared across projects, so the paths they name describe
             // whichever project they run in, not this one.
-            if file.kind == crate::file_kind::FileKind::Skill {
+            if file.kind.is_skill() {
                 continue;
             }
 

@@ -29,26 +29,26 @@ spectralint is a standalone Rust binary that runs entirely on your machine. Your
 
 ## What It Finds (Real-World Results)
 
-We cloned the top 100 public GitHub repos containing `CLAUDE.md` (sorted by star count, from React at 243k stars to small projects) and ran spectralint on each. Dead references verified against the actual repo filesystem — every flagged file genuinely does not exist.
+We cloned the top 100 public GitHub repos containing `CLAUDE.md` (sorted by star count, from React at 243k stars to small projects) and ran spectralint on each. Dead references are verified against the actual repo filesystem — every flagged file genuinely does not exist.
 
-Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_count`, top 100 results, February 2026. Full shallow clones, all instruction files scanned (CLAUDE.md, AGENTS.md, .claude/\*\*, .github/copilot-instructions.md). See [`benchmarks/`](benchmarks/) for the repo list and reproduction script.
+Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_count`, top 100 results, selected February 2026. Re-run 8 September 2026 with spectralint 0.7.1 against fresh shallow clones; 96 of the 100 repositories still exist. Every supported instruction format is scanned (see "What Gets Scanned"). Three of the repositories are catalogs of hundreds of portable skills and account for 1,379 findings on their own, so the numbers below are the other 93. See [`benchmarks/`](benchmarks/) for the repo list and reproduction script.
 
 ```
-100 repos scanned → 141 findings (38% of repos)
+93 repos scanned → 507 findings (54% of repos)
 
-  hardcoded-file-structure       25   info      (source paths that don't exist on disk)
-  token-budget                   20   info      (files approaching context window limits)
-  broken-anchor-link             18   error     (in-file #anchor links with no matching heading)
-  large-code-block               16   info      (inline code >40 lines)
-  duplicate-instruction-file     15   warning   (near-duplicate files)
-  file-size                      14   info/warn (files exceeding 400/500 lines)
-  dead-reference                 13   error     (files that genuinely don't exist)
-  duplicate-section               7   warning   (repeated section headings)
-  stale-style-rule                3   info      (formatter-enforceable rules)
-  context-window-waste            3   info      (decorative elements wasting tokens)
+  dead-reference                 87   error    (files and @imports that don't exist)
+  hardcoded-file-structure       74   info     (source paths that don't exist on disk)
+  token-budget                   68   info     (files approaching context window limits)
+  placeholder-text               36   warning  ([TODO], [TBD], unfinished content)
+  context-window-waste           35   info     (decorative elements wasting tokens)
+  frontmatter-schema             31   info     (frontmatter a tool requires or cannot read)
+  duplicate-instruction-file     25   warning  (near-duplicate files)
+  file-size                      22   info     (files exceeding 500/750 lines)
+  outdated-model-reference       17   info     (retired or superseded model names)
+  missing-essential-sections     12   info     (no build/test commands)
 ```
 
-**43% of findings are errors or warnings** — dead references to files that genuinely don't exist, near-duplicate files, and broken anchor links.
+**41% of findings are errors or warnings** — dead references to files that genuinely don't exist, placeholder text left in, and near-duplicate files.
 
 ## 73 Built-in Rules
 
@@ -241,7 +241,7 @@ Every markdown file matched by `include`, plus the tool-specific formats below. 
 | Tool | Files | Kind-specific checks |
 |------|-------|----------------------|
 | Claude Code | `CLAUDE.md`, `CLAUDE.local.md`, `.claude/rules/**`, `.claude/agents/**`, `.claude/skills/*/SKILL.md`, `.claude/commands/**`, `.claude/settings.json` | `@path` imports resolved; subagent `name` and `description`; rule `paths` globs; Agent Skills spec; `model` in frontmatter and settings |
-| AGENTS.md | `AGENTS.md`, `AGENT.md`, at any depth | Cross-file checks |
+| AGENTS.md | `AGENTS.md` at any depth (`AGENT.md`, the Amp legacy name, when added to `include`) | Cross-file checks |
 | Cursor | `.cursor/rules/*.mdc`, `.cursorrules` | `globs`, `alwaysApply`, manual-only rules |
 | GitHub Copilot | `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`, `.github/agents/*.agent.md`, `.github/prompts/*.prompt.md`, `.github/skills/**` | `applyTo` globs; agent `description` and 30,000-character body limit |
 | Gemini CLI | `GEMINI.md` | `@path` imports resolved |
@@ -446,7 +446,7 @@ Add to your `.pre-commit-config.yaml` (requires a Rust toolchain; pre-commit bui
 ```yaml
 repos:
   - repo: https://github.com/by-all-means/spectralint
-    rev: v0.7.0
+    rev: v0.7.1
     hooks:
       - id: spectralint
 ```

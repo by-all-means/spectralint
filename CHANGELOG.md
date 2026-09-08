@@ -2,6 +2,15 @@
 
 All notable changes to spectralint will be documented in this file.
 
+## 0.7.1 (2026-09-08)
+
+### Fixed
+
+- **Portable skills** — files inside a skill directory (its `references/`, `scripts/`, and `assets/` documents) are tagged `skill-resource` and treated like the skill itself: hardcoded-file-structure and command-validation skip them, and dead-reference checks only the skill's own `references/`, `scripts/`, and `assets/` paths and bare file names, resolving them from the skill directory. Found by re-running the 100-repository benchmark, where three skill catalogs produced hundreds of findings about the projects that would install them
+- **dead-reference** — `thread-N.md` and `01-...md` are placeholders, not references
+- **Defaults** — `AGENT.md` is no longer in the default `include`; the case-insensitive match turned every `agent.md` documentation page into an instruction file. Add it to `include` for Amp's legacy name
+- **README** — the benchmark section is re-run with 0.7.1 against fresh clones of the same repositories
+
 ## 0.7.0 (2026-09-08)
 
 ### New Features

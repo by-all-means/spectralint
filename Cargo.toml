@@ -1,6 +1,6 @@
 [package]
 name = "spectralint"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2021"
 rust-version = "1.85"
 description = "Static analysis for AI agent instruction files"

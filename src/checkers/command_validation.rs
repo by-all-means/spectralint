@@ -269,6 +269,12 @@ impl Checker for CommandValidationChecker {
                 continue;
             }
 
+            // Skills are portable; the commands they document run in whichever
+            // project installs them, so this project's manifests say nothing.
+            if file.kind.is_skill() {
+                continue;
+            }
+
             // Track which toolchains we've already flagged for this file (dedup)
             let mut flagged_toolchains: HashSet<&str> = HashSet::new();
 
@@ -658,5 +664,29 @@ mod tests {
             "Piped npm command should still flag without package.json"
         );
         assert!(result.diagnostics[0].message.contains("npm"));
+    }
+}
+
+#[cfg(test)]
+mod skill_scope_tests {
+    use super::*;
+    use crate::checkers::utils::test_helpers::file_ctx_at;
+
+    #[test]
+    fn skills_are_not_checked_against_this_projects_manifests() {
+        let lines = [
+            "# Setup",
+            "```bash",
+            "pip install -r requirements.txt",
+            "```",
+        ];
+        let checker = CommandValidationChecker::new(&[]);
+        let (_dir, ctx) = file_ctx_at(".claude/skills/py/SKILL.md", &lines);
+        assert!(checker.check(&ctx).diagnostics.is_empty());
+        let (_dir, ctx) = file_ctx_at("CLAUDE.md", &lines);
+        assert!(
+            !checker.check(&ctx).diagnostics.is_empty(),
+            "same content in CLAUDE.md should be flagged"
+        );
     }
 }

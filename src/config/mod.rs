@@ -528,7 +528,6 @@ pub const DEFAULT_INCLUDE: &[&str] = &[
     "CLAUDE.md",
     "CLAUDE.local.md",
     "AGENTS.md",
-    "AGENT.md",
     "GEMINI.md",
     "SKILL.md",
     "**/.claude/**",
@@ -702,7 +701,7 @@ impl Config {
 # Default: the instruction-file locations of every supported tool.
 # Set to ["**/*.md"] to scan all markdown files instead.
 include = [
-  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "AGENT.md", "GEMINI.md", "SKILL.md",
+  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "GEMINI.md", "SKILL.md",
   "**/.claude/**",
   "**/.github/copilot-instructions.md", "**/.github/instructions/**", "**/.github/agents/**", "**/.github/prompts/**", "**/.github/skills/**",
   "**/.agents/skills/**",
@@ -963,7 +962,7 @@ max_tokens = 8000
 # Only the most critical checkers are enabled.
 
 include = [
-  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "AGENT.md", "GEMINI.md", "SKILL.md",
+  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "GEMINI.md", "SKILL.md",
   "**/.claude/**",
   "**/.github/copilot-instructions.md", "**/.github/instructions/**", "**/.github/agents/**", "**/.github/prompts/**", "**/.github/skills/**",
   "**/.agents/skills/**",
@@ -987,7 +986,7 @@ enabled = true
 # All checkers enabled, including opinionated ones.
 
 include = [
-  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "AGENT.md", "GEMINI.md", "SKILL.md",
+  "CLAUDE.md", "CLAUDE.local.md", "AGENTS.md", "GEMINI.md", "SKILL.md",
   "**/.claude/**",
   "**/.github/copilot-instructions.md", "**/.github/instructions/**", "**/.github/agents/**", "**/.github/prompts/**", "**/.github/skills/**",
   "**/.agents/skills/**",

@@ -68,6 +68,7 @@ pub(crate) fn scan(root: &Path, config: &Config) -> ScanResult {
     );
     files.sort();
     settings_files.sort();
+    mark_skill_resources(&mut files);
     ScanResult {
         files,
         settings_files,
@@ -91,6 +92,24 @@ fn is_text_like(path: &Path) -> bool {
             e.to_ascii_lowercase().as_str(),
             "md" | "mdc" | "markdown" | "txt"
         ),
+    }
+}
+
+/// A markdown file inside a skill directory (one holding a `SKILL.md`) is part of
+/// that skill and just as portable, so it gets the `SkillResource` kind.
+fn mark_skill_resources(files: &mut [ScannedFile]) {
+    let skill_dirs: Vec<PathBuf> = files
+        .iter()
+        .filter(|f| f.kind == FileKind::Skill)
+        .filter_map(|f| f.path.parent().map(Path::to_path_buf))
+        .collect();
+    if skill_dirs.is_empty() {
+        return;
+    }
+    for file in files.iter_mut().filter(|f| f.kind == FileKind::Generic) {
+        if skill_dirs.iter().any(|d| file.path.starts_with(d)) {
+            file.kind = FileKind::SkillResource;
+        }
     }
 }
 
@@ -742,5 +761,63 @@ mod asset_tests {
             .collect();
         names.sort();
         assert_eq!(names, vec!["a.md", "notes.txt", "style.md"]);
+    }
+}
+
+#[cfg(test)]
+mod skill_resource_tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn files_inside_a_skill_directory_are_skill_resources() {
+        let dir = tempfile::tempdir().unwrap();
+        for rel in [
+            ".claude/skills/deploy/SKILL.md",
+            ".claude/skills/deploy/references/guide.md",
+            ".claude/skills/deploy/README.md",
+            ".claude/notes.md",
+            "docs/guide.md",
+        ] {
+            let p = dir.path().join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, "# x").unwrap();
+        }
+        let config = Config {
+            include: vec!["**/*.md".to_string()],
+            ..Config::default()
+        };
+        let kinds: Vec<(String, FileKind)> = scan(dir.path(), &config)
+            .files
+            .iter()
+            .map(|f| {
+                (
+                    f.strip_prefix(dir.path())
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                    f.kind,
+                )
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                (".claude/notes.md".to_string(), FileKind::Generic),
+                (
+                    ".claude/skills/deploy/README.md".to_string(),
+                    FileKind::SkillResource
+                ),
+                (
+                    ".claude/skills/deploy/SKILL.md".to_string(),
+                    FileKind::Skill
+                ),
+                (
+                    ".claude/skills/deploy/references/guide.md".to_string(),
+                    FileKind::SkillResource
+                ),
+                ("docs/guide.md".to_string(), FileKind::Generic),
+            ]
+        );
     }
 }
