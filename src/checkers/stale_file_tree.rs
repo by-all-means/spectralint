@@ -48,6 +48,41 @@ fn is_tree_char_line(name: &str) -> bool {
         .all(|c| matches!(c, '─' | '│' | '├' | '└' | '-' | '|' | '+' | ' '))
 }
 
+/// Fence tags under which people paste `tree` output. Any other tag is code.
+fn is_tree_capable_tag(tag: &str) -> bool {
+    let first = tag
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    matches!(
+        first.as_str(),
+        "" | "text"
+            | "txt"
+            | "plaintext"
+            | "plain"
+            | "tree"
+            | "bash"
+            | "sh"
+            | "shell"
+            | "zsh"
+            | "console"
+    )
+}
+
+/// Tables share glyphs with trees but are never directory listings. Box-drawing
+/// trees only use ├ └ │ ─ while tables add corners, tees, and crosses; a
+/// pipe-table row starts and ends with `|`, which an ASCII tree line never does.
+fn is_table(lines: &[&str]) -> bool {
+    lines.iter().any(|l| {
+        let t = l.trim();
+        (t.len() > 2 && t.starts_with('|') && t.ends_with('|'))
+            || t.contains([
+                '┌', '┐', '┬', '┴', '┼', '┤', '┘', '╔', '╗', '╚', '╝', '╠', '╣', '╦', '╩', '╬',
+            ])
+    })
+}
+
 /// Returns true if the name contains placeholder patterns.
 fn is_placeholder(name: &str) -> bool {
     name.contains("...")
@@ -62,6 +97,9 @@ fn is_placeholder(name: &str) -> bool {
 /// Parse a code block into (depth, name) entries for tree lines.
 /// Returns None if the block doesn't look like a directory tree.
 fn parse_tree_block(lines: &[&str]) -> Option<Vec<(usize, String, bool)>> {
+    if is_table(lines) {
+        return None;
+    }
     let mut entries: Vec<(usize, String, bool)> = Vec::new();
     let mut tree_lines = 0;
 
@@ -176,9 +214,10 @@ impl Checker for StaleFileTreeChecker {
                     let block_start = i + 1;
                     i += 1;
 
-                    // Skip language-tagged code blocks — they contain code, not trees
+                    // A real language tag means code, not a tree. Untagged fences and
+                    // plain-text style tags are where people paste `tree` output.
                     let fence_tag = trimmed.trim_start_matches('`').trim();
-                    if !fence_tag.is_empty() {
+                    if !is_tree_capable_tag(fence_tag) {
                         while i < lines.len() && !lines[i].trim().starts_with("```") {
                             i += 1;
                         }
@@ -530,6 +569,65 @@ mod tests {
             result.diagnostics[0].message.contains("missing.rs"),
             "Should flag the file that doesn't exist"
         );
+    }
+
+    #[test]
+    fn test_plain_text_tagged_tree_is_checked() {
+        for tag in ["text", "plaintext", "bash", "tree", "TEXT"] {
+            let fence = format!("```{tag}");
+            let result = run_check(&[&fence, "src/", "├── main.rs", "└── missing.rs", "```"]);
+            assert!(
+                result
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.message.contains("missing.rs")),
+                "tag {tag}: {:?}",
+                result.diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn test_language_tagged_tree_shaped_code_is_skipped() {
+        for tag in ["rust", "python", "mermaid", "diff"] {
+            let fence = format!("```{tag}");
+            let result = run_check(&[&fence, "src/", "├── main.rs", "└── missing.rs", "```"]);
+            assert!(result.diagnostics.is_empty(), "tag {tag}");
+        }
+    }
+
+    #[test]
+    fn test_pipe_table_is_not_a_tree() {
+        for tag in ["", "markdown", "text"] {
+            let fence = format!("```{tag}");
+            let result = run_check(&[
+                &fence,
+                "| Metric      | Value | Interpretation        |",
+                "| ----------- | ----- | --------------------- |",
+                "| KL(A‖B)     | 0.023 | < 0.1: low divergence |",
+                "| Effect size | 0.12  | small to medium       |",
+                "```",
+            ]);
+            assert!(
+                result.diagnostics.is_empty(),
+                "tag {tag:?}: {:?}",
+                result.diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn test_box_table_in_bare_fence_is_not_a_tree() {
+        let result = run_check(&[
+            "```",
+            "┌──────┬───────┐",
+            "│ Name │ Count │",
+            "├──────┼───────┤",
+            "│ a.rs │ 1     │",
+            "└──────┴───────┘",
+            "```",
+        ]);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     }
 
     #[test]
