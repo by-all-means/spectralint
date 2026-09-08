@@ -16,7 +16,13 @@
   "activationEvents": [
     "workspaceContains:**/CLAUDE.md",
     "workspaceContains:**/AGENTS.md",
-    "workspaceContains:**/.claude/settings.json"
+    "workspaceContains:**/AGENT.md",
+    "workspaceContains:**/GEMINI.md",
+    "workspaceContains:**/SKILL.md",
+    "workspaceContains:**/.claude/settings.json",
+    "workspaceContains:**/.cursor/rules/*.mdc",
+    "workspaceContains:**/.cursorrules",
+    "workspaceContains:**/.github/copilot-instructions.md"
   ],
   "main": "./out/extension.js",
   "contributes": {

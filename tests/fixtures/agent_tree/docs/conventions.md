@@ -1,0 +1,3 @@
+# Conventions
+
+Keep functions small.

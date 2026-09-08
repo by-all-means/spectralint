@@ -2,6 +2,21 @@
 
 All notable changes to spectralint will be documented in this file.
 
+## Unreleased
+
+### New Features
+
+- **Format-aware discovery** — every supported instruction format is scanned, not just `.md`: Cursor `.mdc` rules and `.cursorrules`, Copilot instruction, agent, and prompt files, Claude Code rules, agents, and skills, GEMINI.md, and the Devin, Windsurf, Cline, Kiro, Roo, and Junie rule locations. Each file carries a kind. The default `include` grows from 4 entries to the full list; a custom `include` scans nothing new until patterns are added
+- **frontmatter-schema** — new rule for frontmatter fields a tool requires or cannot read: subagent `name` and `description`, rule and Cursor globs, Copilot `applyTo`, Agent Skills spec limits, Kiro `inclusion` and Devin `trigger` values, invalid YAML, and near-miss field names
+- **`@path` imports** — dead-reference resolves Claude Code and Gemini CLI imports; a missing target is a warning, a package-scope-shaped token is info
+- **Structured frontmatter** — YAML frontmatter is parsed (yaml-rust2) with a lenient fallback for unquoted globs; outdated-model-reference reads `model` through it
+
+### Changed
+
+- **missing-essential-sections, missing-role-definition, large-code-block** — skip rules, subagents, skills, prompts, and per-path instruction files by kind
+- Markdown extensions match case-insensitively and `.markdown` files are scanned
+- "No markdown files found" is now "No instruction files found"
+
 ## 0.6.0 (2026-09-08)
 
 ### New Features

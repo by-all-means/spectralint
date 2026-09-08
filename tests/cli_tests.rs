@@ -4101,3 +4101,108 @@ fn settings_json_model_is_checked_and_cache_tracks_it() {
         .success()
         .stdout(predicate::str::contains("Retired model reference").not());
 }
+
+// ── Format-aware discovery and frontmatter-schema ────────────────────────
+
+#[test]
+fn agent_tree_fixture_reports_each_schema_failure_once() {
+    let json = json_output(&[
+        "check",
+        "tests/fixtures/agent_tree",
+        "--rule",
+        "frontmatter-schema",
+        "--no-cache",
+        "--format",
+        "json",
+    ]);
+    let mut found: Vec<(String, u64, String)> = json["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| {
+            (
+                d["file"].as_str().unwrap().replace('\\', "/"),
+                d["line"].as_u64().unwrap(),
+                d["severity"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    found.sort();
+    assert_eq!(
+        found,
+        vec![
+            (
+                ".claude/agents/no-name.md".to_string(),
+                1,
+                "warning".to_string()
+            ),
+            (".claude/rules/api.md".to_string(), 2, "warning".to_string()),
+            (".cursor/rules/react.mdc".to_string(), 1, "info".to_string()),
+        ]
+    );
+    let messages: Vec<&str> = json["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["message"].as_str().unwrap())
+        .collect();
+    assert!(
+        messages.iter().any(|m| m.contains("no `name`")),
+        "{messages:?}"
+    );
+    assert!(
+        messages.iter().any(|m| m.contains("src/handlers/[")),
+        "{messages:?}"
+    );
+    assert!(
+        messages.iter().any(|m| m.contains("not valid YAML")),
+        "{messages:?}"
+    );
+}
+
+#[test]
+fn agent_tree_fixture_resolves_imports() {
+    let json = json_output(&[
+        "check",
+        "tests/fixtures/agent_tree",
+        "--rule",
+        "dead-reference",
+        "--no-cache",
+        "--format",
+        "json",
+    ]);
+    let diags = json["diagnostics"].as_array().unwrap();
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert_eq!(diags[0]["severity"], "warning");
+    assert_eq!(
+        diags[0]["message"],
+        "Import target does not exist: @docs/missing.md"
+    );
+}
+
+#[test]
+fn custom_include_does_not_scan_new_kinds() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join(".cursor/rules")).unwrap();
+    fs::write(
+        dir.path().join(".cursor/rules/react.mdc"),
+        "---\nglobs: *.tsx\n---\nrule\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("README.md"), "# Readme\n").unwrap();
+    fs::write(
+        dir.path().join(".spectralintrc.toml"),
+        "include = [\"**/*.md\"]\n",
+    )
+    .unwrap();
+    let json = json_output(&[
+        "check",
+        dir.path().to_str().unwrap(),
+        "--rule",
+        "frontmatter-schema",
+        "--no-cache",
+        "--format",
+        "json",
+    ]);
+    assert!(json["diagnostics"].as_array().unwrap().is_empty());
+}

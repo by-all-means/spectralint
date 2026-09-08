@@ -1,0 +1,7 @@
+---
+description: React component conventions
+globs: *.tsx
+alwaysApply: false
+---
+
+Prefer function components with hooks.

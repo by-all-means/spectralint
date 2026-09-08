@@ -50,11 +50,11 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 
 **43% of findings are errors or warnings** — dead references to files that genuinely don't exist, near-duplicate files, and broken anchor links.
 
-## 72 Built-in Rules
+## 73 Built-in Rules
 
 | Rule | Severity | What it catches |
 |------|----------|-----------------|
-| `dead-reference` | error | `.md` references to files that don't exist |
+| `dead-reference` | error | References and `@path` imports to files that don't exist |
 | `credential-exposure` | error | Hardcoded API keys, tokens, passwords |
 | `absolute-path` | warning | Hardcoded `/Users/...`, `C:\...` paths |
 | `naming-inconsistency` | warning | `api_key` in one file vs `apiKey` in another |
@@ -86,6 +86,7 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 | `generated-attribution` | info | AI-tool attribution lines ("Generated with Claude Code") |
 | `boilerplate-template` | info | Unchanged template content |
 | `outdated-model-reference` | info/warn | Retired, deprecated, or superseded AI model names in prose, agent frontmatter, and settings.json |
+| `frontmatter-schema` | warning | Frontmatter a tool requires or cannot read: subagent `name`, rule globs, Cursor selectors, Copilot `applyTo`, skill spec limits |
 | `missing-essential-sections` | info | No build/test commands for agents to verify work |
 | `misordered-steps` | info | Numbered steps out of sequence |
 | `prompt-injection-vector` | warn/info | "Ignore previous instructions", hidden Unicode, base64 payloads |
@@ -129,7 +130,7 @@ Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_
 
 ## Features
 
-- **72 built-in rules** covering security, consistency, content quality, and agent best practices
+- **73 built-in rules** covering security, consistency, content quality, and agent best practices
 <!-- spectralint-disable-next-line vague-directive -->
 - **Vague directive detection** — finds non-deterministic language ("try to", "when possible")
 - **Cross-file analysis** — naming inconsistency and enum drift across multiple files
@@ -233,16 +234,29 @@ spectralint explain naming-inconsistency
       L5    Column "Status" has values "pending" not found in AGENTS.md
 ```
 
+## What Gets Scanned
+
+Every markdown file matched by `include`, plus the tool-specific formats below. Each file is tagged with its kind, so checkers can apply that tool's own rules.
+
+| Tool | Files | Kind-specific checks |
+|------|-------|----------------------|
+| Claude Code | `CLAUDE.md`, `CLAUDE.local.md`, `.claude/rules/**`, `.claude/agents/**`, `.claude/skills/*/SKILL.md`, `.claude/commands/**`, `.claude/settings.json` | `@path` imports resolved; subagent `name` and `description`; rule `paths` globs; Agent Skills spec; `model` in frontmatter and settings |
+| AGENTS.md | `AGENTS.md`, `AGENT.md`, at any depth | Cross-file checks |
+| Cursor | `.cursor/rules/*.mdc`, `.cursorrules` | `globs`, `alwaysApply`, manual-only rules |
+| GitHub Copilot | `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`, `.github/agents/*.agent.md`, `.github/prompts/*.prompt.md`, `.github/skills/**` | `applyTo` globs; agent `description` and 30,000-character body limit |
+| Gemini CLI | `GEMINI.md` | `@path` imports resolved |
+| Devin, Windsurf, Cline, Kiro, Roo, Junie | `.devin/rules/**`, `.windsurf/rules/**`, `.windsurfrules`, `.clinerules`, `.kiro/steering/**`, `.roo/**`, `.junie/**` | Kiro `inclusion`, Devin `trigger` |
+
 ## Configuration
 
 Create `.spectralintrc.toml` in your project root (or run `spectralint init`):
 
 ```toml
-# Which files to scan (glob patterns, case-insensitive)
-# Default: known AI instruction file patterns
-# Set to ["**/*.md"] to scan all markdown files
-# Only Markdown files are scanned today; Cursor `.mdc` rules and `.cursorrules` are on the roadmap.
-include = ["CLAUDE.md", "AGENTS.md", ".claude/**", ".github/copilot-instructions.md"]
+# Which files to scan (glob patterns, case-insensitive).
+# Default: the instruction-file locations of every supported tool (see "What Gets Scanned");
+# `spectralint init` writes the full list. A custom `include` scans only what it names.
+# Set to ["**/*.md"] to scan all markdown files instead.
+include = ["CLAUDE.md", "AGENTS.md", ".claude/**", ".cursor/rules/**", ".github/instructions/**"]
 
 # Directories to ignore when scanning (supports glob patterns)
 ignore = ["node_modules", ".git", "target", "build_*"]

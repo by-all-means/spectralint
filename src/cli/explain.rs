@@ -287,14 +287,19 @@ pub fn list_rules() -> String {
 pub fn explain(rule: &str) -> Option<&'static str> {
     match rule {
         "dead-reference" => Some(
-            "dead-reference: Flags .md file references that point to files not on disk.\n\
+            "dead-reference: Flags file references and `@path` imports that point to files not on disk.\n\
              \n\
              When an agent instruction file says `load agent_definitions/scout.md` but that file\n\
              has been renamed or deleted, the agent silently skips it. There's no error — the agent\n\
              just operates with incomplete instructions. This checker catches those broken links\n\
              before they reach the agent.\n\
              \n\
-             Severity: error\n\
+             Claude Code memory files, rules, and commands, and Gemini CLI context files, read\n\
+             `@path` tokens as imports at load time. A missing import target is reported as a\n\
+             warning; a token shaped like a package scope (`@scope/pkg`) as info, with a hint to\n\
+             wrap it in backticks, which stops the tool treating it as an import.\n\
+             \n\
+             Severity: error (warning for missing imports)\n\
              Skipped for: historical files (changelogs, retros)\n\
              Config: [checkers.dead_reference]",
         ),

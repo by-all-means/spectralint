@@ -11,12 +11,13 @@
 #   ./benchmarks/run.sh              # clone + scan (standard mode)
 #   ./benchmarks/run.sh --strict     # clone + scan (strict mode)
 #   ./benchmarks/run.sh --skip-clone # re-scan without re-cloning
+#   SPECTRALINT_BENCH_REPOS=benchmarks/repos-typed.txt ./benchmarks/run.sh   # another repo list
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_LIST="$SCRIPT_DIR/repos.txt"
+REPO_LIST="${SPECTRALINT_BENCH_REPOS:-$SCRIPT_DIR/repos.txt}"
 CLONE_DIR="${SPECTRALINT_BENCH_DIR:-/tmp/spectralint-bench-repos}"
 RESULTS_DIR="${SPECTRALINT_BENCH_RESULTS:-/tmp/spectralint-bench-results}"
 

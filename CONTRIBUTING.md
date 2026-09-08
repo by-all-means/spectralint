@@ -34,6 +34,8 @@ All three must pass before merging. CI enforces this.
 
 Look at an existing checker like `placeholder_text.rs` for the pattern.
 
+Format-specific rules read `file.kind` (`src/file_kind.rs`) and `file.frontmatter` (`src/parser/frontmatter.rs`). To support a new tool, add its paths to the table in `src/file_kind.rs`, to `DEFAULT_INCLUDE` in `src/config/mod.rs`, and to the scanned-formats table in the README.
+
 ## Code Style
 
 - Run `cargo fmt` before committing

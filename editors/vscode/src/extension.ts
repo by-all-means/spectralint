@@ -21,7 +21,13 @@ export function activate(context: ExtensionContext) {
   };
 
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ scheme: "file", language: "markdown" }],
+    documentSelector: [
+      { scheme: "file", language: "markdown" },
+      { scheme: "file", pattern: "**/*.mdc" },
+      { scheme: "file", pattern: "**/.cursorrules" },
+      { scheme: "file", pattern: "**/.clinerules" },
+      { scheme: "file", pattern: "**/.windsurfrules" },
+    ],
   };
 
   client = new LanguageClient(
