@@ -1305,7 +1305,7 @@ pub fn explain(rule: &str) -> Option<&'static str> {
              and flags files that exceed configurable thresholds.\n\
              \n\
              Default thresholds:\n\
-             - warn_tokens: 4000 (~16KB) — emits info-level advisory\n\
+             - warn_tokens: 6000 (~24KB) — emits info-level advisory\n\
              - max_tokens: 8000 (~32KB) — emits warning-level diagnostic\n\
              \n\
              The estimate is intentionally approximate — exact tokenization varies by model.\n\

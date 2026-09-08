@@ -2,6 +2,14 @@
 
 All notable changes to spectralint will be documented in this file.
 
+## Unreleased
+
+### Changed
+
+- **token-budget** — the "approaching budget" note now starts at 6,000 of the 8,000-token budget instead of 4,000; it was the largest source of low-value findings once every tool's files were scanned
+- **placeholder-text** — `TODO` followed by a lowercase word ("TODO lists", "TODO comments") is the noun, not a marker
+- **dead-reference** — inside a skill only `references/`, `scripts/`, and `assets/` paths are checked; a bare file name in a skill is usually an artifact it writes. A nested `.claude/` directory in a monorepo also resolves paths from the package around it
+
 ## 0.7.1 (2026-09-08)
 
 ### Fixed

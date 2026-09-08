@@ -108,13 +108,13 @@ const TOOL_DIRS: &[&str] = &[
     ".windsurf",
 ];
 
-/// Paths the Agent Skills spec resolves relative to the skill directory.
+/// Paths the Agent Skills spec resolves relative to the skill directory. A bare
+/// file name in a skill is usually an artifact the skill writes (`00-scope.md`),
+/// so only the spec's own directories are checked.
 fn is_skill_local_ref(path: &str) -> bool {
     let path = path.trim_start_matches("./");
-    match path.split_once('/') {
-        None => true,
-        Some((first, _)) => matches!(first, "references" | "scripts" | "assets"),
-    }
+    path.split_once('/')
+        .is_some_and(|(first, _)| matches!(first, "references" | "scripts" | "assets"))
 }
 
 /// The nearest ancestor holding a `SKILL.md`: paths in a skill's `references/`
@@ -191,6 +191,10 @@ impl Checker for DeadReferenceChecker {
                 let mut bases = vec![source_dir, ctx.project_root.as_path()];
                 if let Some(tool_dir) = enclosing_tool_dir(&file_ref.source_file) {
                     bases.push(tool_dir);
+                    // A nested `.claude/` in a monorepo belongs to the package around it.
+                    if let Some(package_root) = tool_dir.parent() {
+                        bases.push(package_root);
+                    }
                 }
                 let skill_dir = file
                     .kind
@@ -1856,7 +1860,7 @@ mod skill_scope_tests {
     fn skills_are_checked_only_for_their_own_files() {
         assert!(is_skill_local_ref("references/guide.md"));
         assert!(is_skill_local_ref("./scripts/run.md"));
-        assert!(is_skill_local_ref("checklist.md"));
+        assert!(!is_skill_local_ref("checklist.md"));
         assert!(!is_skill_local_ref(".claude/product-marketing.md"));
         assert!(!is_skill_local_ref("skills/evaluate/SKILL.md"));
 
@@ -1922,5 +1926,30 @@ mod placeholder_tests {
         assert!(PLACEHOLDER_FILENAME.is_match("01-...md"));
         assert!(!PLACEHOLDER_FILENAME.is_match("plan.md"));
         assert!(!PLACEHOLDER_FILENAME.is_match("thread-1.md"));
+    }
+}
+
+#[cfg(test)]
+mod nested_tool_dir_tests {
+    use super::*;
+    use crate::checkers::utils::test_helpers::file_ctx_at;
+    use crate::parser::types::{FileRef, RefKind};
+
+    #[test]
+    fn nested_claude_dir_resolves_against_its_package_root() {
+        let (dir, mut ctx) = file_ctx_at(
+            "compiler/.claude/agents/port.md",
+            &["Follow docs/architecture.md for data modelling."],
+        );
+        std::fs::create_dir_all(dir.path().join("compiler/docs")).unwrap();
+        std::fs::write(dir.path().join("compiler/docs/architecture.md"), "# arch").unwrap();
+        let source = ctx.files[0].path.to_path_buf();
+        ctx.files[0].file_refs.push(FileRef {
+            path: "docs/architecture.md".to_string(),
+            line: 1,
+            source_file: source,
+            ref_kind: RefKind::Mention,
+        });
+        assert!(DeadReferenceChecker.check(&ctx).diagnostics.is_empty());
     }
 }

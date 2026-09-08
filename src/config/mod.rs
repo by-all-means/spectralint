@@ -501,7 +501,7 @@ impl Default for TokenBudgetConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            warn_tokens: 4000,
+            warn_tokens: 6000,
             max_tokens: 8000,
             scope: Vec::new(),
             severity: None,
@@ -909,7 +909,7 @@ enabled = true
 
 [checkers.token_budget]
 enabled = true
-warn_tokens = 4000
+warn_tokens = 6000
 max_tokens = 8000
 
 # [checkers.unversioned_stack_reference]

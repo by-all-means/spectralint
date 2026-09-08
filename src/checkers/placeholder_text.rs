@@ -45,6 +45,44 @@ static ENUMERATION_BEFORE_ETC: LazyLock<Regex> =
 static OR_ENUMERATION_BEFORE_ETC: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)(?:\w+\s+or\s+){2,}\w+\s+etc\.?").unwrap());
 
+/// "TODO lists", "the TODO items": the word as a noun naming a kind of thing,
+/// not a marker left in the text. `TODO:` and `TODO implement this` are markers.
+fn is_noun_usage(line: &str, match_end: usize) -> bool {
+    let after = &line[match_end.min(line.len())..];
+    if after.starts_with(':') {
+        return false;
+    }
+    let next_word: String = after
+        .trim_start()
+        .chars()
+        .take_while(|c| c.is_ascii_alphabetic())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    matches!(
+        next_word.as_str(),
+        "list"
+            | "lists"
+            | "item"
+            | "items"
+            | "task"
+            | "tasks"
+            | "comment"
+            | "comments"
+            | "marker"
+            | "markers"
+            | "entry"
+            | "entries"
+            | "note"
+            | "notes"
+            | "section"
+            | "sections"
+            | "tracker"
+            | "trackers"
+            | "app"
+            | "apps"
+    )
+}
+
 /// Returns true if the match falls inside a file-path-like token (e.g. `tasks/todo.md`).
 fn is_inside_file_path(line: &str, match_start: usize, match_end: usize) -> bool {
     let token_start = line[..match_start]
@@ -62,14 +100,6 @@ fn is_inside_file_path(line: &str, match_start: usize, match_end: usize) -> bool
 fn is_file_reference(line: &str, match_end: usize) -> bool {
     static FILE_EXT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\.[a-zA-Z]{1,5}\b").unwrap());
     FILE_EXT.is_match(&line[match_end..])
-}
-
-/// Returns true if TODO/TBD/FIXME is used as a noun modifier (e.g. "TODO items", "TODO list").
-fn is_noun_usage(line: &str, match_end: usize) -> bool {
-    static NOUN_AFTER: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"(?i)^\s+(items?|list|entries|cards?|tracker|progress|count|app)\b").unwrap()
-    });
-    NOUN_AFTER.is_match(&line[match_end..])
 }
 
 /// Returns true if this match is an "etc." that follows a proper enumeration.
@@ -126,10 +156,10 @@ impl Checker for PlaceholderTextChecker {
                     .map(|s| s.as_str());
                 for m in PLACEHOLDER_PATTERN.find_iter(line) {
                     if is_etc_after_enumeration(line, m.as_str(), prev_line)
+                        || (m.as_str().starts_with("TODO") && is_noun_usage(line, m.end()))
                         || is_inside_file_path(line, m.start(), m.end())
                         || inside_inline_code(line, m.start())
                         || is_file_reference(line, m.end())
-                        || is_noun_usage(line, m.end())
                     {
                         continue;
                     }
@@ -412,5 +442,28 @@ mod tests {
     fn test_multiple_placeholders() {
         let result = run_check(&["TODO first", "TBD second"]);
         assert_eq!(result.diagnostics.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod noun_tests {
+    use super::*;
+    use crate::checkers::utils::test_helpers::single_file_ctx;
+
+    fn count(lines: &[&str]) -> usize {
+        let (_dir, ctx) = single_file_ctx(lines);
+        PlaceholderTextChecker::new(&[])
+            .check(&ctx)
+            .diagnostics
+            .len()
+    }
+
+    #[test]
+    fn todo_as_a_noun_is_not_a_placeholder() {
+        assert_eq!(count(&["- Planning implementation TODO lists"]), 0);
+        assert_eq!(count(&["Use the TODO tracker for open items"]), 0);
+        assert_eq!(count(&["TODO: write the deploy section"]), 1);
+        assert_eq!(count(&["[TODO]"]), 1);
+        assert_eq!(count(&["Deploy steps: TODO"]), 1);
     }
 }
