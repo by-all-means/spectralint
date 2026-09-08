@@ -4137,7 +4137,11 @@ fn agent_tree_fixture_reports_each_schema_failure_once() {
                 "warning".to_string()
             ),
             (".claude/rules/api.md".to_string(), 2, "warning".to_string()),
-            (".cursor/rules/react.mdc".to_string(), 1, "info".to_string()),
+            (
+                ".cursor/rules/manual.mdc".to_string(),
+                1,
+                "info".to_string()
+            ),
         ]
     );
     let messages: Vec<&str> = json["diagnostics"]
@@ -4155,7 +4159,7 @@ fn agent_tree_fixture_reports_each_schema_failure_once() {
         "{messages:?}"
     );
     assert!(
-        messages.iter().any(|m| m.contains("not valid YAML")),
+        messages.iter().any(|m| m.contains("@rule-name")),
         "{messages:?}"
     );
 }

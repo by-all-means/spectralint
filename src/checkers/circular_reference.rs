@@ -90,6 +90,13 @@ impl Checker for CircularReferenceChecker {
                     if target_idx == src_idx {
                         continue;
                     }
+                    // Mentioning a rule, skill, or prompt does not load it, so such
+                    // edges cannot form a load cycle; `@path` imports can.
+                    if file_ref.ref_kind == crate::parser::types::RefKind::Mention
+                        && (file.kind.is_component() || ctx.files[target_idx].kind.is_component())
+                    {
+                        continue;
+                    }
                     adj[src_idx].push((target_idx, ref_idx));
                 }
             }

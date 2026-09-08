@@ -90,6 +90,12 @@ impl Checker for DuplicateInstructionFileChecker {
             .iter()
             .enumerate()
             .flat_map(|(pos, &i)| valid_indices[pos + 1..].iter().map(move |&j| (i, j)))
+            // Two rules, skills, or prompts that repeat each other are templated or
+            // synced across tools by design; only project-level files are compared
+            // against each other and against components.
+            .filter(|&(i, j)| {
+                !(ctx.files[i].kind.is_component() && ctx.files[j].kind.is_component())
+            })
             .collect();
 
         let pair_diagnostics: Vec<Diagnostic> = pairs

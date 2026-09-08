@@ -15,6 +15,11 @@ All notable changes to spectralint will be documented in this file.
 
 - **missing-essential-sections, missing-role-definition, large-code-block** — skip rules, subagents, skills, prompts, and per-path instruction files by kind
 - Markdown extensions match case-insensitively and `.markdown` files are scanned
+- **dead-reference** — paths in a tool's files also resolve from that tool's directory (`rules/api.md` inside `.claude/skills/x/` means `.claude/rules/api.md`), and lines about files created or checked at run time are skipped
+- **duplicate-instruction-file** and **circular-reference** — two rules, skills, or prompts are no longer compared with each other, and a mention of a component file is not a load edge; `@path` imports still are
+- **hardcoded-file-structure** — skips skills, which are portable and describe whichever project they run in
+- **broken-table** — an escaped pipe (`\|`) inside a cell no longer counts as a column separator
+- The benchmark runner always passes `--no-cache`
 - "No markdown files found" is now "No instruction files found"
 
 ## 0.6.0 (2026-09-08)

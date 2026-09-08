@@ -1,0 +1,44 @@
+# Repositories with typed agent-instruction files, selected 2026-09-08.
+# GitHub code search for .claude/agents, .claude/skills/*/SKILL.md, .cursor/rules/*.mdc,
+# .github/instructions, and .claude/rules; unique, non-fork, non-archived, under 300 MB,
+# top 40 by stars. Run: SPECTRALINT_BENCH_REPOS=benchmarks/repos-typed.txt ./benchmarks/run.sh
+alibaba/hooks
+GetStream/Vision-Agents
+un-pany/v3-admin-vite
+zxlie/FeHelper
+jrsoftware/issrc
+eastlondoner/vibe-tools
+homeassistant-ai/ha-mcp
+imazen/imageflow
+groupultra/telegram-search
+Screenly/Anthias
+leaperone/MultiPost-Extension
+cool-team-official/cool-admin-midway
+ethereumjs/ethereumjs-monorepo
+microsoft/intelligent-terminal
+debugtheworldbot/keyStats
+BlueBubblesApp/bluebubbles-app
+infinispan/infinispan
+PropertyTools/PropertyTools
+drasi-project/drasi-platform
+yshrsmz/BuildKonfig
+bubblelabai/BubbleLab
+generaltranslation/gt
+tomasz-tomczyk/crit
+srid/emanote
+Apicurio/apicurio-registry
+pfrest/pfSense-pkg-RESTAPI
+AgentWorkforce/relay
+wp-media/wp-rocket
+andrechristikan/ack-nestjs-boilerplate
+thesofproject/sof
+jaswdr/faker
+oyjt/uniapp-vue3-template
+Lazza/RecuperaBit
+Gram-ax/gramax
+SigmaHQ/pySigma
+Couchers-org/couchers
+Ramilito/kubectl.nvim
+FutureExcited/vibe-rules
+epam/ai-dial-chat
+me2resh/apexyard

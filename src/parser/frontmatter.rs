@@ -42,6 +42,11 @@ static KEY_LINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^([A-Za-z0-9_.-]+):(?:\s+(.*))?\s*$").unwrap());
 static LIST_ITEM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s+-\s*(.*?)\s*$").unwrap());
 
+/// Whether a line is a top-level `key:` line, as the frontmatter parser reads it.
+pub(crate) fn is_key_line(line: &str) -> bool {
+    KEY_LINE.is_match(line)
+}
+
 /// The frontmatter delimiter lines, if the file opens with a closed block.
 /// An unclosed block is ordinary content, as it is for Claude Code.
 pub(crate) fn detect_frontmatter(lines: &[String]) -> Option<(usize, usize)> {
@@ -54,7 +59,12 @@ pub(crate) fn detect_frontmatter(lines: &[String]) -> Option<(usize, usize)> {
         .skip(1)
         .find(|(_, l)| matches!(l.trim(), "---" | "..."))?
         .0;
-    Some((0, close))
+    // Two rules with only prose between them are horizontal rules, not a
+    // frontmatter block: require at least one `key:` line.
+    lines[1..close]
+        .iter()
+        .any(|l| KEY_LINE.is_match(l))
+        .then_some((0, close))
 }
 
 /// Parse the frontmatter block, if any.
@@ -170,6 +180,34 @@ fn scalar(text: &str) -> FmValue {
     }
 }
 
+/// Split a comma-separated list, leaving commas inside `{a,b}` glob groups alone.
+fn split_commas_outside_braces(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut depth = 0usize;
+    let mut current = String::new();
+    for c in s.chars() {
+        match c {
+            '{' => {
+                depth += 1;
+                current.push(c);
+            }
+            '}' => {
+                depth = depth.saturating_sub(1);
+                current.push(c);
+            }
+            ',' if depth == 0 => {
+                out.push(std::mem::take(&mut current));
+            }
+            _ => current.push(c),
+        }
+    }
+    out.push(current);
+    out.into_iter()
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect()
+}
+
 impl Frontmatter {
     pub(crate) fn get(&self, key: &str) -> Option<&FmValue> {
         self.fields.iter().find(|(k, _)| k == key).map(|(_, v)| v)
@@ -212,13 +250,7 @@ impl Frontmatter {
                     })
                     .collect(),
             ),
-            FmValue::Str(s) => Some(
-                s.split(',')
-                    .map(str::trim)
-                    .filter(|p| !p.is_empty())
-                    .map(String::from)
-                    .collect(),
-            ),
+            FmValue::Str(s) => Some(split_commas_outside_braces(s)),
             _ => None,
         }
     }
@@ -349,10 +381,18 @@ mod tests {
     }
 
     #[test]
-    fn empty_block_has_no_fields() {
-        let f = fm("---\n---\n# Body").unwrap();
-        assert!(f.fields.is_empty());
-        assert!(f.parse_error.is_none());
+    fn blocks_without_a_key_line_are_content() {
+        assert!(fm("---\n---\n# Body").is_none());
+        assert!(fm("---\n# Codacy Rules\nSome prose\n---\nMore").is_none());
+    }
+
+    #[test]
+    fn brace_groups_survive_comma_splitting() {
+        let f = fm("---\nglobs: \"packages/{rlp,vm}/test/**/*.ts, docs/**\"\n---").unwrap();
+        assert_eq!(
+            f.get_str_list("globs").unwrap(),
+            vec!["packages/{rlp,vm}/test/**/*.ts", "docs/**"]
+        );
     }
 
     #[test]

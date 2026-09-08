@@ -174,6 +174,12 @@ impl Checker for HardcodedFileStructureChecker {
                 continue;
             }
 
+            // Skills are shared across projects, so the paths they name describe
+            // whichever project they run in, not this one.
+            if file.kind == crate::file_kind::FileKind::Skill {
+                continue;
+            }
+
             // Skip generic task templates where paths are illustrative
             if is_template_instruction_file(&file.path) {
                 continue;

@@ -13,7 +13,7 @@ use std::sync::Arc;
 use crate::emit;
 use crate::engine::cross_ref::CheckerContext;
 use crate::file_kind::FileKind;
-use crate::parser::frontmatter::Frontmatter;
+use crate::parser::frontmatter::{FmValue, Frontmatter};
 use crate::parser::types::ParsedFile;
 use crate::types::{Category, CheckResult, RuleMeta, Severity};
 
@@ -164,7 +164,13 @@ impl Checker for FrontmatterSchemaChecker {
             };
             let path = &file.path;
 
-            let opens_block = file.raw_lines.first().is_some_and(|l| l.trim() == "---");
+            // A leading `---` followed by a `key:` line is frontmatter someone forgot
+            // to close; a leading `---` followed by prose is a horizontal rule.
+            let opens_block = file.raw_lines.first().is_some_and(|l| l.trim() == "---")
+                && file
+                    .raw_lines
+                    .get(1)
+                    .is_some_and(|l| crate::parser::frontmatter::is_key_line(l));
             if file.frontmatter.is_none() && opens_block {
                 emit!(
                     result,
@@ -182,26 +188,35 @@ impl Checker for FrontmatterSchemaChecker {
             let fm = file.frontmatter.as_ref().unwrap_or(&empty);
 
             if let Some(err) = &fm.parse_error {
-                // Cursor's own files often carry unquoted globs, and the lenient
-                // parse recovers them, so that is only worth a note.
-                let severity = if file.kind == FileKind::CursorRule {
-                    Severity::Info
-                } else {
-                    Severity::Error
-                };
-                emit!(
-                    result,
-                    path,
-                    fm.open + 1,
-                    severity,
-                    Category::FrontmatterSchema,
-                    suggest: "Quote values that contain `*`, `:`, `#`, or `[`; unreadable frontmatter makes the tool skip or misread the file",
-                    "Frontmatter is not valid YAML: {err}"
-                );
+                // Tools read frontmatter with lenient line parsers, and the corpus
+                // shows unquoted globs and colons in descriptions everywhere, so
+                // this is a portability note. Cursor rules get nothing: unquoted
+                // globs are Cursor's own style.
+                if file.kind != FileKind::CursorRule {
+                    emit!(
+                        result,
+                        path,
+                        fm.open + 1,
+                        Severity::Info,
+                        Category::FrontmatterSchema,
+                        suggest: "Quote values that contain `*`, `:`, `#`, or `[` so every tool's parser reads this block the same way",
+                        "Frontmatter is not strict YAML: {err}"
+                    );
+                }
             }
 
             match file.kind {
-                FileKind::ClaudeSubagent => check_subagent(&mut result, path, fm),
+                FileKind::ClaudeSubagent => {
+                    let nested_fragment = file.frontmatter.is_none()
+                        && file
+                            .path
+                            .parent()
+                            .and_then(Path::file_name)
+                            .is_some_and(|d| d != "agents");
+                    if !nested_fragment {
+                        check_subagent(&mut result, path, fm);
+                    }
+                }
                 FileKind::Skill => check_skill(&mut result, path, fm, file, &ctx.project_root),
                 FileKind::ClaudeRule => check_globs(&mut result, path, fm, "paths"),
                 FileKind::CursorRule => check_cursor_rule(&mut result, path, fm),
@@ -322,7 +337,9 @@ fn check_skill(
 /// `key` must hold globs as a list or a comma-separated string, and each glob
 /// must compile: a glob the tool cannot read matches nothing, silently.
 fn check_globs(result: &mut CheckResult, path: &Arc<PathBuf>, fm: &Frontmatter, key: &str) {
-    if !fm.has(key) {
+    // Absent or empty (`globs:` with nothing after it, which Cursor writes by
+    // default) is not a type error.
+    if matches!(fm.get(key), None | Some(FmValue::Null)) {
         return;
     }
     let Some(globs) = fm.get_str_list(key) else {
@@ -386,10 +403,10 @@ fn check_copilot_instruction(result: &mut CheckResult, path: &Arc<PathBuf>, fm: 
             result,
             path,
             fm.open + 1,
-            Severity::Warning,
+            Severity::Info,
             Category::FrontmatterSchema,
-            suggest: "Add `applyTo: \"**\"` or a narrower glob",
-            "Instruction file has no `applyTo`; Copilot applies it to nothing"
+            suggest: "Add `applyTo: \"**\"` or a narrower glob unless manual attachment is intended",
+            "Instruction file has no `applyTo`; Copilot applies it only when attached by hand"
         );
         return;
     }
@@ -701,7 +718,7 @@ mod tests {
     }
 
     #[test]
-    fn cursor_unquoted_globs_are_a_note_not_an_error() {
+    fn cursor_unquoted_globs_are_cursor_style() {
         let found = messages(
             ".cursor/rules/react.mdc",
             &[
@@ -712,9 +729,22 @@ mod tests {
                 "---",
             ],
         );
-        assert_eq!(found.len(), 1, "{found:?}");
-        assert_eq!(found[0].0, Severity::Info);
-        assert!(found[0].1.contains("not valid YAML"), "{}", found[0].1);
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn empty_globs_line_is_not_a_type_error() {
+        let found = messages(
+            ".cursor/rules/css.mdc",
+            &[
+                "---",
+                "description: CSS",
+                "globs:",
+                "alwaysApply: false",
+                "---",
+            ],
+        );
+        assert!(found.is_empty(), "{found:?}");
     }
 
     #[test]
@@ -750,7 +780,7 @@ mod tests {
             ".github/instructions/api.instructions.md",
             &["---", "description: API rules", "---"],
         );
-        assert_eq!(sev, Severity::Warning);
+        assert_eq!(sev, Severity::Info);
         assert!(msg.contains("applyTo"), "{msg}");
         assert!(messages(
             ".github/instructions/api.instructions.md",
@@ -829,10 +859,19 @@ mod tests {
         let (sev, msg) = only(".claude/agents/r.md", &["---", "name: r", "# never closed"]);
         assert_eq!(sev, Severity::Warning);
         assert!(msg.contains("never closed"), "{msg}");
+        // A horizontal rule at the top of a file is not an unclosed block.
+        let found = messages(
+            ".github/instructions/pr.instructions.md",
+            &["---", "# Guidelines", "Prose"],
+        );
+        assert!(
+            found.iter().all(|(_, m)| !m.contains("never closed")),
+            "{found:?}"
+        );
     }
 
     #[test]
-    fn invalid_yaml_in_claude_kinds_is_an_error() {
+    fn non_strict_yaml_is_a_portability_note() {
         let found = messages(
             ".claude/agents/r.md",
             &["---", "name: r", "description: Use when: asked", "---"],
@@ -840,7 +879,11 @@ mod tests {
         assert!(
             found
                 .iter()
-                .any(|(s, m)| *s == Severity::Error && m.contains("not valid YAML")),
+                .any(|(s, m)| *s == Severity::Info && m.contains("not strict YAML")),
+            "{found:?}"
+        );
+        assert!(
+            found.iter().all(|(s, _)| *s != Severity::Error),
             "{found:?}"
         );
     }
@@ -849,5 +892,34 @@ mod tests {
     fn kinds_without_a_schema_are_ignored() {
         assert!(messages("CLAUDE.md", &["---", "globs: *.ts", "descripton: x", "---"]).is_empty());
         assert!(messages("docs/guide.md", &["---", "title: Guide", "---"]).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod fragment_tests {
+    use super::*;
+    use crate::checkers::utils::test_helpers::file_ctx_at;
+
+    #[test]
+    fn nested_fragment_without_frontmatter_is_not_an_agent() {
+        let (_dir, ctx) = file_ctx_at(
+            ".claude/agents/roles/planner.md",
+            &["# Planner", "You plan."],
+        );
+        assert!(FrontmatterSchemaChecker::new(&[])
+            .check(&ctx)
+            .diagnostics
+            .is_empty());
+        let (_dir, ctx) = file_ctx_at(
+            ".claude/agents/roles/planner.md",
+            &["---", "description: x", "---"],
+        );
+        assert_eq!(
+            FrontmatterSchemaChecker::new(&[])
+                .check(&ctx)
+                .diagnostics
+                .len(),
+            1
+        );
     }
 }

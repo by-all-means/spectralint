@@ -84,6 +84,36 @@ fn resolves_via_dir_context(
         })
 }
 
+/// Lines that talk about a file the agent creates or checks for at run time.
+static RUNTIME_FILE_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)\b(?:doesn't exist|does not exist|if (?:it |the file |this file )?(?:already )?exists?|will (?:be )?(?:creat|generat|writ|produc)|is (?:created|generated|written|produced)|(?:create|generate|write)s? (?:a |the )?(?:new )?(?:file )?`)",
+    )
+    .unwrap()
+});
+
+/// Directories that root a tool's own files: a skill under `.claude/skills/x/`
+/// that says `rules/api.md` means `.claude/rules/api.md`.
+const TOOL_DIRS: &[&str] = &[
+    ".claude",
+    ".cursor",
+    ".github",
+    ".agents",
+    ".junie",
+    ".kiro",
+    ".roo",
+    ".devin",
+    ".windsurf",
+];
+
+fn enclosing_tool_dir(source_file: &Path) -> Option<&Path> {
+    source_file.ancestors().skip(1).find(|a| {
+        a.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| TOOL_DIRS.contains(&n))
+    })
+}
+
 pub(crate) struct DeadReferenceChecker;
 
 impl Checker for DeadReferenceChecker {
@@ -130,21 +160,19 @@ impl Checker for DeadReferenceChecker {
                 // After resolving, verify the path stays within the project root
                 // to prevent `../../etc/passwd` style traversals from silently passing.
                 let source_dir = file_ref.source_file.parent().unwrap_or(&ctx.project_root);
-                let resolved_local = source_dir.join(&file_ref.path);
-                let resolved_root = ctx.project_root.join(&file_ref.path);
-                if (resolved_local.exists()
-                    && is_within_project(
-                        &resolved_local,
-                        ctx.canonical_root.as_deref(),
-                        &ctx.project_root,
-                    ))
-                    || (resolved_root.exists()
+                let mut bases = vec![source_dir, ctx.project_root.as_path()];
+                if let Some(tool_dir) = enclosing_tool_dir(&file_ref.source_file) {
+                    bases.push(tool_dir);
+                }
+                if bases.iter().any(|base| {
+                    let resolved = base.join(&file_ref.path);
+                    resolved.exists()
                         && is_within_project(
-                            &resolved_root,
+                            &resolved,
                             ctx.canonical_root.as_deref(),
                             &ctx.project_root,
-                        ))
-                {
+                        )
+                }) {
                     continue;
                 }
 
@@ -161,6 +189,7 @@ impl Checker for DeadReferenceChecker {
 
                 if let Some(line_content) = file.raw_lines.get(line_idx) {
                     if ACTION_VERB_LINE.is_match(line_content)
+                        || RUNTIME_FILE_CONTEXT.is_match(line_content)
                         || FILE_CALLED_NAMED.is_match(line_content)
                         || EXAMPLE_CONTEXT.is_match(line_content)
                         || has_arrow_mapping(line_content)

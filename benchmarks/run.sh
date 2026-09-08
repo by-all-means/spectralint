@@ -73,7 +73,7 @@ fi
 for dir in "$CLONE_DIR"/*/; do
   repo_name="$(basename "$dir")"
   out="$RESULTS_DIR/$repo_name.json"
-  "$SPECTRALINT" check "$dir" --format json $STRICT_FLAG > "$out" 2>/dev/null || true
+  "$SPECTRALINT" check "$dir" --format json --no-cache $STRICT_FLAG > "$out" 2>/dev/null || true
 done
 
 # ── Summarise ──────────────────────────────────────────────────────────────

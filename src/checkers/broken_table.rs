@@ -27,7 +27,7 @@ static SEPARATOR_ROW: LazyLock<Regex> =
 /// Count the number of columns in a table row based on pipe delimiters.
 fn column_count(line: &str) -> usize {
     let trimmed = line.trim();
-    let pipes = trimmed.matches('|').count();
+    let pipes = trimmed.replace("\\|", "").matches('|').count();
     if pipes == 0 {
         return 0;
     }
