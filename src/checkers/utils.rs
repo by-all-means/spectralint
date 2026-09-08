@@ -348,7 +348,7 @@ impl ScopeFilter {
     pub(crate) fn includes(&self, path: &Path, root: &Path) -> bool {
         self.0
             .as_ref()
-            .map_or(true, |set| matches_glob(path, root, set))
+            .is_none_or(|set| matches_glob(path, root, set))
     }
 }
 
