@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use super::frontmatter::Frontmatter;
 use crate::file_kind::FileKind;
 
 #[derive(Debug, Clone, Default)]
@@ -25,6 +26,8 @@ pub struct ParsedFile {
     /// Pre-computed code block mask: `true` if line is inside a fenced code block.
     /// Fence markers themselves are marked `true` (excluded from non-code iteration).
     pub in_code_block: Vec<bool>,
+    /// Parsed YAML frontmatter, when the file opens with a closed `---` block.
+    pub frontmatter: Option<Frontmatter>,
 }
 
 impl ParsedFile {
@@ -42,6 +45,7 @@ impl ParsedFile {
             path: Arc::new(path.to_path_buf()),
             kind: crate::file_kind::classify(relative),
             in_code_block: crate::parser::build_code_block_mask(lines),
+            frontmatter: crate::parser::frontmatter::parse(lines),
             raw_lines: lines.to_vec(),
             ..Self::default()
         }

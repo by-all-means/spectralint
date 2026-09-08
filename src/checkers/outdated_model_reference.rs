@@ -161,27 +161,6 @@ impl OutdatedModelReferenceChecker {
     }
 }
 
-/// The top-level `model:` value from a closed leading YAML frontmatter block, with
-/// its line index. Mirrors the parser: an unclosed block is ordinary content.
-fn frontmatter_model(lines: &[String]) -> Option<(usize, String)> {
-    if lines.first()?.trim() != "---" {
-        return None;
-    }
-    let close = lines
-        .iter()
-        .skip(1)
-        .position(|l| matches!(l.trim(), "---" | "..."))?
-        + 1;
-    lines[1..close].iter().enumerate().find_map(|(i, line)| {
-        let value = line
-            .strip_prefix("model:")?
-            .trim()
-            .trim_matches(|c| c == '"' || c == '\'')
-            .trim();
-        (!value.is_empty()).then(|| (i + 1, value.to_string()))
-    })
-}
-
 /// The top-level `model` string from a Claude Code settings file, with its 1-based line.
 fn settings_model(path: &Path) -> Option<(usize, String)> {
     let content = std::fs::read_to_string(path).ok()?;
@@ -214,14 +193,11 @@ impl Checker for OutdatedModelReferenceChecker {
                 continue;
             }
 
-            if let Some((line_idx, value)) = frontmatter_model(&file.raw_lines) {
-                self.scan(
-                    &mut result,
-                    &file.path,
-                    line_idx + 1,
-                    &value,
-                    Location::Config,
-                );
+            if let Some(fm) = &file.frontmatter {
+                if let Some(value) = fm.get_str("model") {
+                    let line = fm.line_of("model").unwrap_or(fm.open + 1);
+                    self.scan(&mut result, &file.path, line, value, Location::Config);
+                }
             }
 
             for (idx, line) in file.non_code_lines() {

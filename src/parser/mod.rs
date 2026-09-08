@@ -1,3 +1,4 @@
+pub(crate) mod frontmatter;
 pub(crate) mod types;
 
 use comrak::nodes::NodeValue;
@@ -14,26 +15,12 @@ use types::{Directive, FileRef, InlineSuppress, ParsedFile, Section, SuppressKin
 pub(crate) fn build_code_block_mask(lines: &[String]) -> Vec<bool> {
     let mut mask = vec![false; lines.len()];
 
-    // Mask YAML frontmatter (must start at line 0 with "---")
-    // Only mask if a closing "---" is found; otherwise treat as normal content.
-    let mut content_start = 0;
-    if lines.first().is_some_and(|l| l.trim() == "---") {
-        if let Some(close) = lines
-            .iter()
-            .enumerate()
-            .skip(1)
-            .find(|(_, l)| {
-                let trimmed = l.trim();
-                trimmed == "---" || trimmed == "..."
-            })
-            .map(|(i, _)| i)
-        {
-            for item in mask.iter_mut().take(close + 1) {
-                *item = true;
-            }
-            content_start = close + 1;
-        }
-    }
+    // Mask a closed YAML frontmatter block, delimiters included; an unclosed
+    // block is ordinary content.
+    let content_start = frontmatter::detect_frontmatter(lines).map_or(0, |(_, close)| {
+        mask[..=close].fill(true);
+        close + 1
+    });
 
     // Mask fenced code blocks
     let mut in_code_block = false;
@@ -64,20 +51,7 @@ pub(crate) fn non_code_lines_masked<'a>(
 /// Used during parsing before the pre-computed mask is available.
 /// Skips YAML frontmatter (lines between leading `---` delimiters).
 fn non_code_lines(lines: &[String]) -> impl Iterator<Item = (usize, &str)> {
-    // Pre-compute frontmatter end index
-    let fm_end = if lines.first().is_some_and(|l| l.trim() == "---") {
-        lines
-            .iter()
-            .enumerate()
-            .skip(1)
-            .find(|(_, l)| {
-                let trimmed = l.trim();
-                trimmed == "---" || trimmed == "..."
-            })
-            .map_or(0, |(i, _)| i + 1)
-    } else {
-        0
-    };
+    let fm_end = frontmatter::detect_frontmatter(lines).map_or(0, |(_, close)| close + 1);
 
     let mut in_code_block = false;
     lines.iter().enumerate().filter_map(move |(i, line)| {
@@ -206,6 +180,7 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
     }
     let content = std::fs::read_to_string(path)?;
     let raw_lines: Vec<String> = content.lines().map(String::from).collect();
+    let frontmatter = frontmatter::parse(&raw_lines);
 
     // Skip MediaWiki markup files (not standard markdown — causes false positives)
     if is_mediawiki_content(&content) {
@@ -220,6 +195,7 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
             suppress_comments: vec![],
             raw_lines,
             in_code_block,
+            frontmatter,
             ..Default::default()
         });
     }
@@ -254,6 +230,7 @@ pub(crate) fn parse_file(path: &Path) -> anyhow::Result<ParsedFile> {
         suppress_comments,
         raw_lines,
         in_code_block,
+        frontmatter,
         ..Default::default()
     })
 }
