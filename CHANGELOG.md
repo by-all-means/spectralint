@@ -2,7 +2,7 @@
 
 All notable changes to spectralint will be documented in this file.
 
-## Unreleased
+## 0.7.0 (2026-09-08)
 
 ### New Features
 
