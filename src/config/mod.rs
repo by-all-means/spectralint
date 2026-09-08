@@ -10,6 +10,9 @@ use crate::types::Severity;
 pub struct Config {
     pub format: OutputFormat,
     pub strict: bool,
+    /// Lowest severity shown by default. Info findings are style and size
+    /// notes; `--min-severity info`, `--rule`, or `--fail-on info` reveal them.
+    pub min_severity: Severity,
     pub include: Vec<String>,
     pub ignore: Vec<String>,
     pub ignore_files: Vec<String>,
@@ -554,6 +557,7 @@ impl Default for Config {
         Self {
             format: OutputFormat::Text,
             strict: false,
+            min_severity: Severity::Warning,
             include: DEFAULT_INCLUDE.iter().map(|s| (*s).to_string()).collect(),
             ignore: vec!["node_modules".into(), ".git".into(), "target".into()],
             ignore_files: Vec::new(),
@@ -696,6 +700,10 @@ impl Config {
 
 # Output format: text, json, github, sarif
 # format = "text"
+
+# Lowest severity shown: error, warning, or info. Info findings (style and size
+# notes) are hidden by default; --min-severity info, --rule, or --fail-on info show them.
+# min_severity = "warning"
 
 # Which files to scan (glob patterns, case-insensitive).
 # Default: the instruction-file locations of every supported tool.

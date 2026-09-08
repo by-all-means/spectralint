@@ -325,6 +325,8 @@ fn path_style_historical_pattern() {
 fn suppress_dead_reference_but_not_vague_directive() {
     let parsed = json_output(&[
         "check",
+        "--min-severity",
+        "info",
         "tests/fixtures/suppress_rule_specific",
         "--format",
         "json",
@@ -518,7 +520,14 @@ fn each_builtin_vague_pattern_detected() {
         )
         .unwrap();
 
-        let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+        let parsed = json_output(&[
+            "check",
+            "--min-severity",
+            "info",
+            &root.display().to_string(),
+            "--format",
+            "json",
+        ]);
         let diagnostics = parsed["diagnostics"].as_array().unwrap();
 
         let vague: Vec<_> = diagnostics
@@ -552,7 +561,14 @@ fn strict_vague_directive_flags_additional_patterns() {
     )
     .unwrap();
 
-    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let parsed = json_output(&[
+        "check",
+        "--min-severity",
+        "info",
+        &root.display().to_string(),
+        "--format",
+        "json",
+    ]);
     let diagnostics = parsed["diagnostics"].as_array().unwrap();
 
     let vague: Vec<_> = diagnostics
@@ -809,7 +825,14 @@ fn extra_vague_patterns_via_config() {
     )
     .unwrap();
 
-    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let parsed = json_output(&[
+        "check",
+        "--min-severity",
+        "info",
+        &root.display().to_string(),
+        "--format",
+        "json",
+    ]);
     let diagnostics = parsed["diagnostics"].as_array().unwrap();
 
     let vague: Vec<_> = diagnostics
@@ -915,7 +938,14 @@ fn github_output_uses_notice_for_info() {
     .unwrap();
 
     cmd()
-        .args(["check", &root.display().to_string(), "--format", "github"])
+        .args([
+            "check",
+            "--min-severity",
+            "info",
+            &root.display().to_string(),
+            "--format",
+            "github",
+        ])
         .assert()
         .success()
         .stdout(predicate::str::contains("::notice file="));
@@ -1472,6 +1502,8 @@ fn symlinked_instruction_file_is_scanned() {
 fn agent_guidelines_detected_via_fixture() {
     let parsed = json_output(&[
         "check",
+        "--min-severity",
+        "info",
         "tests/fixtures/agent_guidelines",
         "--format",
         "json",
@@ -1786,7 +1818,14 @@ fn file_size_warning_large_file() {
 
     fs::write(root.join("CLAUDE.md"), &content).unwrap();
 
-    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let parsed = json_output(&[
+        "check",
+        "--min-severity",
+        "info",
+        &root.display().to_string(),
+        "--format",
+        "json",
+    ]);
     let diagnostics = parsed["diagnostics"].as_array().unwrap();
 
     let file_size: Vec<_> = diagnostics
@@ -1892,7 +1931,14 @@ fn heading_hierarchy_skipped_level() {
     )
     .unwrap();
 
-    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let parsed = json_output(&[
+        "check",
+        "--min-severity",
+        "info",
+        &root.display().to_string(),
+        "--format",
+        "json",
+    ]);
     let diagnostics = parsed["diagnostics"].as_array().unwrap();
 
     let hierarchy: Vec<_> = diagnostics
@@ -2143,7 +2189,14 @@ fn emoji_density_detected() {
     )
     .unwrap();
 
-    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let parsed = json_output(&[
+        "check",
+        "--min-severity",
+        "info",
+        &root.display().to_string(),
+        "--format",
+        "json",
+    ]);
     let diagnostics = parsed["diagnostics"].as_array().unwrap();
 
     let emoji: Vec<_> = diagnostics
@@ -2398,7 +2451,14 @@ fn missing_essential_sections_detected() {
     )
     .unwrap();
 
-    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let parsed = json_output(&[
+        "check",
+        "--min-severity",
+        "info",
+        &root.display().to_string(),
+        "--format",
+        "json",
+    ]);
     let diagnostics = parsed["diagnostics"].as_array().unwrap();
 
     let missing: Vec<_> = diagnostics
@@ -2552,7 +2612,14 @@ fn missing_verification_detected() {
     )
     .unwrap();
 
-    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let parsed = json_output(&[
+        "check",
+        "--min-severity",
+        "info",
+        &root.display().to_string(),
+        "--format",
+        "json",
+    ]);
     let diagnostics = parsed["diagnostics"].as_array().unwrap();
 
     let missing: Vec<_> = diagnostics
@@ -2623,7 +2690,14 @@ fn negative_only_framing_detected() {
     )
     .unwrap();
 
-    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let parsed = json_output(&[
+        "check",
+        "--min-severity",
+        "info",
+        &root.display().to_string(),
+        "--format",
+        "json",
+    ]);
     let diagnostics = parsed["diagnostics"].as_array().unwrap();
 
     let negative: Vec<_> = diagnostics
@@ -2930,6 +3004,8 @@ fn sarif_error_level_is_error() {
 fn sarif_info_level_is_note() {
     let json = json_output(&[
         "check",
+        "--min-severity",
+        "info",
         "tests/fixtures/vague_directives",
         "--format",
         "sarif",
@@ -3554,7 +3630,14 @@ fn reasoning_prompt_with_code_block_still_checked() {
     )
     .unwrap();
 
-    let parsed = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let parsed = json_output(&[
+        "check",
+        "--min-severity",
+        "info",
+        &root.display().to_string(),
+        "--format",
+        "json",
+    ]);
     let diagnostics = parsed["diagnostics"].as_array().unwrap();
 
     let vague: Vec<_> = diagnostics
@@ -3585,6 +3668,8 @@ fn strict_mode_enables_strict_only_checkers() {
     // Without strict: instruction-without-context should not fire
     let parsed = json_output(&[
         "check",
+        "--min-severity",
+        "info",
         &root.display().to_string(),
         "--no-cache",
         "--format",
@@ -3603,6 +3688,8 @@ fn strict_mode_enables_strict_only_checkers() {
     // With strict: it should fire
     let parsed = json_output(&[
         "check",
+        "--min-severity",
+        "info",
         &root.display().to_string(),
         "--no-cache",
         "--strict",
@@ -3635,11 +3722,20 @@ fn strict_run_not_served_from_non_strict_cache() {
     fs::write(root.join("CLAUDE.md"), &lines).unwrap();
 
     // First run WITHOUT strict populates the cache (no --no-cache!)
-    let _ = json_output(&["check", &root.display().to_string(), "--format", "json"]);
+    let _ = json_output(&[
+        "check",
+        "--min-severity",
+        "info",
+        &root.display().to_string(),
+        "--format",
+        "json",
+    ]);
 
     // Second run WITH strict must not replay the cached non-strict results
     let parsed = json_output(&[
         "check",
+        "--min-severity",
+        "info",
         &root.display().to_string(),
         "--strict",
         "--format",
@@ -4006,7 +4102,13 @@ fn baseline_does_not_conflate_digit_bearing_identifiers() {
     let root_str = root.display().to_string();
 
     cmd()
-        .args(["check", &root_str, "--write-baseline"])
+        .args([
+            "check",
+            "--min-severity",
+            "info",
+            &root_str,
+            "--write-baseline",
+        ])
         .assert()
         .success();
 
@@ -4017,7 +4119,15 @@ fn baseline_does_not_conflate_digit_bearing_identifiers() {
     )
     .unwrap();
 
-    let parsed = json_output(&["check", &root_str, "--no-cache", "--format", "json"]);
+    let parsed = json_output(&[
+        "check",
+        "--min-severity",
+        "info",
+        &root_str,
+        "--no-cache",
+        "--format",
+        "json",
+    ]);
     let diagnostics = parsed["diagnostics"].as_array().unwrap();
     let dead: Vec<_> = diagnostics
         .iter()
@@ -4238,4 +4348,92 @@ fn suppression_comment_after_frontmatter_covers_the_block() {
         !categories.contains(&"frontmatter-schema") && !categories.contains(&"unused-suppression"),
         "{categories:?}"
     );
+}
+
+// ── Display floor: info is hidden by default ─────────────────────────────
+
+fn info_only_project() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    // A superseded model name is an info-level finding and nothing else fires.
+    fs::write(
+        dir.path().join("CLAUDE.md"),
+        "# Project\n\nUse gpt-4o for summaries.\n",
+    )
+    .unwrap();
+    dir
+}
+
+#[test]
+fn info_findings_are_hidden_by_default_with_a_hint() {
+    let dir = info_only_project();
+    let output = cmd()
+        .args([
+            "check",
+            dir.path().to_str().unwrap(),
+            "--no-cache",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(json["diagnostics"].as_array().unwrap().is_empty(), "{json}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("1 info finding(s) hidden"), "{stderr}");
+}
+
+#[test]
+fn info_is_shown_when_asked_for() {
+    let dir = info_only_project();
+    let root = dir.path().to_str().unwrap();
+    for extra in [
+        vec!["--min-severity", "info"],
+        vec!["--rule", "outdated-model-reference"],
+        vec!["--fail-on", "info"],
+    ] {
+        let mut args = vec!["check", root, "--no-cache", "--format", "json"];
+        args.extend(extra.iter().copied());
+        let output = cmd().args(&args).output().unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            json["diagnostics"].as_array().unwrap().len(),
+            1,
+            "{extra:?}: {json}"
+        );
+    }
+    fs::write(
+        dir.path().join(".spectralintrc.toml"),
+        "min_severity = \"info\"\n",
+    )
+    .unwrap();
+    let json = json_output(&["check", root, "--no-cache", "--format", "json"]);
+    assert_eq!(
+        json["diagnostics"].as_array().unwrap().len(),
+        1,
+        "config: {json}"
+    );
+}
+
+#[test]
+fn suppression_hygiene_notices_are_never_hidden() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("CLAUDE.md"),
+        "# Project\n\n<!-- spectralint-disable-next-line dead-reference -->\nNothing to suppress here.\n",
+    )
+    .unwrap();
+    let json = json_output(&[
+        "check",
+        dir.path().to_str().unwrap(),
+        "--no-cache",
+        "--format",
+        "json",
+    ]);
+    let cats: Vec<&str> = json["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["category"].as_str().unwrap())
+        .collect();
+    assert!(cats.contains(&"unused-suppression"), "{cats:?}");
 }

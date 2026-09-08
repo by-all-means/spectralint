@@ -2,10 +2,11 @@
 
 All notable changes to spectralint will be documented in this file.
 
-## Unreleased
+## 0.7.2 (2026-09-08)
 
 ### Changed
 
+- **Errors and warnings are the default output.** Info-level findings are hidden unless `--min-severity info` is passed, a rule is named with `--rule`, or `--fail-on info` is set; a one-line hint reports how many were hidden. The `min_severity` config key sets the floor. Suppression and baseline hygiene notices are always shown. The LSP is unchanged. JSON and SARIF output follow the same floor
 - **token-budget** — the "approaching budget" note now starts at 6,000 of the 8,000-token budget instead of 4,000; it was the largest source of low-value findings once every tool's files were scanned
 - **placeholder-text** — `TODO` followed by a lowercase word ("TODO lists", "TODO comments") is the noun, not a marker
 - **dead-reference** — inside a skill only `references/`, `scripts/`, and `assets/` paths are checked; a bare file name in a skill is usually an artifact it writes. A nested `.claude/` directory in a monorepo also resolves paths from the package around it

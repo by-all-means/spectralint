@@ -37,6 +37,11 @@ pub enum Commands {
         #[arg(long, default_value = "error")]
         fail_on: Severity,
 
+        /// Lowest severity to show (default: warning, or the config's min_severity;
+        /// info is shown automatically with --rule or --fail-on info)
+        #[arg(long)]
+        min_severity: Option<Severity>,
+
         /// Enable strict mode (activates opinionated checkers)
         #[arg(long)]
         strict: bool,

@@ -40,6 +40,7 @@ fn run_check(
     quiet: bool,
     count: bool,
     fail_on: Severity,
+    min_severity: Option<Severity>,
     use_cache: bool,
     apply_fix: bool,
     baseline_mode: &BaselineMode,
@@ -77,6 +78,25 @@ fn run_check(
         return Ok(false);
     }
 
+    // Display floor: info findings are hidden unless asked for. Asking for a
+    // rule or failing on info implies wanting to see them.
+    let floor = min_severity.unwrap_or(if !rule.is_empty() || fail_on == Severity::Info {
+        Severity::Info
+    } else {
+        cfg.min_severity
+    });
+    let shown = |d: &spectralint::types::Diagnostic| {
+        d.severity >= floor
+            || matches!(
+                d.category,
+                spectralint::types::Category::UnusedSuppression
+                    | spectralint::types::Category::InvalidSuppression
+                    | spectralint::types::Category::StaleBaselineEntry
+            )
+    };
+    let hidden = result.diagnostics.iter().filter(|d| !shown(d)).count();
+    result.diagnostics.retain(shown);
+
     if !quiet {
         if count {
             let (e, w, i) = result.severity_counts();
@@ -102,6 +122,9 @@ fn run_check(
                 "Baseline: {} finding(s) suppressed",
                 result.baseline_suppressed
             );
+        }
+        if hidden > 0 {
+            eprintln!("{hidden} info finding(s) hidden; run with --min-severity info to show them");
         }
     }
 
@@ -130,6 +153,7 @@ fn run() -> Result<()> {
             format,
             config,
             fail_on,
+            min_severity,
             strict,
             rule,
             quiet,
@@ -185,6 +209,7 @@ fn run() -> Result<()> {
                 quiet,
                 count,
                 fail_on,
+                min_severity,
                 use_cache,
                 fix,
                 &baseline_mode,
@@ -224,6 +249,7 @@ fn run() -> Result<()> {
                             quiet,
                             count,
                             fail_on,
+                            min_severity,
                             use_cache,
                             fix,
                             &baseline_mode,

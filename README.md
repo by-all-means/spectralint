@@ -31,26 +31,28 @@ spectralint is a standalone Rust binary that runs entirely on your machine. Your
 
 We cloned the top 100 public GitHub repos containing `CLAUDE.md` (sorted by star count, from React at 243k stars to small projects) and ran spectralint on each. Dead references are verified against the actual repo filesystem — every flagged file genuinely does not exist.
 
-Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_count`, top 100 results, selected February 2026. Re-run 8 September 2026 with spectralint 0.7.1 against fresh shallow clones; 96 of the 100 repositories still exist. Every supported instruction format is scanned (see "What Gets Scanned"). Three of the repositories are catalogs of hundreds of portable skills and account for 1,379 findings on their own, so the numbers below are the other 93. See [`benchmarks/`](benchmarks/) for the repo list and reproduction script.
+Methodology: GitHub code search for `filename:CLAUDE.md`, ranked by `stargazers_count`, top 100 results, selected February 2026. Re-run 8 September 2026 with spectralint 0.7.2 against fresh shallow clones; 96 of the 100 repositories still exist. Every supported instruction format is scanned (see "What Gets Scanned"). Three of the repositories are catalogs of hundreds of portable skills and are excluded below, so the numbers describe the other 93. See [`benchmarks/`](benchmarks/) for the repo list and reproduction script.
 
 ```
-93 repos scanned → 507 findings (54% of repos)
+93 repos scanned → 164 errors and warnings in 32 repos (34%)
 
-  dead-reference                 87   error    (files and @imports that don't exist)
-  hardcoded-file-structure       74   info     (source paths that don't exist on disk)
-  token-budget                   68   info     (files approaching context window limits)
-  placeholder-text               36   warning  ([TODO], [TBD], unfinished content)
-  context-window-waste           35   info     (decorative elements wasting tokens)
-  frontmatter-schema             31   info     (frontmatter a tool requires or cannot read)
-  duplicate-instruction-file     25   warning  (near-duplicate files)
-  file-size                      22   info     (files exceeding 500/750 lines)
-  outdated-model-reference       17   info     (retired or superseded model names)
-  missing-essential-sections     12   info     (no build/test commands)
+  dead-reference                 46   error/warning  (files and @imports that don't exist)
+  placeholder-text               26   warning        ([TODO], [TBD], unfinished content)
+  duplicate-instruction-file     25   warning        (near-duplicate files)
+  token-budget                   11   warning        (files over the context window budget)
+  dangerous-command              10   warning        (rm -rf, DROP TABLE, --no-verify in code blocks)
+  duplicate-section              10   warning        (repeated section headings)
+  absolute-path                   6   warning        (hardcoded /Users/... paths)
+  command-validation              6   warning        (commands with no matching manifest)
+  circular-reference              4   warning        (A→B→A reference cycles)
+  frontmatter-schema              4   warning        (frontmatter a tool requires or cannot read)
 ```
 
-**41% of findings are errors or warnings** — dead references to files that genuinely don't exist, placeholder text left in, and near-duplicate files.
+A further 259 info-level notes (hardcoded source paths, blank-line runs, spec-compliance, file sizes, superseded model names) are hidden by default; `--min-severity info` shows them.
 
 ## 73 Built-in Rules
+
+Errors and warnings are shown by default; info-level rules are hidden until you ask for them with `--min-severity info`, name one with `--rule`, or pass `--fail-on info`.
 
 | Rule | Severity | What it catches |
 |------|----------|-----------------|
@@ -446,7 +448,7 @@ Add to your `.pre-commit-config.yaml` (requires a Rust toolchain; pre-commit bui
 ```yaml
 repos:
   - repo: https://github.com/by-all-means/spectralint
-    rev: v0.7.1
+    rev: v0.7.2
     hooks:
       - id: spectralint
 ```
