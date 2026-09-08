@@ -432,7 +432,7 @@ Add to your `.pre-commit-config.yaml` (requires a Rust toolchain; pre-commit bui
 ```yaml
 repos:
   - repo: https://github.com/by-all-means/spectralint
-    rev: v0.5.0
+    rev: v0.6.0
     hooks:
       - id: spectralint
 ```

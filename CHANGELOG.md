@@ -2,7 +2,14 @@
 
 All notable changes to spectralint will be documented in this file.
 
-## Unreleased
+## 0.6.0 (2026-09-08)
+
+### New Features
+
+- **Baseline file** — `--baseline` records existing findings so only new ones fail CI; count-based matching per file and rule
+- **Pre-commit hook** — `.pre-commit-hooks.yaml` definition for the pre-commit framework
+- **Exit code 2** for tool errors (bad config, unreadable files), distinct from exit code 1 for findings
+- **`--fix` reporting** — applied fixes are listed and the project is re-checked afterwards
 
 ### Changed
 
@@ -13,14 +20,19 @@ All notable changes to spectralint will be documented in this file.
 
 - **stale-reference** — "today" was hardcoded to March 2026, so verdicts never aged. It now follows the system clock; `SPECTRALINT_CURRENT_DATE` (`YYYY-MM-DD` or `YYYY-MM`) overrides it for reproducible runs
 - **Result cache** — invalidated when the calendar day changes so time-aware rules cannot replay stale verdicts (cache format v2)
+- **bare-url** — panic on certain inputs
+- **Cache key** — `--strict` runs no longer replay cached non-strict results
+- **credential-exposure** — inline suppression now scopes to the flagged line
 - **stale-file-tree** — box-drawing tables are rejected by shape instead of by fence tag, so trees fenced as `text`, `bash`, or `tree` are checked again while `rust`, `sql`, and other language fences stay skipped
 - **README** — corrected the command-validation description (it validates against toolchain manifests, not PATH) and the Cursor support claim (`.mdc` and `.cursorrules` are not scanned yet)
+- **GitHub Action** — portable across macOS and Windows runners
 
 ## 0.5.0 (2026-03-10)
 
 ### New Rules (3 added, 71 total)
 
 - **token-budget** — estimates context window cost per file; warns when approaching/exceeding configurable thresholds
+- **stale-file-tree** — validates ASCII directory trees in code blocks against the actual filesystem *(strict-only)*
 - **command-validation** — flags shell commands in code blocks that reference tools not found in PATH
 
 ### New Features
@@ -28,6 +40,7 @@ All notable changes to spectralint will be documented in this file.
 - **Autofix engine** — `--fix` flag applies structured text replacements (e.g., removing repeated words). Overlap detection prevents conflicting fixes.
 - **Watch mode** — `--watch` re-scans on file changes using native filesystem events (via `notify` crate) with 100ms debounce
 - **Result caching** — automatic whole-project cache using FNV-1a hash with mtime+size-based invalidation. `--no-cache` to bypass. Atomic writes (tmp + rename) prevent corruption. 50 MiB size limit guards against malicious cache files.
+- **GitHub Action** — bundled `action.yml` for CI integration
 - **Structured logging** — internal diagnostics via `tracing` crate, gated by `RUST_LOG` env var (silent by default)
 
 ### Architecture
@@ -67,6 +80,7 @@ All notable changes to spectralint will be documented in this file.
 - **Parse failure reporting** — warns when files fail to parse ("Checked 95/100 files, 5 failed to parse")
 - **CONFLICT_PAIRS assertion** — runtime guard ensures bitmask doesn't exceed 32 conflict pairs
 - **dead-reference** — recognizes `~>` arrow mapping (HCL/Terraform version constraints)
+- **credential-exposure** — improved redaction shows `key=***` for key-value patterns instead of partial value leak
 - **command-validation** — `make` requires word boundary; `npm install -g` skipped; `python` narrowed to `python -m`
 - **hardcoded-windows-path** — recognizes markdown escaped underscores and YAML `\n` escapes
 - **Reasoning prompt heuristic** — skips vague-directive, generic-instruction, missing-essential-sections on pure-prose files
@@ -138,6 +152,7 @@ All notable changes to spectralint will be documented in this file.
 ### New Rules (12 added, 60 total)
 
 - **missing-standard-file** — flags projects with instruction files but no CLAUDE.md *(strict-only)*
+- **bare-url** — flags raw URLs not wrapped in markdown link syntax *(strict-only)*
 - **repeated-word** — flags accidental consecutive duplicate words like "the the" *(strict-only)*
 - **undocumented-env-var** — flags `$ENV_VAR` references without nearby explanation *(strict-only)*
 - **empty-code-block** — flags code blocks with no content *(strict-only)*
@@ -247,6 +262,7 @@ Initial release.
 ### Rules (18 built-in)
 
 - **dead-reference** — flags `.md` references to files that don't exist
+- **credential-exposure** — detects hardcoded API keys, tokens, passwords
 - **naming-inconsistency** — catches `api_key` vs `apiKey` across files
 - **enum-drift** — tables with matching columns but divergent values *(strict-only)*
 - **stale-reference** — time-sensitive conditional logic that becomes stale
